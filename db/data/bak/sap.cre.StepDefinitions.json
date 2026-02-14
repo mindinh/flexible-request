@@ -1,0 +1,170 @@
+[
+    {
+        "ID": "b1000001-0000-0000-0000-000000000001",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepName": "Define Plant",
+        "isStartStep": true,
+        "slaDays": 5,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Plant Information\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Plant Name\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2},{\"id\":\"f2\",\"label\":\"Plant Code\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f3\",\"label\":\"Country\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f4\",\"label\":\"City\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f5\",\"label\":\"Address\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"colSpan\":2},{\"id\":\"f6\",\"label\":\"Target Start Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f7\",\"label\":\"Estimated Investment\",\"controlType\":\"number\",\"dataType\":\"number\"}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Justification\",\"columns\":2,\"fields\":[{\"id\":\"f8\",\"label\":\"Business Case\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2}]}]}"
+    },
+    {
+        "ID": "b1000001-0000-0000-0000-000000000002",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepName": "Finance Review",
+        "isStartStep": false,
+        "slaDays": 3,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Financial Assessment\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Approved Budget\",\"controlType\":\"number\",\"dataType\":\"number\",\"required\":true},{\"id\":\"f2\",\"label\":\"Cost Center\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f3\",\"label\":\"Finance Comments\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"colSpan\":2}]}]}"
+    },
+    {
+        "ID": "b1000001-0000-0000-0000-000000000003",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepName": "Logistics Setup",
+        "isStartStep": false,
+        "slaDays": 3,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Logistics Configuration\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Warehouse Required\",\"controlType\":\"checkbox\",\"dataType\":\"boolean\"},{\"id\":\"f2\",\"label\":\"Shipping Routes\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"colSpan\":2}]}]}"
+    },
+    {
+        "ID": "b1000001-0000-0000-0000-000000000004",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepName": "Final Approval",
+        "isStartStep": false,
+        "slaDays": 2,
+        "schemaContent": null
+    },
+    {
+        "ID": "b2000001-0000-0000-0000-000000000001",
+        "requestType_ID": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "stepName": "Submit Travel Request",
+        "isStartStep": true,
+        "slaDays": 2,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Trip Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Request Subject\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"E.g., Client Meeting in London\"},{\"id\":\"f2\",\"label\":\"Destination\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"placeholder\":\"City, Country\"},{\"id\":\"f3\",\"label\":\"Departure Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f4\",\"label\":\"Return Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f5\",\"label\":\"Estimated Budget\",\"controlType\":\"number\",\"dataType\":\"number\",\"placeholder\":\"USD\"}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Business Justification\",\"columns\":2,\"fields\":[{\"id\":\"f6\",\"label\":\"Justification / Business Case\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"Explain why this request is necessary...\"}]},{\"type\":\"section\",\"id\":\"s3\",\"title\":\"Additional Info\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Cost Center\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f8\",\"label\":\"Attachment\",\"controlType\":\"file\",\"dataType\":\"string\"}]}]}"
+    },
+    {
+        "ID": "b2000001-0000-0000-0000-000000000002",
+        "requestType_ID": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "stepName": "Manager Approval",
+        "isStartStep": false,
+        "slaDays": 2,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Manager Review\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Approval Decision\",\"controlType\":\"radio\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2},{\"id\":\"f2\",\"label\":\"Manager Comments\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"colSpan\":2}]}]}"
+    },
+    {
+        "ID": "b3000001-0000-0000-0000-000000000001",
+        "requestType_ID": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "stepName": "Submit Purchase Order",
+        "isStartStep": true,
+        "slaDays": 2,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Item Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Request Subject\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"E.g., New Laptop for Development\"},{\"id\":\"f2\",\"label\":\"Item Name\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"placeholder\":\"Product Name/Model\"},{\"id\":\"f3\",\"label\":\"Vendor (Optional)\",\"controlType\":\"text\",\"dataType\":\"string\",\"placeholder\":\"Preferred Vendor\"},{\"id\":\"f4\",\"label\":\"Quantity\",\"controlType\":\"number\",\"dataType\":\"number\",\"required\":true},{\"id\":\"f5\",\"label\":\"Unit Price\",\"controlType\":\"number\",\"dataType\":\"number\",\"placeholder\":\"USD\"}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Business Justification\",\"columns\":2,\"fields\":[{\"id\":\"f6\",\"label\":\"Justification / Business Case\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"Explain why this request is necessary...\"}]},{\"type\":\"section\",\"id\":\"s3\",\"title\":\"Additional Info\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Cost Center\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f8\",\"label\":\"Attachment\",\"controlType\":\"file\",\"dataType\":\"string\"}]}]}"
+    },
+    {
+        "ID": "b3000001-0000-0000-0000-000000000002",
+        "requestType_ID": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "stepName": "Manager Review",
+        "isStartStep": false,
+        "slaDays": 2,
+        "schemaContent": null
+    },
+    {
+        "ID": "b3000001-0000-0000-0000-000000000003",
+        "requestType_ID": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "stepName": "Finance Approval",
+        "isStartStep": false,
+        "slaDays": 3,
+        "schemaContent": null
+    },
+    {
+        "ID": "b4000001-0000-0000-0000-000000000001",
+        "requestType_ID": "d4e5f6a7-b8c9-0123-def1-234567890123",
+        "stepName": "Submit Sourcing Request",
+        "isStartStep": true,
+        "slaDays": 3,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Contract Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Request Subject\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"E.g., Marketing Agency Contract\"},{\"id\":\"f2\",\"label\":\"Service Category\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"placeholder\":\"Marketing, Legal, etc.\"},{\"id\":\"f3\",\"label\":\"Contract Start Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f4\",\"label\":\"Contract End Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f5\",\"label\":\"Total Contract Value\",\"controlType\":\"number\",\"dataType\":\"number\",\"placeholder\":\"USD\"}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Business Justification\",\"columns\":2,\"fields\":[{\"id\":\"f6\",\"label\":\"Justification / Business Case\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"Explain why this request is necessary...\"}]},{\"type\":\"section\",\"id\":\"s3\",\"title\":\"Additional Info\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Cost Center\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f8\",\"label\":\"Attachment\",\"controlType\":\"file\",\"dataType\":\"string\"}]}]}"
+    },
+    {
+        "ID": "b4000001-0000-0000-0000-000000000002",
+        "requestType_ID": "d4e5f6a7-b8c9-0123-def1-234567890123",
+        "stepName": "Procurement Review",
+        "isStartStep": false,
+        "slaDays": 3,
+        "schemaContent": null
+    },
+    {
+        "ID": "b4000001-0000-0000-0000-000000000003",
+        "requestType_ID": "d4e5f6a7-b8c9-0123-def1-234567890123",
+        "stepName": "Legal Review",
+        "isStartStep": false,
+        "slaDays": 5,
+        "schemaContent": null
+    },
+    {
+        "ID": "b5000001-0000-0000-0000-000000000001",
+        "requestType_ID": "e5f6a7b8-c9d0-1234-ef12-345678901234",
+        "stepName": "Submit Expense Report",
+        "isStartStep": true,
+        "slaDays": 2,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Expense Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Report Title\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"E.g., Q4 Client Visit Expenses\"},{\"id\":\"f2\",\"label\":\"Expense Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f3\",\"label\":\"Expense Category\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f4\",\"label\":\"Amount\",\"controlType\":\"number\",\"dataType\":\"number\",\"required\":true,\"placeholder\":\"USD\"},{\"id\":\"f5\",\"label\":\"Currency\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Description\",\"columns\":2,\"fields\":[{\"id\":\"f6\",\"label\":\"Expense Description\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2}]},{\"type\":\"section\",\"id\":\"s3\",\"title\":\"Receipts\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Cost Center\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f8\",\"label\":\"Receipt Upload\",\"controlType\":\"file\",\"dataType\":\"string\",\"required\":true}]}]}"
+    },
+    {
+        "ID": "b5000001-0000-0000-0000-000000000002",
+        "requestType_ID": "e5f6a7b8-c9d0-1234-ef12-345678901234",
+        "stepName": "Manager Approval",
+        "isStartStep": false,
+        "slaDays": 2,
+        "schemaContent": null
+    },
+    {
+        "ID": "b5000001-0000-0000-0000-000000000003",
+        "requestType_ID": "e5f6a7b8-c9d0-1234-ef12-345678901234",
+        "stepName": "Finance Processing",
+        "isStartStep": false,
+        "slaDays": 5,
+        "schemaContent": null
+    },
+    {
+        "ID": "b6000001-0000-0000-0000-000000000001",
+        "requestType_ID": "f6a7b8c9-d0e1-2345-f123-456789012345",
+        "stepName": "Submit Leave Request",
+        "isStartStep": true,
+        "slaDays": 1,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Leave Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Leave Type\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f2\",\"label\":\"Leave Balance\",\"controlType\":\"text\",\"dataType\":\"string\",\"disabled\":true},{\"id\":\"f3\",\"label\":\"Start Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f4\",\"label\":\"End Date\",\"controlType\":\"date\",\"dataType\":\"date\",\"required\":true},{\"id\":\"f5\",\"label\":\"Number of Days\",\"controlType\":\"number\",\"dataType\":\"number\",\"required\":true},{\"id\":\"f6\",\"label\":\"Half Day\",\"controlType\":\"checkbox\",\"dataType\":\"boolean\"}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Additional Information\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Reason\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"colSpan\":2,\"placeholder\":\"Optional: Provide reason for leave\"},{\"id\":\"f8\",\"label\":\"Contact During Leave\",\"controlType\":\"text\",\"dataType\":\"string\",\"placeholder\":\"Emergency Phone Number\"},{\"id\":\"f9\",\"label\":\"Supporting Document\",\"controlType\":\"file\",\"dataType\":\"string\"}]}]}"
+    },
+    {
+        "ID": "b6000001-0000-0000-0000-000000000002",
+        "requestType_ID": "f6a7b8c9-d0e1-2345-f123-456789012345",
+        "stepName": "Manager Approval",
+        "isStartStep": false,
+        "slaDays": 1,
+        "schemaContent": null
+    },
+    {
+        "ID": "b7000001-0000-0000-0000-000000000001",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepName": "Submit Access Request",
+        "isStartStep": true,
+        "slaDays": 2,
+        "schemaContent": "{\"items\":[{\"type\":\"section\",\"id\":\"s1\",\"title\":\"Access Details\",\"columns\":2,\"fields\":[{\"id\":\"f1\",\"label\":\"Request Subject\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"E.g., SAP Production Access\"},{\"id\":\"f2\",\"label\":\"Access Type\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f3\",\"label\":\"System/Application\",\"controlType\":\"text\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f4\",\"label\":\"Access Level\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true},{\"id\":\"f5\",\"label\":\"Duration\",\"controlType\":\"select\",\"dataType\":\"string\",\"required\":true}]},{\"type\":\"section\",\"id\":\"s2\",\"title\":\"Business Justification\",\"columns\":2,\"fields\":[{\"id\":\"f6\",\"label\":\"Justification\",\"controlType\":\"textarea\",\"dataType\":\"string\",\"required\":true,\"colSpan\":2,\"placeholder\":\"Explain why this access is needed...\"}]},{\"type\":\"section\",\"id\":\"s3\",\"title\":\"Approval Chain\",\"columns\":2,\"fields\":[{\"id\":\"f7\",\"label\":\"Data Owner\",\"controlType\":\"text\",\"dataType\":\"string\"},{\"id\":\"f8\",\"label\":\"Supporting Document\",\"controlType\":\"file\",\"dataType\":\"string\"}]}]}"
+    },
+    {
+        "ID": "b7000001-0000-0000-0000-000000000002",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepName": "Manager Approval",
+        "isStartStep": false,
+        "slaDays": 1,
+        "schemaContent": null
+    },
+    {
+        "ID": "b7000001-0000-0000-0000-000000000003",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepName": "IT Security Review",
+        "isStartStep": false,
+        "slaDays": 2,
+        "schemaContent": null
+    },
+    {
+        "ID": "b7000001-0000-0000-0000-000000000004",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepName": "Access Provisioning",
+        "isStartStep": false,
+        "slaDays": 1,
+        "schemaContent": null
+    }
+]

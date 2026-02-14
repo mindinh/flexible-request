@@ -1,0 +1,55 @@
+{
+  "xsappname": "flexible-request-management",
+  "tenant-mode": "dedicated",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.admin",
+      "description": "Full administrator access"
+    },
+    {
+      "name": "$XSAPPNAME.Requester",
+      "description": "Create requests, submit steps, coordinate"
+    },
+    {
+      "name": "$XSAPPNAME.Approver",
+      "description": "Approve or reject assigned steps"
+    },
+    {
+      "name": "$XSAPPNAME.Viewer",
+      "description": "Read-only access to requests"
+    }
+  ],
+  "attributes": [],
+  "role-templates": [
+    {
+      "name": "Administrator",
+      "description": "Full system access",
+      "scope-references": [
+        "$XSAPPNAME.admin"
+      ]
+    },
+    {
+      "name": "Requester",
+      "description": "Standard user - create and manage requests",
+      "scope-references": [
+        "$XSAPPNAME.Requester"
+      ]
+    },
+    {
+      "name": "Approver",
+      "description": "Approval authority for workflow steps",
+      "scope-references": [
+        "$XSAPPNAME.Approver",
+        "$XSAPPNAME.Requester"
+      ]
+    },
+    {
+      "name": "Viewer",
+      "description": "Read-only access",
+      "scope-references": [
+        "$XSAPPNAME.Viewer"
+      ]
+    }
+  ],
+  "authorities-inheritance": false
+}

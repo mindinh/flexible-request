@@ -1,0 +1,893 @@
+/* ========================================
+   Studio Design System
+   Brand: Antigravity (#b10e10)
+   Style: Modern AI-direction (NOT Fiori)
+======================================== */
+
+/* CSS Variables */
+:root {
+  /* Brand Colors */
+  --studio-primary: #b10e10;
+  --studio-primary-hover: #820a0c;
+  --studio-primary-light: rgba(177, 14, 16, 0.1);
+
+  /* Surfaces */
+  --studio-bg: #f8fafc;
+  --studio-surface: #ffffff;
+  --studio-surface-elevated: #ffffff;
+
+  /* Text */
+  --studio-text-primary: #1e293b;
+  --studio-text-secondary: #64748b;
+  --studio-text-muted: #94a3b8;
+
+  /* Borders */
+  --studio-border: #e2e8f0;
+  --studio-border-light: #f1f5f9;
+
+  /* Status Colors */
+  --studio-success: #10b981;
+  --studio-warning: #f59e0b;
+  --studio-error: #ef4444;
+  --studio-info: #3b82f6;
+
+  /* Shadows */
+  --studio-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --studio-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --studio-shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --studio-shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Glassmorphism */
+  --studio-glass-bg: rgba(255, 255, 255, 0.8);
+  --studio-glass-border: rgba(255, 255, 255, 0.2);
+  --studio-glass-blur: 12px;
+
+  /* Spacing */
+  --studio-radius-sm: 8px;
+  --studio-radius: 12px;
+  --studio-radius-lg: 16px;
+  --studio-radius-xl: 24px;
+
+  /* Transitions */
+  --studio-transition-fast: 150ms ease;
+  --studio-transition: 200ms ease;
+  --studio-transition-slow: 300ms ease;
+}
+
+/* ========================================
+   Layout Components
+======================================== */
+
+.studio-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  background: var(--studio-bg);
+  overflow: hidden;
+}
+
+.studio-layout--left-collapsed {
+  grid-template-columns: 0 1fr 320px;
+}
+
+.studio-layout--right-collapsed {
+  grid-template-columns: 280px 1fr 0;
+}
+
+.studio-layout--both-collapsed {
+  grid-template-columns: 0 1fr 0;
+}
+
+/* Header */
+.studio-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+}
+
+.studio-header__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--studio-text-primary);
+  margin: 0;
+}
+
+.studio-header__back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--studio-text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: color var(--studio-transition);
+}
+
+.studio-header__back:hover {
+  color: var(--studio-primary);
+}
+
+/* Left Panel */
+.studio-left-panel {
+  background: var(--studio-surface);
+  border-right: 1px solid var(--studio-border);
+  overflow-y: auto;
+  transition: width var(--studio-transition-slow), opacity var(--studio-transition);
+}
+
+.studio-left-panel--collapsed {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* Right Panel */
+.studio-right-panel {
+  background: var(--studio-surface);
+  border-left: 1px solid var(--studio-border);
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+  transition: width var(--studio-transition-slow), opacity var(--studio-transition);
+}
+
+.studio-right-panel::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari */
+}
+
+.studio-right-panel--collapsed {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* Main Content */
+.studio-main {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--studio-bg);
+}
+
+/* Fix: Ensure main content expands when panels collapse */
+/* Left collapsed: grid is "0 1fr 320px" - main should span column 2 (which is index 2, the 1fr) */
+.studio-layout--left-collapsed .studio-main {
+  grid-column: 2;
+}
+
+/* Right collapsed: grid is "280px 1fr 0" - main should stay in column 2 */
+.studio-layout--right-collapsed .studio-main {
+  grid-column: 2;
+}
+
+/* Both collapsed: grid is "0 1fr 0" - main should span the middle (column 2) */
+.studio-layout--both-collapsed .studio-main {
+  grid-column: 2;
+}
+
+/* Tab Navigation */
+.studio-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+}
+
+.studio-tab {
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--studio-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--studio-radius);
+  cursor: pointer;
+  transition: all var(--studio-transition);
+}
+
+.studio-tab:hover {
+  color: var(--studio-text-primary);
+  background: var(--studio-border-light);
+}
+
+.studio-tab--active {
+  color: var(--studio-primary);
+  background: var(--studio-primary-light);
+}
+
+/* Content Area */
+.studio-content {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========================================
+   Glassmorphism Components
+======================================== */
+
+.glass-panel {
+  background: var(--studio-glass-bg);
+  backdrop-filter: blur(var(--studio-glass-blur));
+  -webkit-backdrop-filter: blur(var(--studio-glass-blur));
+  border: 1px solid var(--studio-glass-border);
+  border-radius: var(--studio-radius-lg);
+  box-shadow: var(--studio-shadow);
+}
+
+.glass-card {
+  background: var(--studio-surface);
+  border-radius: var(--studio-radius-lg);
+  border: 1px solid var(--studio-border);
+  box-shadow: var(--studio-shadow-sm);
+  transition: all var(--studio-transition);
+}
+
+.glass-card:hover {
+  box-shadow: var(--studio-shadow-md);
+  transform: translateY(-2px);
+}
+
+/* ========================================
+   Modern Button Styles
+======================================== */
+
+.studio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--studio-radius);
+  border: none;
+  cursor: pointer;
+  transition: all var(--studio-transition);
+}
+
+.studio-btn:active {
+  transform: scale(0.97);
+}
+
+.studio-btn--primary {
+  background: var(--studio-primary);
+  color: white;
+  box-shadow: 0 4px 14px 0 rgba(177, 14, 16, 0.3);
+}
+
+.studio-btn--primary:hover {
+  background: var(--studio-primary-hover);
+  box-shadow: 0 6px 20px 0 rgba(177, 14, 16, 0.4);
+  transform: translateY(-1px);
+}
+
+.studio-btn--secondary {
+  background: var(--studio-surface);
+  color: var(--studio-text-primary);
+  border: 1px solid var(--studio-border);
+}
+
+.studio-btn--secondary:hover {
+  background: var(--studio-border-light);
+  border-color: var(--studio-text-muted);
+}
+
+.studio-btn--ghost {
+  background: transparent;
+  color: var(--studio-text-secondary);
+}
+
+.studio-btn--ghost:hover {
+  background: var(--studio-border-light);
+  color: var(--studio-text-primary);
+}
+
+/* ========================================
+   Form Elements
+======================================== */
+
+.studio-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.875rem;
+  color: var(--studio-text-primary);
+  background: var(--studio-surface);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius);
+  transition: all var(--studio-transition);
+}
+
+.studio-input:focus {
+  outline: none;
+  border-color: var(--studio-primary);
+  box-shadow: 0 0 0 3px var(--studio-primary-light);
+}
+
+.studio-input::placeholder {
+  color: var(--studio-text-muted);
+}
+
+.studio-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--studio-text-primary);
+}
+
+.studio-select {
+  appearance: none;
+  width: 100%;
+  padding: 12px 40px 12px 16px;
+  font-size: 0.875rem;
+  color: var(--studio-text-primary);
+  background: var(--studio-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius);
+  cursor: pointer;
+  transition: all var(--studio-transition);
+}
+
+.studio-select:focus {
+  outline: none;
+  border-color: var(--studio-primary);
+  box-shadow: 0 0 0 3px var(--studio-primary-light);
+}
+
+/* ========================================
+   Section Components
+======================================== */
+
+.studio-section {
+  padding: 20px;
+}
+
+.studio-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--studio-text-muted);
+}
+
+/* Step Navigator */
+.step-navigator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--studio-surface);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius);
+  cursor: pointer;
+  transition: all var(--studio-transition);
+}
+
+.step-item:hover {
+  border-color: var(--studio-primary);
+  background: var(--studio-primary-light);
+}
+
+.step-item--active {
+  border-color: var(--studio-primary);
+  background: var(--studio-primary-light);
+  box-shadow: 0 0 0 1px var(--studio-primary);
+}
+
+.step-item__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--studio-primary);
+  background: white;
+  border: 2px solid var(--studio-primary);
+  border-radius: 50%;
+}
+
+.step-item__name {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--studio-text-primary);
+}
+
+/* ========================================
+   Status Badges
+======================================== */
+
+.studio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+}
+
+.studio-badge--success {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.studio-badge--warning {
+  color: #854d0e;
+  background: #fef9c3;
+}
+
+.studio-badge--error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.studio-badge--info {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.studio-badge--neutral {
+  color: var(--studio-text-secondary);
+  background: var(--studio-border-light);
+}
+
+/* ========================================
+   Animations
+======================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--studio-transition-slow) ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft var(--studio-transition-slow) ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--studio-transition-slow) ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--studio-transition-slow) ease-out;
+}
+
+/* ========================================
+   Responsive Design
+======================================== */
+
+/* Tablet breakpoint */
+@media (max-width: 1024px) {
+  .studio-layout {
+    grid-template-columns: 250px 1fr 280px;
+  }
+
+  .studio-header__title {
+    font-size: 1.25rem;
+  }
+}
+
+/* Mobile/collapsed breakpoint */
+@media (max-width: 768px) {
+  .studio-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr auto;
+  }
+
+  .studio-left-panel,
+  .studio-right-panel {
+    position: fixed;
+    top: 0;
+    height: 100vh;
+    z-index: 50;
+    box-shadow: var(--studio-shadow-lg);
+  }
+
+  .studio-left-panel {
+    left: 0;
+    width: 280px;
+  }
+
+  .studio-right-panel {
+    right: 0;
+    width: 300px;
+  }
+
+  .studio-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .studio-tab {
+    white-space: nowrap;
+  }
+}
+
+/* ========================================
+   Loading States
+======================================== */
+
+.studio-skeleton {
+  background: linear-gradient(90deg,
+      var(--studio-border-light) 25%,
+      var(--studio-border) 50%,
+      var(--studio-border-light) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: var(--studio-radius);
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.studio-skeleton--text {
+  height: 1rem;
+  width: 80%;
+}
+
+.studio-skeleton--title {
+  height: 1.5rem;
+  width: 60%;
+}
+
+.studio-skeleton--card {
+  height: 100px;
+}
+
+/* ========================================
+   Error States
+======================================== */
+
+.studio-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--studio-radius-lg);
+}
+
+.studio-error__icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  color: var(--studio-error);
+}
+
+.studio-error__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #991b1b;
+  margin-bottom: 8px;
+}
+
+.studio-error__message {
+  font-size: 0.875rem;
+  color: #b91c1c;
+  margin-bottom: 16px;
+}
+
+/* ========================================
+   Empty States
+======================================== */
+
+.studio-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  border: 2px dashed var(--studio-border);
+  border-radius: var(--studio-radius-lg);
+  background: var(--studio-border-light);
+}
+
+.studio-empty__icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  color: var(--studio-text-muted);
+}
+
+.studio-empty__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--studio-text-primary);
+  margin-bottom: 8px;
+}
+
+.studio-empty__message {
+  font-size: 0.875rem;
+  color: var(--studio-text-secondary);
+  margin-bottom: 16px;
+}
+
+/* ========================================
+   Toast Notifications
+======================================== */
+
+.studio-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--studio-surface);
+  border-radius: var(--studio-radius-lg);
+  box-shadow: var(--studio-shadow-lg);
+  border-left: 4px solid var(--studio-primary);
+  animation: slideInRight var(--studio-transition-slow) ease-out;
+}
+
+.studio-toast--success {
+  border-left-color: var(--studio-success);
+}
+
+.studio-toast--error {
+  border-left-color: var(--studio-error);
+}
+
+.studio-toast--warning {
+  border-left-color: var(--studio-warning);
+}
+
+/* ========================================
+   Mobile Menu Overlay
+======================================== */
+
+.studio-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--studio-transition);
+}
+
+.studio-overlay--visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ========================================
+   Focus States (Accessibility)
+======================================== */
+
+.studio-btn:focus-visible,
+.studio-input:focus-visible,
+.studio-select:focus-visible,
+.studio-tab:focus-visible {
+  outline: 2px solid var(--studio-primary);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Print Styles
+======================================== */
+
+@media print {
+  .studio-layout {
+    display: block;
+  }
+
+  .studio-left-panel,
+  .studio-right-panel,
+  .studio-tabs {
+    display: none;
+  }
+}
+
+/* ========================================
+   Utility: Hide Scrollbar
+======================================== */
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* ========================================
+   Studio Layout v2 - New Framework
+   Collapsible left, contextual right
+======================================== */
+
+.studio-layout-v2 {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--studio-bg);
+  overflow: hidden;
+}
+
+/* Header v2 - Full width */
+.studio-header-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+  z-index: 100;
+  min-height: 64px;
+}
+
+/* Body - Contains left panel + main area */
+.studio-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left Panel v2 - Collapsible */
+.studio-left-v2 {
+  display: flex;
+  flex-direction: column;
+  background: var(--studio-surface);
+  border-right: 1px solid var(--studio-border);
+  overflow: visible;
+  position: relative;
+  z-index: 20;
+}
+
+.studio-collapse-btn {
+  position: absolute;
+  top: 12px;
+  right: -14px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--studio-border);
+  background: var(--studio-surface);
+  color: var(--studio-text-secondary);
+  box-shadow: var(--studio-shadow-sm);
+  cursor: pointer;
+  transition: all var(--studio-transition-fast);
+  z-index: 50;
+}
+
+.studio-collapse-btn:hover {
+  background: var(--studio-primary-light);
+  color: var(--studio-primary);
+  border-color: var(--studio-primary);
+}
+
+.studio-left-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 12px;
+}
+
+/* Main Area v2 */
+.studio-main-v2 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Tab Bar v2 - Full width */
+.studio-tabs-v2 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 24px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+  min-height: 48px;
+}
+
+/* Content Area - Main + Right Panel */
+.studio-content-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Main Content v2 */
+.studio-content-v2 {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  min-width: 0;
+}
+
+/* Right Panel v2 - Contextual */
+.studio-right-v2 {
+  background: var(--studio-surface);
+  border-left: 1px solid var(--studio-border);
+  overflow-y: auto;
+  overflow-x: hidden;
+}

@@ -1,0 +1,3 @@
+[submodule ".agent"]
+	path = .agent
+	url = git@ssh.dev.azure.com:v3/conarumdc/cdk/cap-agent-team

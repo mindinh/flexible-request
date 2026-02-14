@@ -1,0 +1,62 @@
+[
+    {
+        "ID": "e1000001-0000-0000-0000-000000000001",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepDefinition_ID": "b1000001-0000-0000-0000-000000000002",
+        "priority": 10,
+        "conditionExpr": "{\"field\": \"country\", \"operator\": \"eq\", \"value\": \"DE\"}",
+        "principalType": "GROUP",
+        "principalId": "b1b2c3d4-0001-0001-0001-000000000001",
+        "description": "German plants go to Finance Team"
+    },
+    {
+        "ID": "e1000001-0000-0000-0000-000000000002",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepDefinition_ID": "b1000001-0000-0000-0000-000000000002",
+        "priority": 10,
+        "conditionExpr": "{\"field\": \"country\", \"operator\": \"eq\", \"value\": \"US\"}",
+        "principalType": "GROUP",
+        "principalId": "b1b2c3d4-0001-0001-0001-000000000001",
+        "description": "US plants go to Finance Team"
+    },
+    {
+        "ID": "e1000001-0000-0000-0000-000000000003",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "stepDefinition_ID": "b1000001-0000-0000-0000-000000000002",
+        "priority": 0,
+        "conditionExpr": null,
+        "principalType": "GROUP",
+        "principalId": "b1b2c3d4-0001-0001-0001-000000000001",
+        "description": "Default: Finance Team"
+    },
+    {
+        "ID": "e7000001-0000-0000-0000-000000000001",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepDefinition_ID": "b7000001-0000-0000-0000-000000000002",
+        "priority": 0,
+        "conditionExpr": null,
+        "principalType": "TEAM",
+        "principalId": "b1b2c3d4-0003-0003-0003-000000000003",
+        "description": "Manager Approval - Operations Team"
+    },
+    {
+        "ID": "e7000001-0000-0000-0000-000000000002",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepDefinition_ID": "b7000001-0000-0000-0000-000000000003",
+        "priority": 0,
+        "conditionExpr": null,
+        "principalType": "TEAM",
+        "principalId": "b1b2c3d4-0002-0002-0002-000000000002",
+        "description": "IT Security Review - IT Support Team"
+    },
+    {
+        "ID": "e7000001-0000-0000-0000-000000000003",
+        "requestType_ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "stepDefinition_ID": "b7000001-0000-0000-0000-000000000004",
+        "priority": 0,
+        "conditionExpr": null,
+        "principalType": "TEAM",
+        "principalId": "b1b2c3d4-0002-0002-0002-000000000002",
+        "description": "Access Provisioning - IT Support"
+    }
+]

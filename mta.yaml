@@ -1,0 +1,122 @@
+_schema-version: '3.1'
+ID: flexible-request-management
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+
+modules:
+  # --------------------- APP ROUTER MODULE ---------------------
+  - name: flexible-request-management-approuter
+    type: approuter.nodejs
+    path: approuter
+    parameters:
+      instances: 1
+      memory: 256M
+      disk-quota: 512M
+    build-parameters:
+      requires:
+        - name: flexible-request-management-ui
+          artifacts:
+            - ./*
+          target-path: resources
+    requires:
+      - name: flexible-request-management-auth
+      - name: flexible-request-management-destination-service
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api
+          url: ~{srv-url}
+          forwardAuthToken: true
+    provides:
+      - name: app-api
+        properties:
+          app-url: ${default-url}
+
+  # --------------------- SERVER MODULE ---------------------
+  - name: flexible-request-management-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      instances: 1
+      memory: 512M
+      disk-quota: 1024M
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm
+      ignore:
+        - "node_modules/"
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: flexible-request-management-auth
+      - name: flexible-request-management-db
+      - name: flexible-request-management-objectstore
+      - name: flexible-request-management-destination-service
+
+  # --------------------- DB DEPLOYER MODULE ---------------------
+  - name: flexible-request-management-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      - name: flexible-request-management-db
+
+  # --------------------- UI MODULE ---------------------
+  - name: flexible-request-management-ui
+    type: html5
+    path: app/request-management
+    build-parameters:
+      builder: custom
+      commands:
+        - npm i
+        - npx vite build
+      supported-platforms: []
+      build-result: dist
+
+
+
+resources:
+  # --------------------- AUTH SERVICE ---------------------
+  - name: flexible-request-management-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: flexible-request-management
+        tenant-mode: dedicated
+        oauth2-configuration:
+          credential-types:
+            - "binding-secret"
+            - "x509"
+
+  # --------------------- HANA DB ---------------------
+  - name: flexible-request-management-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  # --------------------- OBJECT STORE ---------------------
+  - name: flexible-request-management-objectstore
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: objectstore
+      service-plan: standard
+
+
+
+  # --------------------- DESTINATION SERVICE ---------------------
+  - name: flexible-request-management-destination-service
+    type: org.cloudfoundry.managed-service
+    parameters:
+      config:
+        HTML5Runtime_enabled: true
+      service: destination
+      service-plan: lite

@@ -1,0 +1,48 @@
+# CAP flexible-request-management
+_out
+*.db
+*.sqlite
+connection.properties
+default-*.json
+.cdsrc-private.json
+gen/
+node_modules/
+target/
+.agent/
+
+# Web IDE, App Studio
+.che/
+.gen/
+
+# MTA
+*_mta_build_tmp
+*.mtar
+mta_archives/
+mtar-contents/
+Makefile.mta
+
+# Build scripts (generated)
+build-mta.sh
+build-deploy.sh
+remove-ts-extensions.js
+scripts/build-unified.js
+
+# Approuter build outputs
+approuter/resources/
+approuter/webapp/
+approuter/node_modules/
+
+# Other
+.DS_Store
+*.orig
+*.log
+
+*.iml
+*.flattened-pom.xml
+
+# IDEs
+# .vscode
+# .idea
+
+# @cap-js/cds-typer
+@cds-models

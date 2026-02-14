@@ -1,0 +1,12 @@
+[
+    {
+        "ID": "c1000001-0000-0000-0000-000000000001",
+        "title": "Define Plant Schema",
+        "content": "{\"type\": \"object\", \"properties\": {\"plantName\": {\"type\": \"string\"}, \"country\": {\"type\": \"string\"}, \"capacity\": {\"type\": \"integer\"}}, \"required\": [\"plantName\", \"country\"]}"
+    },
+    {
+        "ID": "c1000001-0000-0000-0000-000000000002",
+        "title": "Finance Schema",
+        "content": "{\"type\": \"object\", \"properties\": {\"companyCode\": {\"type\": \"string\", \"pattern\": \"^[0-9]{4}$\"}, \"profitCenter\": {\"type\": \"string\"}}, \"required\": [\"companyCode\"]}"
+    }
+]

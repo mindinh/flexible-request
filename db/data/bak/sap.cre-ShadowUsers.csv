@@ -1,0 +1,7 @@
+ID;origin;userId;email;firstName;lastName;displayName;isActive;lastLoginAt
+a1b2c3d4-0001-0001-0001-000000000001;sap.default;alice;alice@example.com;Alice;Admin;Alice Admin;true;2026-01-28T10:00:00Z
+a1b2c3d4-0002-0002-0002-000000000002;sap.default;bob;bob@example.com;Bob;Finance;Bob Finance;true;2026-01-28T10:00:00Z
+a1b2c3d4-0003-0003-0003-000000000003;sap.default;carol;carol@example.com;Carol;Operations;Carol Operations;true;2026-01-28T10:00:00Z
+a1b2c3d4-0004-0004-0004-000000000004;sap.default;charlie;charlie@example.com;Charlie;Requester;Charlie Requester;true;2026-01-28T10:00:00Z
+a1b2c3d4-0005-0005-0005-000000000005;sap.default;dave;dave@example.com;Dave;IT Support;Dave IT Support;true;2026-01-28T10:00:00Z
+a1b2c3d4-0006-0006-0006-000000000006;sap.default;hieu;hieu.ngoxuan@conarum.com;Hieu;Ngo;Hieu Ngo (Admin);true;2026-01-28T10:00:00Z

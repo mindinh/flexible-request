@@ -1,0 +1,50 @@
+[
+    {
+        "ID": "f1000001-0000-0000-0000-000000000001",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "DRAFT",
+        "toStatus": "SUBMITTED",
+        "action": "submit",
+        "description": "Submit draft request for processing"
+    },
+    {
+        "ID": "f1000001-0000-0000-0000-000000000002",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "SUBMITTED",
+        "toStatus": "IN_PROGRESS",
+        "action": null,
+        "description": "Workflow engine moves to in progress"
+    },
+    {
+        "ID": "f1000001-0000-0000-0000-000000000003",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "IN_PROGRESS",
+        "toStatus": "COMPLETED",
+        "action": null,
+        "description": "All steps completed"
+    },
+    {
+        "ID": "f1000001-0000-0000-0000-000000000004",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "IN_PROGRESS",
+        "toStatus": "REJECTED",
+        "action": "rejectApproval",
+        "description": "Request rejected by approver"
+    },
+    {
+        "ID": "f1000001-0000-0000-0000-000000000005",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "SUBMITTED",
+        "toStatus": "WITHDRAWN",
+        "action": "withdraw",
+        "description": "User withdraws submitted request"
+    },
+    {
+        "ID": "f1000001-0000-0000-0000-000000000006",
+        "requestType_ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "fromStatus": "IN_PROGRESS",
+        "toStatus": "WITHDRAWN",
+        "action": "withdraw",
+        "description": "User withdraws in-progress request"
+    }
+]

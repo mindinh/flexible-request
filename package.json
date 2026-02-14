@@ -1,0 +1,94 @@
+{
+  "name": "flexible-request-management",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.962.0",
+    "@aws-sdk/s3-request-presigner": "^3.962.0",
+    "@cap-js/hana": "^2",
+    "@sap/cds": "^9",
+    "@sap/xssec": "^4",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@cap-js/cds-typer": "^0.38.0",
+    "@cap-js/cds-types": "^0.15.0",
+    "@cap-js/sqlite": "^2",
+    "@sap/cds-dk": "^9",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.3",
+    "axios": "^1.13.2",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "jest": "^30.2.0",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.4",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "watch": "cds watch",
+    "watch:srv": "cds watch srv",
+    "dev": "cds serve",
+    "dev:all": "concurrently -n backend,frontend -c blue,green \"cds serve\" \"npm run dev --prefix app/request-management\"",
+    "watch:types": "cds-typer \"*\" --outputDirectory @cds-models",
+    "test": "jest --detectOpenHandles",
+    "test:coverage": "jest --coverage --collectCoverageFrom=\"srv/lib/identity-provisioner.ts\" --collectCoverageFrom=\"srv/identity-service.ts\""
+  },
+  "private": true,
+  "cds": {
+    "requires": {
+      "db": {
+        "[development]": {
+          "kind": "sqlite",
+          "credentials": {
+            "url": "db.sqlite"
+          }
+        },
+        "[production]": {
+          "kind": "hana"
+        }
+      },
+      "[production]": {
+        "auth": "xsuaa"
+      },
+      "auth": {
+        "kind": "mocked",
+        "users": {
+          "alice": {
+            "password": "alice",
+            "roles": [
+              "admin",
+              "authenticated-user"
+            ]
+          },
+          "bob": {
+            "password": "bob",
+            "roles": [
+              "approver",
+              "authenticated-user"
+            ]
+          },
+          "charlie": {
+            "password": "charlie",
+            "roles": [
+              "requester",
+              "authenticated-user"
+            ]
+          },
+          "david": {
+            "password": "david",
+            "roles": [
+              "authenticated-user"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

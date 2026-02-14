@@ -1,0 +1,6 @@
+ID;name;description;type_ID;externalId;isActive
+b1b2c3d4-0001-0001-0001-000000000001;Administrators;System administrators with full access;82b9c513-410e-4059-8692-06b23dcaae04;;true
+b1b2c3d4-0002-0002-0002-000000000002;Finance Team;Finance department approvers for budget and expense approvals;82b9c513-410e-4059-8692-06b23dcaae04;;true
+b1b2c3d4-0003-0003-0003-000000000003;IT Support;IT support team for technical requests;82b9c513-410e-4059-8692-06b23dcaae03;;true
+b1b2c3d4-0004-0004-0004-000000000004;Operations Team;Operations team for process coordination;82b9c513-410e-4059-8692-06b23dcaae03;;true
+b1b2c3d4-0005-0005-0005-000000000005;Management;Senior management group;82b9c513-410e-4059-8692-06b23dcaae04;;true

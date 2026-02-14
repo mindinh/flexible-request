@@ -1,0 +1,51 @@
+[
+    {
+        "ID": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "title": "New Plant Request",
+        "description": "Governance process for creating a new manufacturing plant",
+        "isEnabled": true,
+        "icon": "factory"
+    },
+    {
+        "ID": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "title": "Travel Request",
+        "description": "Flights, hotels, car rentals, and per diem for business trips.",
+        "isEnabled": true,
+        "icon": "plane"
+    },
+    {
+        "ID": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "title": "Purchase Order",
+        "description": "IT equipment, software licenses, or one-off hardware purchases.",
+        "isEnabled": true,
+        "icon": "shopping-cart"
+    },
+    {
+        "ID": "d4e5f6a7-b8c9-0123-def1-234567890123",
+        "title": "Sourcing Request",
+        "description": "Vendor selection, RFP management, and contract negotiation.",
+        "isEnabled": true,
+        "icon": "users"
+    },
+    {
+        "ID": "e5f6a7b8-c9d0-1234-ef12-345678901234",
+        "title": "Expense Report",
+        "description": "Submit receipts and claim reimbursements for business expenses.",
+        "isEnabled": true,
+        "icon": "receipt"
+    },
+    {
+        "ID": "f6a7b8c9-d0e1-2345-f123-456789012345",
+        "title": "Leave Request",
+        "description": "Annual leave, sick leave, or other time-off requests.",
+        "isEnabled": true,
+        "icon": "calendar"
+    },
+    {
+        "ID": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "title": "Access Request",
+        "description": "Request access to systems, buildings, or restricted areas.",
+        "isEnabled": true,
+        "icon": "key"
+    }
+]
