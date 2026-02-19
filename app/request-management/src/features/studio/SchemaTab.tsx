@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStudioStore } from './useStudioStore';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField } from './types';
-import { Card, CardHeader } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
-    Type, Hash, Calendar, List, CheckSquare, LayoutGrid,
-    Table, Trash2, CircleDot, Layers, GripVertical, Download, Upload, Plus, Copy
+    LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
@@ -18,47 +17,6 @@ const DRAG_TYPE_FIELD = 'schema-field';
 const DRAG_TYPE_COLUMN = 'schema-column';
 const DRAG_TYPE_ITEM = 'schema-item';
 
-// Field types available in palette
-const FIELD_TYPES = [
-    { id: 'text', label: 'Text', icon: Type },
-    { id: 'textarea', label: 'Textarea', icon: Type },
-    { id: 'number', label: 'Number', icon: Hash },
-    { id: 'date', label: 'Date', icon: Calendar },
-    { id: 'select', label: 'Select', icon: List },
-    { id: 'checkbox', label: 'Checkbox', icon: CheckSquare },
-    { id: 'radio', label: 'Radio', icon: CircleDot },
-    { id: 'email', label: 'Email', icon: Type },
-    { id: 'phone', label: 'Phone', icon: Hash },
-    { id: 'currency', label: 'Currency', icon: Hash },
-    { id: 'file', label: 'File Upload', icon: Layers },
-];
-
-const LAYOUT_TYPES = [
-    { id: 'section', label: 'Section', icon: LayoutGrid },
-    { id: 'table', label: 'Table', icon: Table },
-];
-
-// ─── Palette Item Component ───
-function PaletteItem({ icon: Icon, label, type, onClick }: { icon: React.ElementType; label: string; type: string; onClick: () => void }) {
-    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-        e.dataTransfer.setData('application/json', JSON.stringify({ type, label }));
-        e.dataTransfer.effectAllowed = 'copy';
-    };
-
-    return (
-        <button
-            onClick={onClick}
-            draggable
-            onDragStart={handleDragStart}
-            className="flex items-center gap-2 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg cursor-grab mb-2 transition-all hover:border-primary hover:bg-primary/5 active:cursor-grabbing"
-        >
-            <div className="w-8 h-8 bg-white rounded-md flex items-center justify-center text-slate-500 shadow-sm">
-                <Icon size={16} />
-            </div>
-            <span className="text-sm font-medium text-slate-900">{label}</span>
-        </button>
-    );
-}
 
 // ─── Field Preview Component ───
 function FieldPreview({ field }: { field: UiFormField }) {
@@ -635,7 +593,6 @@ export function SchemaTab({ onFieldSelect }: SchemaTabProps) {
         updateSchema,
         selectedSchemaFieldId,
         setSelectedSchemaFieldId,
-        workflow,
         activeStepId
     } = useStudioStore();
 
@@ -651,9 +608,6 @@ export function SchemaTab({ onFieldSelect }: SchemaTabProps) {
     useEffect(() => {
         setItems(currentSchema);
     }, [currentSchema]);
-
-    // Get the active step name for the title
-    const activeStepName = workflow.nodes.find(n => n.id === activeStepId)?.data?.label as string || 'Step';
 
     const addItem = (type: string, label: string) => {
         const newItem: UiCanvasItem = {
@@ -843,56 +797,35 @@ export function SchemaTab({ onFieldSelect }: SchemaTabProps) {
 
     return (
         <div className="flex h-full w-full bg-slate-100 overflow-hidden">
-            {/* Left Palette */}
-            <div className="w-[200px] bg-white border-r border-slate-200 p-4 overflow-y-auto shrink-0">
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Layout</div>
-                {LAYOUT_TYPES.map(item => (
-                    <PaletteItem key={item.id} icon={item.icon} label={item.label} type={item.id} onClick={() => addItem(item.id, item.label)} />
-                ))}
-
-                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 mt-5">Fields</div>
-                {FIELD_TYPES.map(item => (
-                    <PaletteItem key={item.id} icon={item.icon} label={item.label} type={item.id} onClick={() => addItem(item.id, item.label)} />
-                ))}
-            </div>
-
-            {/* Center Canvas */}
+            {/* Canvas Area - Full Width (palette moved to sidebar) */}
             <div className="flex-1 p-6 overflow-y-auto flex justify-center">
-                <Card className={cn("w-full max-w-[700px] min-h-[1500px] shadow-lg")}>
-                    <CardHeader className="text-center border-b border-slate-100">
-                        <h2 className="text-xl font-semibold text-slate-900">
-                            {`${activeStepName} Layout`}
-                        </h2>
-                        <p className="text-sm text-slate-500 mt-1">
-                            Design the data collection form for this step
-                        </p>
-                    </CardHeader>
-                    <div
-                        className="p-6"
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
-                        onDrop={(e) => {
-                            e.preventDefault();
-                            try {
-                                const data = JSON.parse(e.dataTransfer.getData('application/json'));
-                                if (data.type && data.label) {
-                                    addItem(data.type, data.label);
+                <div className="w-full max-w-[900px]">
+                    {items.length === 0 ? (
+                        <div
+                            className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-300 rounded-xl bg-white/60 transition-colors"
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                try {
+                                    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                                    if (data.type && data.label) {
+                                        addItem(data.type, data.label);
+                                    }
+                                } catch {
+                                    // ignore
                                 }
-                            } catch {
-                                // ignore
-                            }
-                        }}
-                    >
-                        {items.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 transition-colors">
-                                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                                    <Layers size={32} className="text-slate-400" />
-                                </div>
-                                <h3 className="text-base font-semibold text-slate-900 mb-2">Start Building</h3>
-                                <p className="text-sm text-slate-500 text-center">
-                                    Click elements from the palette to add them to your form
-                                </p>
+                            }}
+                        >
+                            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                                <Layers size={32} className="text-slate-400" />
                             </div>
-                        ) : (
+                            <h3 className="text-base font-semibold text-slate-900 mb-2">Start Building</h3>
+                            <p className="text-sm text-slate-500 text-center">
+                                Click or drag elements from the sidebar to add them to your form
+                            </p>
+                        </div>
+                    ) : (
+                        <div>
                             <div className="space-y-0" onDragEnd={handleItemDragEnd}>
                                 {items.map(item => {
                                     const isSelected = selectedSchemaFieldId === item.id;
@@ -957,9 +890,31 @@ export function SchemaTab({ onFieldSelect }: SchemaTabProps) {
                                     }
                                 })}
                             </div>
-                        )}
-                    </div>
-                </Card>
+
+                            {/* Drop zone at the bottom */}
+                            <div
+                                className="mt-4 flex flex-col items-center justify-center py-10 border-2 border-dashed border-slate-300 rounded-xl bg-white/40 hover:bg-white/60 hover:border-slate-400 transition-colors cursor-pointer"
+                                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    try {
+                                        const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                                        if (data.type && data.label) {
+                                            addItem(data.type, data.label);
+                                        }
+                                    } catch {
+                                        // ignore
+                                    }
+                                }}
+                            >
+                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+                                    <Plus size={20} className="text-primary" />
+                                </div>
+                                <p className="text-sm text-slate-500">Drop here to add a new section</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

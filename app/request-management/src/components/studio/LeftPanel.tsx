@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Plus } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 interface Step {
     id: string;
@@ -15,6 +16,8 @@ interface LeftPanelProps {
     onStepSelect: (stepId: string) => void;
     onAddStep: () => void;
     isCollapsed?: boolean;
+    /** Optional extra content rendered below the steps list (e.g. SchemaPalette) */
+    children?: ReactNode;
 }
 
 /**
@@ -35,7 +38,8 @@ export function LeftPanel({
     activeStepId,
     onStepSelect,
     onAddStep,
-    isCollapsed = false
+    isCollapsed = false,
+    children
 }: LeftPanelProps) {
     return (
         <div className="flex flex-col h-full ">
@@ -47,13 +51,22 @@ export function LeftPanel({
             )}
 
             {/* Steps Section */}
-            <div className="flex-1 overflow-y-auto">
-                {/* Steps Label */}
+            <div className={children ? "overflow-y-auto" : "flex-1 overflow-y-auto"}>
+                {/* Steps Header - with inline Add button when Schema tab active */}
                 {!isCollapsed && (
-                    <div className="px-4 py-2">
+                    <div className="flex items-center justify-between px-4 py-2">
                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                             Steps
                         </span>
+                        {children && (
+                            <button
+                                onClick={onAddStep}
+                                className="flex items-center gap-1 text-xs font-medium text-[#b10e10] hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
+                            >
+                                <Plus size={14} />
+                                <span>Step</span>
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -102,23 +115,33 @@ export function LeftPanel({
                 </div>
             </div>
 
-            {/* Add Step Button */}
-            <div className={`p-3 border-t border-slate-200 ${isCollapsed ? 'flex justify-center' : ''}`}>
-                <motion.button
-                    onClick={onAddStep}
-                    className={`
-                        flex items-center justify-center gap-2 rounded-lg font-medium transition-all
-                        text-[#b10e10] border border-[#b10e10] hover:bg-red-50
-                        ${isCollapsed ? 'w-10 h-10' : 'w-full py-2 text-sm'}
-                    `}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    title={isCollapsed ? "Add New Step" : undefined}
-                >
-                    <Plus size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Add New Step</span>}
-                </motion.button>
-            </div>
+            {/* Extra Content (e.g. Schema Palette) - placed between steps and add button */}
+            {children && (
+                <div className="flex-1 overflow-y-auto border-t border-slate-200 px-3 py-3">
+                    {children}
+                </div>
+            )}
+            {/* Add Step Button - only shown when NOT in schema mode (no children) */}
+            {!children && (
+                <div className={`p-3 border-t border-slate-200 ${isCollapsed ? 'flex justify-center' : ''}`}>
+                    <motion.button
+                        onClick={onAddStep}
+                        className={`
+                            flex items-center justify-center gap-2 rounded-lg font-medium transition-all
+                            text-[#b10e10] border border-[#b10e10] hover:bg-red-50
+                            ${isCollapsed ? 'w-10 h-10' : 'w-full py-2 text-sm'}
+                        `}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        title={isCollapsed ? "Add New Step" : undefined}
+                    >
+                        <Plus size={isCollapsed ? 20 : 16} />
+                        {!isCollapsed && <span>Add New Step</span>}
+                    </motion.button>
+                </div>
+            )}
+
         </div>
     );
 }
+

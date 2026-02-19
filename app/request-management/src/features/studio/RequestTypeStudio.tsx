@@ -17,6 +17,7 @@ import { StepDetailsContent } from './StepDetailsContent';
 import { FieldPropertiesContent } from './FieldPropertiesContent';
 import { SimulationContent } from './SimulationContent';
 import { RuleDetailsContent } from './RuleDetailsContent';
+import { SchemaPalette } from './SchemaPalette';
 
 
 
@@ -262,7 +263,11 @@ function StudioContent() {
                     onStepSelect={setActiveStepId}
                     onAddStep={handleAddStep}
                     isCollapsed={collapsed}
-                />
+                >
+                    {activeTab === 'schema' && (
+                        <SchemaPalette isCollapsed={collapsed} />
+                    )}
+                </LeftPanel>
             )}
             rightPanel={
                 activeTab === 'schema' && selectedSchemaFieldId ? (

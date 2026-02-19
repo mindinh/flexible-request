@@ -49,6 +49,7 @@ interface StudioState {
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
     updateWorkflow: (nodes: UiWorkflowNode[], edges: UiWorkflowEdge[]) => void;
     updateSchema: (items: UiCanvasItem[]) => void;
+    addSchemaItem: (type: string, label: string) => void;
     updateRules: (rules: UiRule[]) => void;
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     setActiveStepId: (id: string | null) => void;
@@ -418,6 +419,30 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         return {
             schema: items,
             schemas: { ...state.schemas, [activeStepId]: items },
+            isDirty: true
+        };
+    }),
+
+    addSchemaItem: (type, label) => set(state => {
+        const activeStepId = state.activeStepId;
+        if (!activeStepId) return {};
+
+        const newItem: UiCanvasItem = {
+            id: `${type}-${Date.now()}`,
+            type,
+            label,
+            required: false,
+            ...(type === 'section' ? { fields: [], collapsed: false } : {}),
+            ...(type === 'table' ? { columns: [] } : {}),
+        } as UiCanvasItem;
+
+        const currentSchema = state.schemas[activeStepId] || [];
+        const newSchema = [...currentSchema, newItem];
+
+        return {
+            schema: newSchema,
+            schemas: { ...state.schemas, [activeStepId]: newSchema },
+            selectedSchemaFieldId: newItem.id,
             isDirty: true
         };
     }),

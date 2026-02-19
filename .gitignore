@@ -46,3 +46,6 @@ approuter/node_modules/
 
 # @cap-js/cds-typer
 @cds-models
+
+db.sqlite-wal
+db.sqlite-shm
