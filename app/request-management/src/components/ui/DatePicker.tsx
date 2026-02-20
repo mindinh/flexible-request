@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/Popover"
 
 export interface DatePickerProps {
+    required?: boolean
     value?: Date
     onChange?: (date: Date | undefined) => void
     placeholder?: string
@@ -26,6 +27,7 @@ export function DatePicker({
     onChange,
     placeholder = "Pick a date",
     disabled = false,
+    required = false,
     className,
 }: DatePickerProps) {
     return (
@@ -49,7 +51,7 @@ export function DatePicker({
                     mode="single"
                     selected={value}
                     onSelect={onChange}
-                    initialFocus
+                    required={required}
                 />
             </PopoverContent>
         </Popover>

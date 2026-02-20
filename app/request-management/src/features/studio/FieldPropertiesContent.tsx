@@ -94,7 +94,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
     const isSelectType = ['select', 'radio', 'checkbox'].includes(selectedItem.type);
 
     // Cast to UiFormField for type-safe property access when isField is true
-    const fieldItem = isField ? selectedItem : null;
+    const fieldItem = isField ? selectedItem as UiFormField : null;
 
     const tabs: { id: PropertyTab; label: string; show: boolean }[] = [
         { id: 'general', label: 'General', show: true },
@@ -214,39 +214,33 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         {isField && (
                             <div className="space-y-1.5">
                                 <Label variant="section">Field State</Label>
-                                <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
-                                    {[
-                                        { value: 'mandatory', label: 'Mandatory' },
-                                        { value: 'optional', label: 'Optional' },
-                                        { value: 'readonly', label: 'Read-Only' },
-                                    ].map((option) => {
-                                        const currentState = fieldItem?.readOnly
+                                <Select
+                                    value={
+                                        fieldItem?.readOnly
                                             ? 'readonly'
                                             : fieldItem?.required
                                                 ? 'mandatory'
-                                                : 'optional';
-                                        const isActive = currentState === option.value;
-                                        return (
-
-                                            <Button
-                                                key={option.value}
-                                                onClick={() => {
-                                                    if (option.value === 'mandatory') {
-                                                        onUpdate(selectedItem!.id, { required: true, readOnly: false });
-                                                    } else if (option.value === 'optional') {
-                                                        onUpdate(selectedItem!.id, { required: false, readOnly: false });
-                                                    } else {
-                                                        onUpdate(selectedItem!.id, { required: false, readOnly: true });
-                                                    }
-                                                }}
-                                                variant={isActive ? "outline" : "ghost"}
-                                                className={`flex-1 h-8 text-xs ${isActive ? 'bg-white border-slate-200 text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-transparent'}`}
-                                            >
-                                                {option.label}
-                                            </Button>
-                                        );
-                                    })}
-                                </div>
+                                                : 'optional'
+                                    }
+                                    onValueChange={(val) => {
+                                        if (val === 'mandatory') {
+                                            onUpdate(selectedItem!.id, { required: true, readOnly: false });
+                                        } else if (val === 'optional') {
+                                            onUpdate(selectedItem!.id, { required: false, readOnly: false });
+                                        } else {
+                                            onUpdate(selectedItem!.id, { required: false, readOnly: true });
+                                        }
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="mandatory">Mandatory</SelectItem>
+                                        <SelectItem value="optional">Optional</SelectItem>
+                                        <SelectItem value="readonly">Read-Only</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         )}
 
@@ -263,7 +257,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                                         return (
                                             <Button
                                                 key={option.value}
-                                                onClick={() => onUpdate(selectedItem!.id, { colSpan: option.value })}
+                                                onClick={() => onUpdate(selectedItem!.id, { colSpan: option.value as any })}
                                                 variant={isActive ? "outline" : "ghost"}
                                                 className={`flex-1 h-8 text-xs ${isActive ? 'bg-white border-slate-200 text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-transparent'}`}
                                             >
@@ -281,7 +275,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                                 <Select
                                     disabled={true}
                                     value={fieldItem?.dataType || getDefaultDataType(selectedItem.type)}
-                                    onValueChange={(val) => onUpdate(selectedItem!.id, { dataType: val })}
+                                    onValueChange={(val) => onUpdate(selectedItem!.id, { dataType: val as any })}
                                 >
                                     <SelectTrigger>
                                         <SelectValue />
@@ -316,7 +310,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                             <Label variant="section">Validation Type</Label>
                             <Select
                                 value={fieldItem?.validationType || 'none'}
-                                onValueChange={(val) => onUpdate(selectedItem!.id, { validationType: val })}
+                                onValueChange={(val) => onUpdate(selectedItem!.id, { validationType: val as any })}
                             >
                                 <SelectTrigger>
                                     <SelectValue />
