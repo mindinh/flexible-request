@@ -79,6 +79,7 @@ export function DynamicTableField({
     const renderCellInput = (column: SchemaField, row: TableRow) => {
         const cellValue = row[column.id] ?? '';
         const controlType = column.controlType || (column as any).type || 'text';
+        const isDisabled = disabled || !!(column as any).readOnly || !!(column as any).disabled;
 
         switch (controlType) {
             case 'number':
@@ -88,7 +89,7 @@ export function DynamicTableField({
                         value={cellValue}
                         onChange={(e) => updateCell(row.id, column.id, e.target.value ? Number(e.target.value) : '')}
                         placeholder={column.placeholder || '0'}
-                        disabled={disabled}
+                        disabled={isDisabled}
                         className="h-8 text-sm"
                     />
                 );
@@ -99,7 +100,7 @@ export function DynamicTableField({
                             type="date"
                             value={cellValue}
                             onChange={(e) => updateCell(row.id, column.id, e.target.value)}
-                            disabled={disabled}
+                            disabled={isDisabled}
                             className="h-8 text-sm w-full"
                         />
                     </div>
@@ -109,7 +110,7 @@ export function DynamicTableField({
                     <Select
                         value={cellValue}
                         onValueChange={(val) => updateCell(row.id, column.id, val)}
-                        disabled={disabled}
+                        disabled={isDisabled}
                     >
                         <SelectTrigger className="h-8 text-sm">
                             <SelectValue placeholder={`Select...`} />
@@ -134,7 +135,7 @@ export function DynamicTableField({
                         value={cellValue}
                         onChange={(e) => updateCell(row.id, column.id, e.target.value)}
                         placeholder={column.placeholder || ''}
-                        disabled={disabled}
+                        disabled={isDisabled}
                         rows={2}
                         className="text-sm resize-none"
                     />
@@ -146,7 +147,7 @@ export function DynamicTableField({
                         value={cellValue}
                         onChange={(e) => updateCell(row.id, column.id, e.target.value)}
                         placeholder={column.placeholder || ''}
-                        disabled={disabled}
+                        disabled={isDisabled}
                         className="h-8 text-sm"
                     />
                 );

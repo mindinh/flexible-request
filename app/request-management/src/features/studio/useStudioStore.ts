@@ -40,7 +40,6 @@ interface StudioState {
     setDirty: (dirty: boolean) => void;
 
     loadRequestType: (id: string) => Promise<void>;
-    loadRequestType: (id: string) => Promise<void>;
     saveChanges: () => Promise<void>;
     deleteRequestType: () => Promise<void>;
     deleteStep: (stepId: string) => void;

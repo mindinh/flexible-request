@@ -20,14 +20,16 @@ interface DynamicFieldProps {
     field: SchemaField;
     value: any;
     onChange: (value: any) => void;
+    disabled?: boolean;
 }
 
 export function DynamicField({
     field,
     value,
-    onChange
+    onChange,
+    disabled
 }: DynamicFieldProps) {
-    const isDisabled = field.disabled || field.readOnly;
+    const isDisabled = disabled || field.disabled || field.readOnly;
 
     switch (field.controlType) {
         case 'text':
@@ -39,7 +41,7 @@ export function DynamicField({
                     value={value || ''}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                    required={field.required}
+                    required={false}
                     disabled={isDisabled}
                 />
             );
@@ -50,7 +52,7 @@ export function DynamicField({
                     value={value || ''}
                     onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}
                     placeholder={field.placeholder || '0'}
-                    required={field.required}
+                    required={false}
                     disabled={isDisabled}
                 />
             );
@@ -67,6 +69,7 @@ export function DynamicField({
                     }}
                     placeholder={field.placeholder || `Select ${field.label.toLowerCase()}...`}
                     disabled={isDisabled}
+                    required={false}
                 />
             );
         case 'textarea':
@@ -75,7 +78,7 @@ export function DynamicField({
                     value={value || ''}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
-                    required={field.required}
+                    required={false}
                     rows={4}
                     className="resize-none"
                     disabled={isDisabled}

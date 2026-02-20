@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
-import { parseSchemaContent, type SchemaItem } from '../../../../lib/schemaParser';
+import { parseSchemaContent, flattenSchemaFields, type SchemaItem } from '../../../../lib/schemaParser';
+import { globalEvents, EVENT_TYPES } from '../../../../lib/events';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
 import { useAuth } from '../../../../lib/auth-context';
 
@@ -346,6 +347,19 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         handleSave: () => saveMutation.mutate(),
         handleSubmit: (e: React.FormEvent) => {
             e.preventDefault();
+
+            // Validate required fields before submitting
+            const fields = flattenSchemaFields(schemaItems);
+            const missingFields = fields.filter(
+                f => f.required && !f.readOnly && !formData[f.id] && formData[f.id] !== 0
+            );
+
+            if (missingFields.length > 0) {
+                const names = missingFields.map(f => f.label).join(', ');
+                globalEvents.emit(EVENT_TYPES.API_ERROR, `Please fill in required fields: ${names}`);
+                return;
+            }
+
             submitMutation.mutate();
         },
 

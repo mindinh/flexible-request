@@ -157,12 +157,13 @@ export function DynamicFormSection({
                                             >
                                                 <label className="block text-sm font-medium text-slate-700">
                                                     {field.label}
-                                                    {field.required && <span className="text-destructive ml-1">*</span>}
+                                                    {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
                                                 </label>
                                                 <DynamicField
                                                     field={field}
                                                     value={formData[field.id]}
-                                                    onChange={(value) => onFieldChange(field.id, value)}
+                                                    onChange={(value) => { if (!field.readOnly) onFieldChange(field.id, value); }}
+                                                    disabled={field.readOnly}
                                                 />
                                             </div>
                                         ))}
@@ -321,12 +322,13 @@ export function DynamicFormSection({
                         <div className="space-y-2">
                             <label className="block text-sm font-medium text-slate-700">
                                 {field.label}
-                                {field.required && <span className="text-destructive ml-1">*</span>}
+                                {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
                             </label>
                             <DynamicField
                                 field={field}
                                 value={formData[field.id]}
-                                onChange={(value) => onFieldChange(field.id, value)}
+                                onChange={(value) => { if (!field.readOnly) onFieldChange(field.id, value); }}
+                                disabled={field.readOnly}
                             />
                         </div>
                     </Card>

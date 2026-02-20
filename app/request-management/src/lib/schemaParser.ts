@@ -12,6 +12,7 @@
 export interface SchemaField {
     id: string;
     label: string;
+    type?: string;
     controlType: string;
     dataType?: string;
     required?: boolean;
@@ -42,6 +43,10 @@ export interface SchemaTable {
     id: string;
     label: string;
     columns: SchemaField[];
+    headerActions?: {
+        downloadTemplate?: boolean;
+        uploadExcel?: boolean;
+    };
 }
 
 /**
@@ -53,14 +58,14 @@ export type SchemaItem = SchemaSection | SchemaTable | SchemaField;
  * Type guard to check if a schema item is a section
  */
 export function isSchemaSection(item: SchemaItem): item is SchemaSection {
-    return (item as SchemaSection).type === 'section';
+    return item.type === 'section';
 }
 
 /**
  * Type guard to check if a schema item is a table
  */
 export function isSchemaTable(item: SchemaItem): item is SchemaTable {
-    return (item as SchemaTable).type === 'table';
+    return item.type === 'table';
 }
 
 /**
