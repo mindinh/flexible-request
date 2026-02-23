@@ -21,6 +21,11 @@ export interface SchemaField {
     disabled?: boolean;
     readOnly?: boolean;
     options?: Array<{ value: string; label: string }>;
+    valueHelp?: {
+        type?: 'Static' | 'Reference' | 'Dynamic';
+        items?: Array<{ key: string; label: string }>;
+    };
+    defaultValue?: string;
 }
 
 /**

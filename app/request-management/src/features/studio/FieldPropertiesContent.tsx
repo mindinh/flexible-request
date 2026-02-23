@@ -4,8 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
 import { useState } from 'react';
-import { Copy, Trash2, Type, Settings2 } from 'lucide-react';
-import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig } from './types';
+import { Copy, Trash2, Type, Settings2, Plus, GripVertical } from 'lucide-react';
+import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
 
 // Type guards
 function isUiSection(item: UiCanvasItem): item is UiSection {
@@ -19,8 +19,6 @@ function isUiTableField(item: UiCanvasItem | UiTableField): item is UiTableField
 function isUiFormField(item: UiCanvasItem | UiFormField): item is UiFormField {
     return item.type !== 'section' && item.type !== 'table';
 }
-
-
 
 // Helper: Get default dataType based on controlType
 function getDefaultDataType(controlType: string): string {
@@ -38,13 +36,76 @@ function getDefaultDataType(controlType: string): string {
     }
 }
 
-type PropertyTab = 'general' | 'validation' | 'data' | 'advanced';
-
 /** Update payload type for field properties */
 type FieldUpdatePayload = Partial<UiFormField> & {
     constraints?: Partial<FieldConstraints>;
     valueHelp?: Partial<ValueHelpConfig>;
 };
+
+// ─── Section Divider ───
+function SectionLabel({ children }: { children: React.ReactNode }) {
+    return (
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-2">
+            {children}
+        </span>
+    );
+}
+
+// ─── Option Manager (for Static options) ───
+function OptionManager({
+    items,
+    onChange,
+}: {
+    items: ValueHelpItem[];
+    onChange: (items: ValueHelpItem[]) => void;
+}) {
+    const addOption = () => {
+        const newItem: ValueHelpItem = {
+            key: `opt_${Date.now()}`,
+            label: `Option ${items.length + 1}`,
+        };
+        onChange([...items, newItem]);
+    };
+
+    const updateOption = (index: number, label: string) => {
+        const updated = items.map((item, i) => (i === index ? { ...item, label } : item));
+        onChange(updated);
+    };
+
+    const deleteOption = (index: number) => {
+        onChange(items.filter((_, i) => i !== index));
+    };
+
+    return (
+        <div className="space-y-2">
+            {items.map((item, index) => (
+                <div key={item.key} className="flex items-center gap-1.5 group">
+                    <GripVertical size={14} className="text-slate-300 flex-shrink-0 cursor-grab" />
+                    <Input
+                        value={item.label}
+                        onChange={(e) => updateOption(index, e.target.value)}
+                        className="flex-1 h-8 text-sm"
+                    />
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        onClick={() => deleteOption(index)}
+                    >
+                        <Trash2 size={14} />
+                    </Button>
+                </div>
+            ))}
+            <Button
+                onClick={addOption}
+                className="w-full h-9 bg-primary text-white hover:bg-primary/90"
+            >
+                <Plus size={14} className="mr-1.5" />
+                Add Option
+            </Button>
+        </div>
+    );
+}
 
 interface FieldPropertiesContentProps {
     schema: UiCanvasItem[];
@@ -55,8 +116,6 @@ interface FieldPropertiesContentProps {
 }
 
 export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDuplicate, onDelete }: FieldPropertiesContentProps) {
-    const [activeTab, setActiveTab] = useState<PropertyTab>('general');
-
     // Find the selected item
     let selectedItem: UiCanvasItem | UiFormField | null = null;
     for (const item of schema) {
@@ -96,322 +155,329 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
     // Cast to UiFormField for type-safe property access when isField is true
     const fieldItem = isField ? selectedItem as UiFormField : null;
 
-    const tabs: { id: PropertyTab; label: string; show: boolean }[] = [
-        { id: 'general', label: 'General', show: true },
-        { id: 'validation', label: 'Rules', show: isField },
-        { id: 'data', label: 'Options', show: isField && isSelectType },
-        { id: 'advanced', label: 'More', show: isField },
-    ];
+    // Data source mode for select-type fields
+    const dataSourceType = fieldItem?.valueHelp?.type || 'Static';
+    const staticItems = fieldItem?.valueHelp?.items || [];
 
     return (
         <div className="flex flex-col px-2">
-            {/* Field Info Badge */}
-            <div className="flex items-center gap-2 mb-4 p-3 bg-white rounded-lg border border-slate-200">
-                <div className="w-8 h-8 rounded-lg bg-[var(--studio-primary)] text-white flex items-center justify-center">
-                    <Type size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-slate-800 truncate text-sm">{selectedItem.label}</h4>
-                    <p className="text-xs text-slate-500 capitalize">{selectedItem.type} Field</p>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                    <h4 className="font-semibold text-slate-800 text-sm">Field Properties</h4>
                 </div>
             </div>
 
-            {/* Tab Bar */}
-            <div className="flex border-b border-slate-200 mb-4">
-                {tabs.filter(t => t.show).map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`px-3 py-2 text-xs font-medium transition-colors relative ${activeTab === tab.id
-                            ? 'text-[var(--studio-primary)]'
-                            : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                    >
-                        {tab.label}
-                        {activeTab === tab.id && (
-                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--studio-primary)]" />
-                        )}
-                    </button>
-                ))}
-            </div>
-
-            {/* Tab Content */}
             <div className="space-y-4">
-                {/* GENERAL TAB */}
-                {activeTab === 'general' && (
-                    <>
-                        {isTable && (
-                            <div className="space-y-3 p-3 mb-4 bg-slate-50 rounded-lg border border-slate-200">
-                                <h5 className="text-xs font-semibold text-slate-700">Table Actions</h5>
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-normal">Enable Download Template</Label>
-                                    <div className="flex items-center space-x-2">
-                                        <Button
-                                            variant={(selectedItem as UiTableField).headerActions?.downloadTemplate ? "default" : "outline"}
-                                            size="sm"
-                                            className={`h-6 text-xs ${(selectedItem as UiTableField).headerActions?.downloadTemplate ? 'bg-primary text-primary-foreground' : 'text-slate-500'}`}
-                                            onClick={() => {
-                                                const tableItem = selectedItem as UiTableField;
-                                                const currentActions = tableItem.headerActions || {};
-                                                onUpdate(tableItem.id, {
-                                                    headerActions: {
-                                                        ...currentActions,
-                                                        downloadTemplate: !currentActions.downloadTemplate
-                                                    }
-                                                } as any);
-                                            }}
-                                        >
-                                            {(selectedItem as UiTableField).headerActions?.downloadTemplate ? 'On' : 'Off'}
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="flex items-center justify-between mt-3">
-                                    <Label className="text-xs font-normal">Enable Upload Excel</Label>
-                                    <div className="flex items-center space-x-2">
-                                        <Button
-                                            variant={(selectedItem as UiTableField).headerActions?.uploadExcel ? "default" : "outline"}
-                                            size="sm"
-                                            className={`h-6 text-xs ${(selectedItem as UiTableField).headerActions?.uploadExcel ? 'bg-primary text-primary-foreground' : 'text-slate-500'}`}
-                                            onClick={() => {
-                                                const tableItem = selectedItem as UiTableField;
-                                                const currentActions = tableItem.headerActions || {};
-                                                onUpdate(tableItem.id, {
-                                                    headerActions: {
-                                                        ...currentActions,
-                                                        uploadExcel: !currentActions.uploadExcel
-                                                    }
-                                                } as any);
-                                            }}
-                                        >
-                                            {(selectedItem as UiTableField).headerActions?.uploadExcel ? 'On' : 'Off'}
-                                        </Button>
-                                    </div>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-2">
-                                    Adds buttons to download a template and upload Excel data to populate the table.
-                                </p>
-                            </div>
-                        )}
-                        <div className="space-y-1.5">
-                            <Label variant="section">Field ID</Label>
-                            <Input
-                                value={fieldItem?.key || selectedItem.id}
-                                disabled={true}
-                                onChange={(e) => onUpdate(selectedItem!.id, { key: e.target.value })}
-                                placeholder="e.g. plant_code"
-                                className="font-mono text-xs"
-                            />
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label variant="section">Label</Label>
-                            <Input
-                                value={selectedItem.label}
-                                onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
-                            />
-                        </div>
-
-                        {isField && (
-                            <div className="space-y-1.5">
-                                <Label variant="section">Field State</Label>
-                                <Select
-                                    value={
-                                        fieldItem?.readOnly
-                                            ? 'readonly'
-                                            : fieldItem?.required
-                                                ? 'mandatory'
-                                                : 'optional'
-                                    }
-                                    onValueChange={(val) => {
-                                        if (val === 'mandatory') {
-                                            onUpdate(selectedItem!.id, { required: true, readOnly: false });
-                                        } else if (val === 'optional') {
-                                            onUpdate(selectedItem!.id, { required: false, readOnly: false });
-                                        } else {
-                                            onUpdate(selectedItem!.id, { required: false, readOnly: true });
+                {/* ── Table Actions (only for tables) ── */}
+                {isTable && (
+                    <div className="space-y-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <h5 className="text-xs font-semibold text-slate-700">Table Actions</h5>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-normal">Enable Download Template</Label>
+                            <Button
+                                variant={(selectedItem as UiTableField).headerActions?.downloadTemplate ? "default" : "outline"}
+                                size="sm"
+                                className={`h-6 text-xs ${(selectedItem as UiTableField).headerActions?.downloadTemplate ? 'bg-primary text-primary-foreground' : 'text-slate-500'}`}
+                                onClick={() => {
+                                    const tableItem = selectedItem as UiTableField;
+                                    const currentActions = tableItem.headerActions || {};
+                                    onUpdate(tableItem.id, {
+                                        headerActions: {
+                                            ...currentActions,
+                                            downloadTemplate: !currentActions.downloadTemplate
                                         }
+                                    } as any);
+                                }}
+                            >
+                                {(selectedItem as UiTableField).headerActions?.downloadTemplate ? 'On' : 'Off'}
+                            </Button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs font-normal">Enable Upload Excel</Label>
+                            <Button
+                                variant={(selectedItem as UiTableField).headerActions?.uploadExcel ? "default" : "outline"}
+                                size="sm"
+                                className={`h-6 text-xs ${(selectedItem as UiTableField).headerActions?.uploadExcel ? 'bg-primary text-primary-foreground' : 'text-slate-500'}`}
+                                onClick={() => {
+                                    const tableItem = selectedItem as UiTableField;
+                                    const currentActions = tableItem.headerActions || {};
+                                    onUpdate(tableItem.id, {
+                                        headerActions: {
+                                            ...currentActions,
+                                            uploadExcel: !currentActions.uploadExcel
+                                        }
+                                    } as any);
+                                }}
+                            >
+                                {(selectedItem as UiTableField).headerActions?.uploadExcel ? 'On' : 'Off'}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── FIELD LABEL ── */}
+                <div className="space-y-1.5">
+                    <SectionLabel>Field Label</SectionLabel>
+                    <Input
+                        value={selectedItem.label}
+                        onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
+                    />
+                </div>
+
+                {/* ── PLACEHOLDER ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Placeholder</SectionLabel>
+                        <Input
+                            value={fieldItem?.placeholder || ''}
+                            onChange={(e) => onUpdate(selectedItem!.id, { placeholder: e.target.value })}
+                            placeholder="Enter placeholder text..."
+                        />
+                    </div>
+                )}
+
+                {/* ── DATA SOURCE (select-type only) ── */}
+                {isField && isSelectType && (
+                    <>
+                        <div className="space-y-1.5">
+                            <SectionLabel>Data Source</SectionLabel>
+                            <div className="flex p-0.5 bg-slate-100 rounded-lg">
+                                {(['Static', 'API'] as const).map((mode) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => {
+                                            const type = mode === 'API' ? 'Dynamic' : 'Static';
+                                            onUpdate(selectedItem!.id, {
+                                                valueHelp: { ...(fieldItem?.valueHelp || {}), type: type as any }
+                                            });
+                                        }}
+                                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${(mode === 'Static' && dataSourceType === 'Static') ||
+                                            (mode === 'API' && dataSourceType !== 'Static')
+                                            ? 'bg-white shadow-sm text-slate-800'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        {mode}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* ── OPTION MANAGER (static only) ── */}
+                        {dataSourceType === 'Static' && (
+                            <div className="space-y-1.5">
+                                <SectionLabel>Option Manager</SectionLabel>
+                                <OptionManager
+                                    items={staticItems}
+                                    onChange={(newItems) => {
+                                        onUpdate(selectedItem!.id, {
+                                            valueHelp: {
+                                                ...(fieldItem?.valueHelp || {}),
+                                                type: 'Static',
+                                                items: newItems,
+                                            }
+                                        });
                                     }}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="mandatory">Mandatory</SelectItem>
-                                        <SelectItem value="optional">Optional</SelectItem>
-                                        <SelectItem value="readonly">Read-Only</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-
-                        {isField && (
-                            <div className="space-y-1.5">
-                                <Label variant="section">Width</Label>
-                                <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
-                                    {[
-                                        { value: 3, label: '25%' },
-                                        { value: 6, label: '50%' },
-                                        { value: 9, label: '75%' },
-                                        { value: 12, label: '100%' },
-                                    ].map((option) => {
-                                        // Backward compat: legacy 1 → 6 (50%), legacy 2 → 12 (100%)
-                                        const raw = (fieldItem?.colSpan as number) || 6;
-                                        const currentColSpan = raw === 1 ? 6 : raw === 2 ? 12 : raw;
-                                        const isActive = currentColSpan === option.value;
-                                        return (
-                                            <Button
-                                                key={option.value}
-                                                onClick={() => onUpdate(selectedItem!.id, { colSpan: option.value as any })}
-                                                variant={isActive ? "outline" : "ghost"}
-                                                className={`flex-1 h-8 text-xs ${isActive ? 'bg-white border-slate-200 text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-transparent'}`}
-                                            >
-                                                {option.label}
-                                            </Button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {isField && (
-                            <div className="space-y-1.5">
-                                <Label variant="section">Data Type</Label>
-                                <Select
-                                    disabled={true}
-                                    value={fieldItem?.dataType || getDefaultDataType(selectedItem.type)}
-                                    onValueChange={(val) => onUpdate(selectedItem!.id, { dataType: val as any })}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="string">String</SelectItem>
-                                        <SelectItem value="number">Number</SelectItem>
-                                        <SelectItem value="boolean">Boolean</SelectItem>
-                                        <SelectItem value="date">Date</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-
-                        {isField && (
-                            <div className="space-y-1.5">
-                                <Label variant="section">Default Value</Label>
-                                <Input
-                                    value={fieldItem?.defaultValue || ''}
-                                    onChange={(e) => onUpdate(selectedItem!.id, { defaultValue: e.target.value })}
-                                    placeholder="Default value..."
                                 />
                             </div>
                         )}
+
+                        {/* ── API config placeholder ── */}
+                        {dataSourceType !== 'Static' && (
+                            <div className="p-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
+                                <p className="text-xs text-slate-400">API configuration coming soon</p>
+                            </div>
+                        )}
                     </>
                 )}
 
-                {/* VALIDATION TAB */}
-                {activeTab === 'validation' && isField && (
-                    <>
-                        <div className="space-y-1.5">
-                            <Label variant="section">Validation Type</Label>
+                {/* ── FIELD STATE ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Field State</SectionLabel>
+                        <Select
+                            value={
+                                fieldItem?.readOnly
+                                    ? 'readonly'
+                                    : fieldItem?.required
+                                        ? 'mandatory'
+                                        : 'optional'
+                            }
+                            onValueChange={(val) => {
+                                if (val === 'mandatory') {
+                                    onUpdate(selectedItem!.id, { required: true, readOnly: false });
+                                } else if (val === 'optional') {
+                                    onUpdate(selectedItem!.id, { required: false, readOnly: false });
+                                } else {
+                                    onUpdate(selectedItem!.id, { required: false, readOnly: true });
+                                }
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="optional">Optional</SelectItem>
+                                <SelectItem value="mandatory">Mandatory</SelectItem>
+                                <SelectItem value="readonly">Read-Only</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+
+                {/* ── DEFAULT VALUE ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Default Value</SectionLabel>
+                        {isSelectType && dataSourceType === 'Static' && staticItems.length > 0 ? (
                             <Select
-                                value={fieldItem?.validationType || 'none'}
-                                onValueChange={(val) => onUpdate(selectedItem!.id, { validationType: val as any })}
+                                value={fieldItem?.defaultValue || ''}
+                                onValueChange={(val) => onUpdate(selectedItem!.id, { defaultValue: val })}
                             >
                                 <SelectTrigger>
-                                    <SelectValue />
+                                    <SelectValue placeholder="Select default..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="none">None</SelectItem>
-                                    <SelectItem value="email">Email</SelectItem>
-                                    <SelectItem value="phone">Phone</SelectItem>
-                                    <SelectItem value="url">URL</SelectItem>
-                                    <SelectItem value="number">Number</SelectItem>
-                                    <SelectItem value="custom">Custom Regex</SelectItem>
+                                    {staticItems.map(item => (
+                                        <SelectItem key={item.key} value={item.label}>
+                                            {item.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
-                        </div>
+                        ) : (
+                            <Input
+                                value={fieldItem?.defaultValue || ''}
+                                onChange={(e) => onUpdate(selectedItem!.id, { defaultValue: e.target.value })}
+                                placeholder="Enter default value"
+                            />
+                        )}
+                    </div>
+                )}
 
-                        <div className="space-y-1.5">
-                            <Label variant="section">Max Length</Label>
+                {/* ── VALIDATION TYPE ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Validation Type</SectionLabel>
+                        <Select
+                            value={fieldItem?.validationType || 'none'}
+                            onValueChange={(val) => onUpdate(selectedItem!.id, { validationType: val as any })}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                <SelectItem value="email">Email</SelectItem>
+                                <SelectItem value="phone">Phone</SelectItem>
+                                <SelectItem value="url">URL</SelectItem>
+                                <SelectItem value="number">Number</SelectItem>
+                                <SelectItem value="custom">Custom Regex</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+
+                {/* ── MIN / MAX LENGTH ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Min Length - Max Length</SectionLabel>
+                        <div className="flex items-center gap-2">
                             <Input
                                 type="number"
-                                value={fieldItem?.constraints?.maxLength || ''}
+                                value={fieldItem?.constraints?.minLength ?? ''}
+                                onChange={(e) => onUpdate(selectedItem!.id, {
+                                    constraints: { ...(fieldItem?.constraints || {}), minLength: e.target.value ? parseInt(e.target.value) : undefined }
+                                })}
+                                placeholder="Min"
+                                className="flex-1"
+                            />
+                            <span className="text-xs text-slate-400">To</span>
+                            <Input
+                                type="number"
+                                value={fieldItem?.constraints?.maxLength ?? ''}
                                 onChange={(e) => onUpdate(selectedItem!.id, {
                                     constraints: { ...(fieldItem?.constraints || {}), maxLength: e.target.value ? parseInt(e.target.value) : undefined }
                                 })}
-                                placeholder="No limit"
+                                placeholder="Max"
+                                className="flex-1"
                             />
                         </div>
-                    </>
+                    </div>
                 )}
 
-                {/* DATA SOURCE TAB */}
-                {activeTab === 'data' && isField && isSelectType && (
-                    <>
-                        <div className="space-y-1.5">
-                            <Label variant="section">Source Type</Label>
-                            <Select
-                                value={fieldItem?.valueHelp?.type || 'Static'}
-                                onValueChange={(val) => onUpdate(selectedItem!.id, {
-                                    valueHelp: { ...(fieldItem?.valueHelp || {}), type: val as 'Static' | 'Reference' | 'Dynamic' }
-                                })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Static">Static List</SelectItem>
-                                    <SelectItem value="Reference">Managed List</SelectItem>
-                                    <SelectItem value="Dynamic">Dynamic Entity</SelectItem>
-                                </SelectContent>
-                            </Select>
+                {/* ── WIDTH ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Width</SectionLabel>
+                        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+                            {[
+                                { value: 3, label: '25%' },
+                                { value: 6, label: '50%' },
+                                { value: 9, label: '75%' },
+                                { value: 12, label: '100%' },
+                            ].map((option) => {
+                                // Backward compat: legacy 1 → 6 (50%), legacy 2 → 12 (100%)
+                                const raw = (fieldItem?.colSpan as number) || 6;
+                                const currentColSpan = raw === 1 ? 6 : raw === 2 ? 12 : raw;
+                                const isActive = currentColSpan === option.value;
+                                return (
+                                    <Button
+                                        key={option.value}
+                                        onClick={() => onUpdate(selectedItem!.id, { colSpan: option.value as any })}
+                                        variant={isActive ? "outline" : "ghost"}
+                                        className={`flex-1 h-8 text-xs ${isActive ? 'bg-white border-slate-200 text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-transparent'}`}
+                                    >
+                                        {option.label}
+                                    </Button>
+                                );
+                            })}
                         </div>
-                    </>
+                    </div>
                 )}
 
-                {/* MORE TAB */}
-                {activeTab === 'advanced' && isField && (
-                    <>
-                        <div className="space-y-1.5">
-                            <Label variant="section">Placeholder</Label>
-                            <Input
-                                value={fieldItem?.placeholder || ''}
-                                onChange={(e) => onUpdate(selectedItem!.id, { placeholder: e.target.value })}
-                                placeholder="Enter placeholder text..."
-                            />
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label variant="section">Help Text</Label>
-                            <Textarea
-                                value={fieldItem?.helpText || ''}
-                                onChange={(e) => onUpdate(selectedItem!.id, { helpText: e.target.value })}
-                                placeholder="Optional description to help users..."
-                                rows={3}
-                                className="resize-none"
-                            />
-                        </div>
-                    </>
+                {/* ── HELP TEXT ── */}
+                {isField && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Help Text</SectionLabel>
+                        <Textarea
+                            value={fieldItem?.helpText || ''}
+                            onChange={(e) => onUpdate(selectedItem!.id, { helpText: e.target.value })}
+                            placeholder="Enter help text for this field..."
+                            rows={3}
+                            className="resize-none"
+                        />
+                    </div>
                 )}
             </div>
 
-            {/* Action Buttons */}
+            {/* ── Apply + Action Buttons ── */}
             <div className="mt-6 pt-4 border-t border-slate-100 space-y-3">
                 <Button
-                    onClick={() => onDuplicate?.(selectedItem!.id)}
-                    variant="outline"
-                    className="w-full text-slate-600 font-medium"
+                    className="w-full bg-primary text-white hover:bg-primary/90 font-medium"
                 >
-                    <Copy size={16} />
-                    Duplicate Field
+                    Apply Changes
                 </Button>
-                <Button
-                    onClick={() => onDelete?.(selectedItem!.id)}
-                    variant="outline-destructive"
-                    className="w-full font-medium"
-                >
-                    <Trash2 size={16} />
-                    Delete Field
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        onClick={() => onDuplicate?.(selectedItem!.id)}
+                        variant="outline"
+                        className="flex-1 text-slate-600"
+                    >
+                        <Copy size={14} className="mr-1" />
+                        Duplicate
+                    </Button>
+                    <Button
+                        onClick={() => onDelete?.(selectedItem!.id)}
+                        variant="outline-destructive"
+                        className="flex-1"
+                    >
+                        <Trash2 size={14} className="mr-1" />
+                        Delete
+                    </Button>
+                </div>
             </div>
         </div>
     );
