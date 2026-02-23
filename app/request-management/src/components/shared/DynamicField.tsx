@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { format } from 'date-fns';
 import { Input, TextArea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, DatePicker } from '../../components/ui';
 import { Checkbox } from '../../components/ui/Checkbox';
@@ -7,6 +7,7 @@ import { Label } from '../../components/ui/label';
 export interface SchemaField {
     id: string;
     label: string;
+    type?: string;
     controlType: string;
     dataType?: string;
     required?: boolean;
@@ -14,6 +15,12 @@ export interface SchemaField {
     colSpan?: number;
     disabled?: boolean;
     readOnly?: boolean;
+    defaultValue?: string;
+    options?: Array<{ value: string; label: string }>;
+    valueHelp?: {
+        type?: 'Static' | 'Reference' | 'Dynamic';
+        items?: Array<{ key: string; label: string }>;
+    };
 }
 
 interface DynamicFieldProps {
@@ -23,6 +30,20 @@ interface DynamicFieldProps {
     disabled?: boolean;
 }
 
+/**
+ * Resolve dropdown/radio/checkbox options from either
+ * `field.options` ({value, label}) or `field.valueHelp.items` ({key, label}).
+ */
+function getFieldOptions(field: SchemaField): Array<{ value: string; label: string }> {
+    if (field.options && field.options.length > 0) {
+        return field.options;
+    }
+    if (field.valueHelp?.items && field.valueHelp.items.length > 0) {
+        return field.valueHelp.items.map(item => ({ value: item.label, label: item.label }));
+    }
+    return [];
+}
+
 export function DynamicField({
     field,
     value,
@@ -30,8 +51,11 @@ export function DynamicField({
     disabled
 }: DynamicFieldProps) {
     const isDisabled = disabled || field.disabled || field.readOnly;
+    // Studio stores the kind as `type`, but some paths set `controlType` instead.
+    // Normalise so the switch always works.
+    const controlType = field.controlType || field.type || 'text';
 
-    switch (field.controlType) {
+    switch (controlType) {
         case 'text':
         case 'email':
         case 'phone':
@@ -85,22 +109,28 @@ export function DynamicField({
                 />
             );
         case 'select':
+        case 'dropdown': {
+            const options = getFieldOptions(field);
+            const effectiveValue = value || field.defaultValue || '';
             return (
                 <Select
-                    value={value || ''}
+                    value={effectiveValue}
                     onValueChange={(val) => onChange(val)}
                     disabled={isDisabled}
                 >
                     <SelectTrigger>
-                        <SelectValue placeholder={`Select ${field.label}...`} />
+                        <SelectValue placeholder={field.placeholder || `Select ${field.label}...`} />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="option1">Option 1</SelectItem>
-                        <SelectItem value="option2">Option 2</SelectItem>
-                        <SelectItem value="option3">Option 3</SelectItem>
+                        {options.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             );
+        }
         case 'checkbox':
             return (
                 <div className="flex items-center space-x-2">

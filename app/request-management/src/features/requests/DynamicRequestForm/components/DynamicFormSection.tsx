@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Download, Upload, Trash2, Plus, Copy } from 'lucide-react';
 import { Card, Button } from '../../../../components/ui';
@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { DynamicField } from '../../../../components/shared/DynamicField';
 import { DynamicTableField } from '../../../../components/shared/DynamicTableField';
 import type { SchemaItem, SchemaField, SchemaSection, SchemaTable } from '../../../../lib/schemaParser';
+import { flattenSchemaFields } from '../../../../lib/schemaParser';
 import type { FormData, FieldValue } from '../../../../types';
 import { globalEvents, EVENT_TYPES } from '../../../../lib/events';
 
@@ -39,6 +40,18 @@ export function DynamicFormSection({
 }: DynamicFormSectionProps) {
     // Track selected rows for each table
     const [rowSelections, setRowSelections] = useState<Record<string, string[]>>({});
+
+    // Seed formData with field defaultValues on mount
+    useEffect(() => {
+        const allFields = flattenSchemaFields(schemaItems);
+        allFields.forEach(field => {
+            if (field.defaultValue && !formData[field.id]) {
+                onFieldChange(field.id, field.defaultValue);
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [schemaItems]);
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, table: SchemaTable) => {
         const file = e.target.files?.[0];
         if (!file) return;

@@ -88,6 +88,32 @@ function FieldPreview({ field }: { field: UiFormField }) {
                     <span className="text-sm text-slate-500">{field.placeholder || 'Click to upload or drag file'}</span>
                 </div>
             );
+        case 'slider':
+            return (
+                <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">0</span>
+                    <input type="range" min={0} max={100} defaultValue={50} className="flex-1 accent-primary" disabled />
+                    <span className="text-xs text-slate-400">100</span>
+                </div>
+            );
+        case 'label':
+            return (
+                <span className="text-sm text-slate-600 font-medium">{field.placeholder || field.label}</span>
+            );
+        case 'image':
+            return (
+                <div className="flex items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50">
+                    <Layers size={18} className="text-slate-400" />
+                    <span className="text-sm text-slate-500">Image placeholder</span>
+                </div>
+            );
+        case 'selection':
+            return (
+                <div className="flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary border border-primary/20">Option A</span>
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-500 border border-slate-200">Option B</span>
+                </div>
+            );
         default:
             return <Input placeholder={`Enter ${field.label.toLowerCase()}...`} readOnly />;
     }

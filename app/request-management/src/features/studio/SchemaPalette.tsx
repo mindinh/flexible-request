@@ -1,24 +1,47 @@
 import {
-    Type, Hash, Calendar, List, CheckSquare, LayoutGrid,
-    Table, CircleDot, Layers, Mail
+    Type, Hash, List, CheckSquare, LayoutGrid,
+    Table, CircleDot, Mail, SlidersHorizontal,
+    DollarSign, Tag, Image, Clock, Paperclip, Rows3, ScrollText, TextCursorInput
 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 
-// Form element definitions with icons matching the reference design
+// Form element definitions grouped by category (matching reference design)
+
 const LAYOUT_ELEMENTS = [
     { id: 'section', label: 'Section', icon: LayoutGrid },
+    { id: 'row', label: 'Row', icon: Rows3 },
     { id: 'table', label: 'Table', icon: Table },
+    { id: 'scrollview', label: 'Scroll View', icon: ScrollText },
 ];
 
-const FIELD_ELEMENTS = [
-    { id: 'text', label: 'Text Field', icon: Type },
+const INPUT_ELEMENTS = [
+    { id: 'text', label: 'Input Field', icon: TextCursorInput },
+    { id: 'textarea', label: 'Text Area', icon: Type },
     { id: 'number', label: 'Number', icon: Hash },
-    { id: 'date', label: 'Date', icon: Calendar },
-    { id: 'select', label: 'Dropdown', icon: List },
-    { id: 'checkbox', label: 'Checkbox', icon: CheckSquare },
-    { id: 'file', label: 'Upload', icon: Layers },
+    { id: 'currency', label: 'Currency', icon: DollarSign },
     { id: 'email', label: 'Email', icon: Mail },
+    { id: 'slider', label: 'Slider', icon: SlidersHorizontal },
+    { id: 'label', label: 'Label', icon: Tag },
+    { id: 'selection', label: 'Selection', icon: List },
+];
+
+const SELECTION_ELEMENTS = [
+    { id: 'select', label: 'Dropdown', icon: List },
     { id: 'radio', label: 'Radio', icon: CircleDot },
+    { id: 'checkbox', label: 'Checkbox', icon: CheckSquare },
+];
+
+const ADVANCED_ELEMENTS = [
+    { id: 'date', label: 'Date & Time', icon: Clock },
+    { id: 'file', label: 'Attachment', icon: Paperclip },
+    { id: 'image', label: 'Image', icon: Image },
+];
+
+const ELEMENT_GROUPS = [
+    { key: 'layout', label: 'LAYOUT', items: LAYOUT_ELEMENTS },
+    { key: 'input', label: 'INPUT', items: INPUT_ELEMENTS },
+    { key: 'selection', label: 'SELECTION', items: SELECTION_ELEMENTS },
+    { key: 'advanced', label: 'ADVANCED / SYSTEM', items: ADVANCED_ELEMENTS },
 ];
 
 interface SchemaPaletteProps {
@@ -80,43 +103,27 @@ export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Layout Section */}
-            {!isCollapsed && (
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1">
-                    Layout
-                </span>
-            )}
-            <div className={`grid gap-2 ${isCollapsed ? 'grid-cols-1 px-1' : 'grid-cols-2'}`}>
-                {LAYOUT_ELEMENTS.map(item => (
-                    <PaletteCard
-                        key={item.id}
-                        icon={item.icon}
-                        label={item.label}
-                        type={item.id}
-                        isCollapsed={isCollapsed}
-                        onClick={() => handleAdd(item.id, item.label)}
-                    />
-                ))}
-            </div>
-
-            {/* Form Elements Section */}
-            {!isCollapsed && (
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1 mt-2">
-                    Form Elements
-                </span>
-            )}
-            <div className={`grid gap-2 ${isCollapsed ? 'grid-cols-1 px-1' : 'grid-cols-2'}`}>
-                {FIELD_ELEMENTS.map(item => (
-                    <PaletteCard
-                        key={item.id}
-                        icon={item.icon}
-                        label={item.label}
-                        type={item.id}
-                        isCollapsed={isCollapsed}
-                        onClick={() => handleAdd(item.id, item.label)}
-                    />
-                ))}
-            </div>
+            {ELEMENT_GROUPS.map((group) => (
+                <div key={group.key} className="flex flex-col gap-2">
+                    {!isCollapsed && (
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1">
+                            {group.label}
+                        </span>
+                    )}
+                    <div className={`grid gap-2 ${isCollapsed ? 'grid-cols-1 px-1' : 'grid-cols-2'}`}>
+                        {group.items.map(item => (
+                            <PaletteCard
+                                key={item.id}
+                                icon={item.icon}
+                                label={item.label}
+                                type={item.id}
+                                isCollapsed={isCollapsed}
+                                onClick={() => handleAdd(item.id, item.label)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
