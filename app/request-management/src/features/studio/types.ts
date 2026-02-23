@@ -79,7 +79,7 @@ export interface UiFormField {
     // Constraints
     constraints?: FieldConstraints;
     // Layout
-    colSpan?: 1 | 2; // 1 = half-width (50%), 2 = full-width (100%)
+    colSpan?: 3 | 6 | 9 | 12; // 3 = 25%, 6 = 50% (default), 9 = 75%, 12 = 100%
     // Legacy (deprecated, use valueHelp.items instead)
     options?: { value: string; label: string }[];
 }
