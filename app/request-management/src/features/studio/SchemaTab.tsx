@@ -170,8 +170,13 @@ function DraggableSectionField({ field, selectedFieldId, onFieldSelect, onFieldD
             onDragOver={onDragOver}
             onDrop={onDrop}
             className={cn(
-                "p-3 rounded-lg cursor-pointer transition-all border-2 group relative bg-white",
-                field.colSpan === 2 ? "col-span-2" : "col-span-1",
+                "p-3 rounded-lg cursor-pointer transition-all border-2 group relative bg-white overflow-hidden min-w-0",
+                (() => {
+                    const raw = (field.colSpan as number) || 6;
+                    const span = raw === 1 ? 6 : raw === 2 ? 12 : raw;
+                    const map: Record<number, string> = { 3: 'col-span-3', 6: 'col-span-6', 9: 'col-span-9', 12: 'col-span-12' };
+                    return map[span] || 'col-span-6';
+                })(),
                 selectedFieldId === field.id
                     ? "border-primary bg-primary/5"
                     : "border-transparent hover:border-slate-300 hover:bg-slate-50",
@@ -187,7 +192,7 @@ function DraggableSectionField({ field, selectedFieldId, onFieldSelect, onFieldD
                     <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 touch-none">
                         <GripVertical size={14} />
                     </div>
-                    <label className="text-sm font-medium text-slate-900 pointer-events-none">
+                    <label className="text-sm font-medium text-slate-900 pointer-events-none truncate">
                         {field.label}
                         {field.required && <span className="text-primary ml-1">*</span>}
                     </label>
@@ -331,7 +336,7 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
                 {section.fields.length === 0 ? (
                     <div className="text-center py-6 text-slate-400 text-sm">Drop fields here</div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-12 gap-3">
                         {section.fields.map(field => (
                             <DraggableSectionField
                                 key={field.id}
@@ -642,13 +647,13 @@ export function SchemaTab({ onFieldSelect }: SchemaTabProps) {
     };
 
     const addFieldToSection = (sectionId: string, fieldType: string, fieldLabel: string) => {
-        const defaultColSpan = ['textarea', 'radio'].includes(fieldType) ? 2 : 1;
+        const defaultColSpan = ['textarea', 'radio'].includes(fieldType) ? 12 : 6;
         const newField: UiFormField = {
             id: `${fieldType}-${Date.now()}`,
             type: fieldType,
             label: fieldLabel,
             required: false,
-            colSpan: defaultColSpan as 1 | 2,
+            colSpan: defaultColSpan as 3 | 6 | 9 | 12,
         };
 
         const newItems = items.map(item => {

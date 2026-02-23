@@ -149,24 +149,37 @@ export function DynamicFormSection({
                                     </h2>
                                 </div>
                                 <div className="p-6">
-                                    <div className={`grid gap-6 ${section.columns === 1 ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
-                                        {section.fields?.map((field) => (
-                                            <div
-                                                key={field.id}
-                                                className={`space-y-2 ${field.colSpan === 2 ? 'md:col-span-2' : ''}`}
-                                            >
-                                                <label className="block text-sm font-medium text-slate-700">
-                                                    {field.label}
-                                                    {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
-                                                </label>
-                                                <DynamicField
-                                                    field={field}
-                                                    value={formData[field.id]}
-                                                    onChange={(value) => { if (!field.readOnly) onFieldChange(field.id, value); }}
-                                                    disabled={field.readOnly}
-                                                />
-                                            </div>
-                                        ))}
+                                    <div className={`grid gap-4 ${section.columns === 1 ? 'grid-cols-1' : 'grid-cols-12'}`}>
+                                        {section.fields?.map((field) => {
+                                            // Map colSpan to 12-col grid (with legacy fallback)
+                                            const raw = (field.colSpan as number) || 6;
+                                            const span = raw === 1 ? 6 : raw === 2 ? 12 : raw;
+                                            // Static map so Tailwind JIT can detect classes
+                                            const spanMap: Record<number, string> = {
+                                                3: 'col-span-12 md:col-span-3',
+                                                6: 'col-span-12 md:col-span-6',
+                                                9: 'col-span-12 md:col-span-9',
+                                                12: 'col-span-12 md:col-span-12',
+                                            };
+                                            const spanClass = spanMap[span] || 'col-span-12 md:col-span-6';
+                                            return (
+                                                <div
+                                                    key={field.id}
+                                                    className={`space-y-2 min-w-0 ${spanClass}`}
+                                                >
+                                                    <label className="block text-sm font-medium text-slate-700 truncate">
+                                                        {field.label}
+                                                        {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
+                                                    </label>
+                                                    <DynamicField
+                                                        field={field}
+                                                        value={formData[field.id]}
+                                                        onChange={(value) => { if (!field.readOnly) onFieldChange(field.id, value); }}
+                                                        disabled={field.readOnly}
+                                                    />
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </Card>

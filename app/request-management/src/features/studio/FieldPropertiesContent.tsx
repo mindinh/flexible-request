@@ -249,10 +249,14 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                                 <Label variant="section">Width</Label>
                                 <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
                                     {[
-                                        { value: 1, label: 'Half (50%)' },
-                                        { value: 2, label: 'Full (100%)' },
+                                        { value: 3, label: '25%' },
+                                        { value: 6, label: '50%' },
+                                        { value: 9, label: '75%' },
+                                        { value: 12, label: '100%' },
                                     ].map((option) => {
-                                        const currentColSpan = fieldItem?.colSpan || 1;
+                                        // Backward compat: legacy 1 → 6 (50%), legacy 2 → 12 (100%)
+                                        const raw = (fieldItem?.colSpan as number) || 6;
+                                        const currentColSpan = raw === 1 ? 6 : raw === 2 ? 12 : raw;
                                         const isActive = currentColSpan === option.value;
                                         return (
                                             <Button

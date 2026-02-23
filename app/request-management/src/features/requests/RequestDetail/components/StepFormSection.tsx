@@ -96,24 +96,35 @@ export function StepFormSection({
                                             {section.label}
                                         </h4>
                                     )}
-                                    <div className={`grid grid-cols-1 md:grid-cols-${section.columns || 2} gap-6`}>
-                                        {section.fields.map(field => (
-                                            <div key={field.id} className={field.colSpan === 2 ? 'md:col-span-2' : ''}>
-                                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                    {field.label}
-                                                    {field.required && isEditable && <span className="text-red-500 ml-1">*</span>}
-                                                </label>
-                                                {isEditable ? (
-                                                    <DynamicField
-                                                        field={field}
-                                                        value={formData[field.id]}
-                                                        onChange={(val) => onFieldChange(field.id, val)}
-                                                    />
-                                                ) : (
-                                                    <DisplayField field={field} value={formData[field.id]} />
-                                                )}
-                                            </div>
-                                        ))}
+                                    <div className={`grid grid-cols-12 gap-4`}>
+                                        {section.fields.map(field => {
+                                            const raw = (field.colSpan as number) || 6;
+                                            const span = raw === 1 ? 6 : raw === 2 ? 12 : raw;
+                                            const spanMap: Record<number, string> = {
+                                                3: 'col-span-12 md:col-span-3',
+                                                6: 'col-span-12 md:col-span-6',
+                                                9: 'col-span-12 md:col-span-9',
+                                                12: 'col-span-12 md:col-span-12',
+                                            };
+                                            const spanClass = spanMap[span] || 'col-span-12 md:col-span-6';
+                                            return (
+                                                <div key={field.id} className={`min-w-0 ${spanClass}`}>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1 truncate">
+                                                        {field.label}
+                                                        {field.required && isEditable && <span className="text-red-500 ml-1">*</span>}
+                                                    </label>
+                                                    {isEditable ? (
+                                                        <DynamicField
+                                                            field={field}
+                                                            value={formData[field.id]}
+                                                            onChange={(val) => onFieldChange(field.id, val)}
+                                                        />
+                                                    ) : (
+                                                        <DisplayField field={field} value={formData[field.id]} />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
