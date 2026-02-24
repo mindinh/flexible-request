@@ -5,6 +5,7 @@ import {
     Settings,
     Users,
     BookOpen,
+    Plug,
     ChevronLeft,
     ChevronRight,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const navItems: NavItem[] = [
     { path: '/inbox', label: 'Inbox', icon: <Inbox style={{ width: '20px', height: '20px' }} /> },
     { path: '/studio', label: 'Request Type Studio', icon: <Settings style={{ width: '20px', height: '20px' }} /> },
     { path: '/organization', label: 'Organization', icon: <Users style={{ width: '20px', height: '20px' }} /> },
+    { path: '/integrations', label: 'Integrations', icon: <Plug style={{ width: '20px', height: '20px' }} /> },
     { path: '/wiki', label: 'Wiki', icon: <BookOpen style={{ width: '20px', height: '20px' }} /> },
 ];
 

@@ -195,6 +195,39 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
         set({ isSaving: true, error: null });
         try {
+            // 0. Validate schemas – reject empty option labels in select-type fields
+            const SELECT_TYPES = ['select', 'radio', 'checkbox', 'dropdown'];
+            for (const [_stepId, schemaItems] of Object.entries(schemas)) {
+                const checkFields = (fields: UiCanvasItem[]) => {
+                    for (const item of fields) {
+                        // Check sections
+                        if (item.type === 'section' && 'fields' in item) {
+                            checkFields(item.fields as unknown as UiCanvasItem[]);
+                            continue;
+                        }
+                        // Check tables
+                        if (item.type === 'table' && 'columns' in item) {
+                            checkFields((item as any).columns as UiCanvasItem[]);
+                            continue;
+                        }
+                        // Check select-type fields for empty options
+                        if (SELECT_TYPES.includes(item.type)) {
+                            const field = item as any;
+                            const items = field.valueHelp?.items as Array<{ key: string; label: string }> | undefined;
+                            if (items && items.length > 0) {
+                                const emptyOpts = items.filter((opt: any) => !opt.label?.trim());
+                                if (emptyOpts.length > 0) {
+                                    throw new Error(
+                                        `Field "${field.label}" has ${emptyOpts.length} option(s) with empty labels. Please fill in or remove them before saving.`
+                                    );
+                                }
+                            }
+                        }
+                    }
+                };
+                checkFields(schemaItems);
+            }
+
             // 1. Update Request Type metadata
             const metadataPayload = {
                 title: metadata.name,

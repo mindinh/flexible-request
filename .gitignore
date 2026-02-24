@@ -49,3 +49,6 @@ approuter/node_modules/
 
 db.sqlite-wal
 db.sqlite-shm
+
+db/data/*.csv
+db/data/*.json

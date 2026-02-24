@@ -30,6 +30,9 @@ const OrganizationPage = lazy(() =>
 const WikiPage = lazy(() =>
   import('./features/wiki/WikiPage').then(m => ({ default: m.WikiPage }))
 );
+const IntegrationsPage = lazy(() =>
+  import('./features/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage }))
+);
 
 /**
  * Suspense wrapper with loading fallback
@@ -129,6 +132,15 @@ function App() {
                 element={
                   <SuspenseWrapper>
                     <WikiPage />
+                  </SuspenseWrapper>
+                }
+              />
+              {/* API Integrations */}
+              <Route
+                path="/integrations"
+                element={
+                  <SuspenseWrapper>
+                    <IntegrationsPage />
                   </SuspenseWrapper>
                 }
               />
