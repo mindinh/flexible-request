@@ -39,12 +39,16 @@ export interface ValueHelpConfig {
     items?: ValueHelpItem[];
     // For Reference (Managed List)
     listCode?: string;
-    // For Dynamic (OData Entity)
+    // For Dynamic (API / OData Entity)
     source?: {
-        entity: string;
-        valueField: string;
-        displayField: string;
-        filter?: string;
+        apiConfigId: string;   // Reference to an API Connection from the Integrations store
+        path: string;          // Endpoint path (e.g. /admin/ShadowGroups)
+        valueField: string;    // JSON key for saved value (e.g. ID)
+        displayField: string;  // JSON key for displayed label (e.g. name)
+        filter?: string;       // OData $filter expression
+        expand?: string;       // OData $expand expression
+        top?: number;          // OData $top
+        skip?: number;         // OData $skip
     };
 }
 

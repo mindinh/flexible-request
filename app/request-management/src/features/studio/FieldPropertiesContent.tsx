@@ -3,9 +3,10 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Copy, Trash2, Type, Settings2, Plus, GripVertical } from 'lucide-react';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
+import { useIntegrationsStore } from '../integrations/useIntegrationsStore';
 
 // Type guards
 function isUiSection(item: UiCanvasItem): item is UiSection {
@@ -103,6 +104,122 @@ function OptionManager({
                 <Plus size={14} className="mr-1.5" />
                 Add Option
             </Button>
+        </div>
+    );
+}
+
+// ─── API Configuration Pane (for Dynamic data source) ───
+function ApiConfigPane({
+    source,
+    onChange,
+}: {
+    source?: ValueHelpConfig['source'];
+    onChange: (source: ValueHelpConfig['source']) => void;
+}) {
+    const { connections, fetchConnections } = useIntegrationsStore();
+
+    useEffect(() => { fetchConnections(); }, [fetchConnections]);
+
+    const update = (patch: Partial<NonNullable<ValueHelpConfig['source']>>) => {
+        onChange({
+            apiConfigId: source?.apiConfigId || '',
+            path: source?.path || '',
+            valueField: source?.valueField || '',
+            displayField: source?.displayField || '',
+            ...source,
+            ...patch,
+        });
+    };
+
+    return (
+        <div className="space-y-3">
+            <SectionLabel>API Connection</SectionLabel>
+            {connections.length === 0 ? (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                    <p className="text-xs text-amber-600">
+                        No API connections configured.{' '}
+                        <a href="/integrations" className="underline font-medium hover:text-amber-800">
+                            Add one in Integrations
+                        </a>
+                    </p>
+                </div>
+            ) : (
+                <Select
+                    value={source?.apiConfigId || undefined}
+                    onValueChange={(val) => update({ apiConfigId: val })}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a connection..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {connections.map((conn) => (
+                            <SelectItem key={conn.ID} value={conn.ID}>
+                                {conn.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+
+            <SectionLabel>Endpoint Path</SectionLabel>
+            <Input
+                value={source?.path || ''}
+                onChange={(e) => update({ path: e.target.value })}
+                placeholder="/admin/ShadowGroups"
+                className="font-mono text-xs"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                    <SectionLabel>Value Field</SectionLabel>
+                    <Input
+                        value={source?.valueField || ''}
+                        onChange={(e) => update({ valueField: e.target.value })}
+                        placeholder="ID"
+                        className="font-mono text-xs"
+                    />
+                </div>
+                <div className="space-y-1">
+                    <SectionLabel>Display Field</SectionLabel>
+                    <Input
+                        value={source?.displayField || ''}
+                        onChange={(e) => update({ displayField: e.target.value })}
+                        placeholder="name"
+                        className="font-mono text-xs"
+                    />
+                </div>
+            </div>
+
+            {/* OData Query Parameters */}
+            <SectionLabel>OData Parameters</SectionLabel>
+            <Input
+                value={source?.filter || ''}
+                onChange={(e) => update({ filter: e.target.value })}
+                placeholder="$filter — e.g. type eq 'Department'"
+                className="font-mono text-xs"
+            />
+            <Input
+                value={source?.expand || ''}
+                onChange={(e) => update({ expand: e.target.value })}
+                placeholder="$expand — e.g. type"
+                className="font-mono text-xs"
+            />
+            <div className="grid grid-cols-2 gap-2">
+                <Input
+                    type="number"
+                    value={source?.top ?? ''}
+                    onChange={(e) => update({ top: e.target.value ? parseInt(e.target.value) : undefined })}
+                    placeholder="$top"
+                    className="font-mono text-xs"
+                />
+                <Input
+                    type="number"
+                    value={source?.skip ?? ''}
+                    onChange={(e) => update({ skip: e.target.value ? parseInt(e.target.value) : undefined })}
+                    placeholder="$skip"
+                    className="font-mono text-xs"
+                />
+            </div>
         </div>
     );
 }
@@ -284,11 +401,20 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                             </div>
                         )}
 
-                        {/* ── API config placeholder ── */}
+                        {/* ── API Configuration ── */}
                         {dataSourceType !== 'Static' && (
-                            <div className="p-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
-                                <p className="text-xs text-slate-400">API configuration coming soon</p>
-                            </div>
+                            <ApiConfigPane
+                                source={fieldItem?.valueHelp?.source}
+                                onChange={(source) => {
+                                    onUpdate(selectedItem!.id, {
+                                        valueHelp: {
+                                            ...(fieldItem?.valueHelp || {}),
+                                            type: 'Dynamic',
+                                            source,
+                                        }
+                                    });
+                                }}
+                            />
                         )}
                     </>
                 )}
@@ -333,16 +459,16 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         <SectionLabel>Default Value</SectionLabel>
                         {isSelectType && dataSourceType === 'Static' && staticItems.length > 0 ? (
                             <Select
-                                value={fieldItem?.defaultValue || ''}
+                                value={fieldItem?.defaultValue || undefined}
                                 onValueChange={(val) => onUpdate(selectedItem!.id, { defaultValue: val })}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select default..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {staticItems.map(item => (
-                                        <SelectItem key={item.key} value={item.label}>
-                                            {item.label}
+                                    {staticItems.filter(item => item.label || item.key).map(item => (
+                                        <SelectItem key={item.key} value={item.label || item.key}>
+                                            {item.label || item.key}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

@@ -1,8 +1,11 @@
 
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Input, TextArea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, DatePicker } from '../../components/ui';
 import { Checkbox } from '../../components/ui/Checkbox';
 import { Label } from '../../components/ui/label';
+import { useIntegrationsStore } from '../../features/integrations/useIntegrationsStore';
+import axios from 'axios';
 
 export interface SchemaField {
     id: string;
@@ -20,6 +23,16 @@ export interface SchemaField {
     valueHelp?: {
         type?: 'Static' | 'Reference' | 'Dynamic';
         items?: Array<{ key: string; label: string }>;
+        source?: {
+            apiConfigId: string;
+            path: string;
+            valueField: string;
+            displayField: string;
+            filter?: string;
+            expand?: string;
+            top?: number;
+            skip?: number;
+        };
     };
 }
 
@@ -44,6 +57,105 @@ function getFieldOptions(field: SchemaField): Array<{ value: string; label: stri
     return [];
 }
 
+/**
+ * Hook: fetch dynamic options from an API connection when valueHelp.type is Dynamic.
+ */
+function useDynamicOptions(field: SchemaField) {
+    const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const source = field.valueHelp?.source;
+    const isDynamic = field.valueHelp?.type === 'Dynamic' && source?.apiConfigId && source?.path;
+    const getConnection = useIntegrationsStore((s) => s.getConnection);
+    const fetchConnections = useIntegrationsStore((s) => s.fetchConnections);
+
+    // Ensure connections are loaded from backend
+    useEffect(() => { fetchConnections(); }, [fetchConnections]);
+
+    useEffect(() => {
+        if (!isDynamic || !source) return;
+
+        const conn = getConnection(source.apiConfigId);
+        if (!conn) {
+            setError('API connection not found');
+            return;
+        }
+
+        let cancelled = false;
+        setIsLoading(true);
+        setError(null);
+
+        const fetchOptions = async () => {
+            try {
+                // Build headers from connection auth
+                const headers: Record<string, string> = {};
+                if (conn.authType === 'basic' && conn.username && conn.password) {
+                    headers['Authorization'] = 'Basic ' + btoa(`${conn.username}:${conn.password}`);
+                } else if (conn.authType === 'bearer' && conn.token) {
+                    headers['Authorization'] = `Bearer ${conn.token}`;
+                }
+
+                // Build OData query params
+                const params: Record<string, string | number> = {};
+                if (source.filter) params['$filter'] = source.filter;
+                if (source.expand) params['$expand'] = source.expand;
+                if (source.top) params['$top'] = source.top;
+                if (source.skip) params['$skip'] = source.skip;
+
+                const url = `${conn.baseUrl.replace(/\/$/, '')}${source.path}`;
+                const res = await axios.get(url, {
+                    headers,
+                    params,
+                    // CAP OData parser requires %20 for spaces, not + (default axios encoding)
+                    paramsSerializer: (p) => {
+                        return Object.entries(p)
+                            .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(val))}`)
+                            .join('&');
+                    },
+                    timeout: 15000,
+                });
+
+                if (cancelled) return;
+
+                // Process response — OData returns .value array, plain APIs may return array directly
+                const data = Array.isArray(res.data) ? res.data : res.data?.value ?? [];
+                const valueField = source.valueField || 'ID';
+                const displayField = source.displayField || 'name';
+
+                const mapped = data.map((item: any) => ({
+                    value: String(item[valueField] ?? ''),
+                    label: String(item[displayField] ?? ''),
+                })).filter((opt: { value: string; label: string }) => opt.value && opt.label);
+
+                setOptions(mapped);
+            } catch (err: any) {
+                if (!cancelled) {
+                    setError(err.message || 'Failed to fetch options');
+                }
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        };
+
+        fetchOptions();
+        return () => { cancelled = true; };
+    }, [
+        isDynamic,
+        source?.apiConfigId,
+        source?.path,
+        source?.valueField,
+        source?.displayField,
+        source?.filter,
+        source?.expand,
+        source?.top,
+        source?.skip,
+        getConnection,
+    ]);
+
+    return { options, isLoading, error, isDynamic };
+}
+
 export function DynamicField({
     field,
     value,
@@ -54,6 +166,9 @@ export function DynamicField({
     // Studio stores the kind as `type`, but some paths set `controlType` instead.
     // Normalise so the switch always works.
     const controlType = field.controlType || field.type || 'text';
+
+    // Fetch dynamic options when needed
+    const { options: dynamicOptions, isLoading: dynamicLoading, isDynamic } = useDynamicOptions(field);
 
     switch (controlType) {
         case 'text':
@@ -110,23 +225,34 @@ export function DynamicField({
             );
         case 'select':
         case 'dropdown': {
-            const options = getFieldOptions(field);
+            // Merge static + dynamic options
+            const staticOptions = getFieldOptions(field);
+            const allOptions = isDynamic ? [...staticOptions, ...dynamicOptions] : staticOptions;
             const effectiveValue = value || field.defaultValue || '';
             return (
                 <Select
-                    value={effectiveValue}
+                    value={effectiveValue || undefined}
                     onValueChange={(val) => onChange(val)}
-                    disabled={isDisabled}
+                    disabled={isDisabled || dynamicLoading}
                 >
                     <SelectTrigger>
-                        <SelectValue placeholder={field.placeholder || `Select ${field.label}...`} />
+                        <SelectValue placeholder={
+                            dynamicLoading
+                                ? 'Loading options...'
+                                : field.placeholder || `Select ${field.label}...`
+                        } />
                     </SelectTrigger>
                     <SelectContent>
-                        {options.map(opt => (
+                        {allOptions.map(opt => (
                             <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                             </SelectItem>
                         ))}
+                        {allOptions.length === 0 && !dynamicLoading && (
+                            <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                                No options available
+                            </div>
+                        )}
                     </SelectContent>
                 </Select>
             );

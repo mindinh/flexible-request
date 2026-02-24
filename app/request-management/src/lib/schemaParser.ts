@@ -24,6 +24,16 @@ export interface SchemaField {
     valueHelp?: {
         type?: 'Static' | 'Reference' | 'Dynamic';
         items?: Array<{ key: string; label: string }>;
+        source?: {
+            apiConfigId: string;
+            path: string;
+            valueField: string;
+            displayField: string;
+            filter?: string;
+            expand?: string;
+            top?: number;
+            skip?: number;
+        };
     };
     defaultValue?: string;
 }
