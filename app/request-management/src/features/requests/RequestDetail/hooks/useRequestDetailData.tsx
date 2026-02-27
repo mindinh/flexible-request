@@ -6,7 +6,7 @@ import { DEV_USERS, DEV_GROUPS } from '../../../../lib/auth-context';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
 import { parseSchemaContent } from '../../../../lib/schemaParser';
 import type { WorkflowTimelineStep } from '../../../../components/shared';
-import type { RequestDetailData, HistoryItem, Step, mapStepStatus } from '../types';
+import type { RequestDetailData, HistoryItem, Step } from '../types';
 import { mapStepStatus as mapStatus } from '../types';
 
 /**
@@ -110,14 +110,42 @@ export function useRequestDetailData(id: string | undefined) {
         return parseSchemaContent(startStepSchema?.schemaContent);
     }, [request?.requestType?.steps]);
 
-    // Use approver resolver
-    const approverContext = {
-        ...startStepData,
-        ...formData,
-        title: request?.title,
-        description: request?.description,
-        priority: request?.priority
-    };
+    // Consolidate data for real-time rule evaluation
+    // Merges: 
+    // 1. Initial/Start form data (formData)
+    // 2. Persisted data from all steps in request records
+    // 3. Live, unsaved changes currently in the UI (stepFormData)
+    const approverContext = useMemo(() => {
+        let combinedData: Record<string, any> = {
+            ...formData,
+            title: request?.title,
+            description: request?.description,
+            priority: request?.priority,
+            __request_priority: request?.priority || 'MEDIUM'
+        };
+
+        // Merge persisted data from all steps
+        if (request?.steps) {
+            request.steps.forEach(step => {
+                if (step.data?.payload) {
+                    try {
+                        const parsed = JSON.parse(step.data.payload);
+                        combinedData = { ...combinedData, ...parsed };
+                    } catch (e) {
+                        console.warn(`Failed to parse step ${step.ID} data`, e);
+                    }
+                }
+            });
+        }
+
+        // Merge live, unsaved edits from the UI
+        Object.values(stepFormData).forEach(liveData => {
+            combinedData = { ...combinedData, ...liveData };
+        });
+
+        return combinedData;
+    }, [formData, request, stepFormData]);
+
     const resolvedApprovers = useApproverResolver(request?.requestType, approverContext);
 
     // Build a map of known user IDs to display names from all available sources
@@ -298,7 +326,7 @@ export function useRequestDetailData(id: string | undefined) {
                         ? stepResolvedApprovers.map(resolved => ({
                             ruleName: resolved.ruleName,
                             approvers: [{
-                                name: resolved.approverValue, // Fallback to ID
+                                name: resolved.approverDisplayName || resolved.approverValue, // Prioritize display name
                                 type: (resolved.approverType?.toUpperCase() || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION'
                             }]
                         }))

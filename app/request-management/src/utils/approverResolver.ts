@@ -7,6 +7,7 @@ export interface ResolvedApprover {
     ruleName: string;
     approverType: string;
     approverValue: string;
+    approverDisplayName?: string;
     isFinal: boolean;
 }
 

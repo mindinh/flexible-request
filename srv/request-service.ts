@@ -10,6 +10,7 @@ import { InboxHandler } from './handlers/InboxHandler';
 import { RLSHandler } from './handlers/RLSHandler';
 import { ManagedUserHandler } from './handlers/ManagedUserHandler';
 import { SecurityHandler } from './handlers/SecurityHandler';
+import { NotificationHandler } from './handlers/NotificationHandler';
 
 /**
  * RequestService - Entry point for End Users and Approvers.
@@ -31,6 +32,7 @@ export default class RequestService extends cds.ApplicationService {
         new AuditLogHandler(this).register();
         new CoordinatorHandler(this).register();
         new InboxHandler(this).register();
+        NotificationHandler.register();
 
         await super.init();
     }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
-import { parseSchemaContent, flattenSchemaFields, type SchemaItem } from '../../../../lib/schemaParser';
+import { parseSchemaContent, flattenSchemaFields } from '../../../../lib/schemaParser';
 import { globalEvents, EVENT_TYPES } from '../../../../lib/events';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
 import { useAuth } from '../../../../lib/auth-context';
@@ -153,7 +153,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         }
     };
 
-    const saveAssignments = async (requestId: string, steps: any[]) => {
+    const saveAssignments = async (_requestId: string, steps: any[]) => {
         const updates = Object.entries(stepAssignments).map(async ([stepDefId, assignment]) => {
             // Find the actual step instance for this definition
             const stepInstance = steps.find(s => s.stepDefinition_ID === stepDefId || s.stepDefinition?.ID === stepDefId);
@@ -203,8 +203,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                     coordinatorType: formData.coordinatorType,
                 });
 
-                // Get steps for assignment
-                const updatedReq = await api.get(`/browse/Requests(${requestId})?$expand=steps($expand=stepDefinition)`);
+                // Get steps for assignment, expanding data to handle existing placeholders
+                const updatedReq = await api.get(`/browse/Requests(${requestId})?$expand=steps($expand=stepDefinition,data)`);
                 currentSteps = updatedReq.data.steps || [];
                 reqId = requestId;
 
@@ -220,15 +220,21 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                 });
                 reqId = response.data.ID;
 
-                const createdRequest = await api.get(`/browse/Requests(${reqId})?$expand=steps($expand=stepDefinition)`);
+                const createdRequest = await api.get(`/browse/Requests(${reqId})?$expand=steps($expand=stepDefinition,data)`);
                 currentSteps = createdRequest.data.steps || [];
                 const startStep = currentSteps.find((s: any) => s.stepDefinition?.isStartStep) || currentSteps[0];
 
                 if (startStep) {
-                    await api.post('/browse/RequestData', {
-                        step_ID: startStep.ID,
-                        payload: JSON.stringify(formData),
-                    });
+                    if (startStep.data?.ID) {
+                        await api.patch(`/browse/RequestData(${startStep.data.ID})`, {
+                            payload: JSON.stringify(formData),
+                        });
+                    } else {
+                        await api.post('/browse/RequestData', {
+                            step_ID: startStep.ID,
+                            payload: JSON.stringify(formData),
+                        });
+                    }
                 }
             }
 
@@ -267,7 +273,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                 });
 
                 // Get steps
-                const updatedReq = await api.get(`/browse/Requests(${requestId})?$expand=steps($expand=stepDefinition)`);
+                const updatedReq = await api.get(`/browse/Requests(${requestId})?$expand=steps($expand=stepDefinition,data)`);
                 currentSteps = updatedReq.data.steps || [];
 
             } else {
@@ -282,15 +288,21 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                 });
                 reqId = createResponse.data.ID;
 
-                const createdRequest = await api.get(`/browse/Requests(${reqId})?$expand=steps($expand=stepDefinition)`);
+                const createdRequest = await api.get(`/browse/Requests(${reqId})?$expand=steps($expand=stepDefinition,data)`);
                 currentSteps = createdRequest.data.steps || [];
                 const startStep = currentSteps.find((s: any) => s.stepDefinition?.isStartStep) || currentSteps[0];
 
                 if (startStep) {
-                    await api.post('/browse/RequestData', {
-                        step_ID: startStep.ID,
-                        payload: JSON.stringify(formData),
-                    });
+                    if (startStep.data?.ID) {
+                        await api.patch(`/browse/RequestData(${startStep.data.ID})`, {
+                            payload: JSON.stringify(formData),
+                        });
+                    } else {
+                        await api.post('/browse/RequestData', {
+                            step_ID: startStep.ID,
+                            payload: JSON.stringify(formData),
+                        });
+                    }
                 }
             }
 
