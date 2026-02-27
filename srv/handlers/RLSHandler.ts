@@ -181,6 +181,10 @@ export class RLSHandler {
 
     /**
      * Enforce RLS on StepApprovals
+     * 
+     * Users may only see approvals that are assigned:
+     * - Directly to them (approverType = USER, approver = their ShadowUser ID)
+     * - To a group they are a member of
      */
     private async enforceApprovalsRLS(req: cds.Request) {
         if (!isRLSEnabled()) return;
@@ -193,7 +197,19 @@ export class RLSHandler {
             return;
         }
 
-        // Approvers can see approvals assigned to them or their groups
-        this.log.debug('Approvals RLS applied via step.request relationship');
+        // User not in ShadowUsers - block all
+        if (!ctx.shadowUserId) {
+            this.log.warn(`[ApprovalsRLS] User ${ctx.userId} has no ShadowUser record - blocking access.`);
+            (req.query as any).where({ 1: 0 });
+            return;
+        }
+
+        // Build list of principal IDs: user's own ID + all their group IDs
+        const principalIds: string[] = [ctx.shadowUserId, ...ctx.groupIds];
+
+        this.log.debug(`[ApprovalsRLS] Filtering StepApprovals to principalIds: ${principalIds.join(', ')}`);
+
+        // Filter: only show approvals where approver is one of the principal IDs
+        (req.query as any).where({ approver: { in: principalIds } });
     }
 }

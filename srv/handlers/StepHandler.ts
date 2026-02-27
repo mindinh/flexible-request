@@ -168,7 +168,7 @@ export class StepHandler {
         );
 
         if (approvers.length > 0) {
-            await this.workflowEngine.createApprovals(step.ID, approvers, userUUID);
+            await this.workflowEngine.createApprovals(requestID, step.ID, approvers, userUUID);
         } else {
             // Auto-complete
             this.log.info(`No approvers for step ${stepId} - auto-completing`);

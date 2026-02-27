@@ -255,7 +255,7 @@ export class RequestHandler {
             );
 
             if (approvers.length > 0) {
-                await this.workflowEngine.createApprovals(startStep.ID, approvers, userUUID);
+                await this.workflowEngine.createApprovals(requestID, startStep.ID, approvers, userUUID);
             } else {
                 // No approval rules defined → auto-complete this step
                 this.log.info(`No approvers for step - auto-completing and advancing workflow`);

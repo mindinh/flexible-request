@@ -69,6 +69,15 @@ export const RequestService = {
     // =========================================
 
     /**
+     * Fetch approvals directly assigned to the current user (My Tasks)
+     * Uses backend getMyTasks() function which filters by logged-in user's Shadow ID
+     */
+    async getMyTasks(): Promise<any[]> {
+        const response = await api.get(`${API_BASE}/getMyTasks()`);
+        return response.data.value || [];
+    },
+
+    /**
      * Fetch approvals assigned to user's groups (Team Tasks)
      * Uses backend getTeamTasks() function which handles group membership lookup
      */
@@ -76,6 +85,7 @@ export const RequestService = {
         const response = await api.get(`${API_BASE}/getTeamTasks()`);
         return response.data.value || [];
     },
+
 
     /**
      * Fetch requests where current user is coordinator

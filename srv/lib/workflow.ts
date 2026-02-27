@@ -133,7 +133,7 @@ export class WorkflowEngine {
         stepsToActivate: StepDefinitionWithOwner[],
         userUUID?: string | null
     ) {
-        const { Steps, StepHistory } = this.db.entities;
+        const { Steps, StepHistory, RequestData } = this.db.entities;
         this.log.info(`Activating ${stepsToActivate.length} new step(s)`);
 
         // Prepare data for approver resolution once
@@ -178,6 +178,15 @@ export class WorkflowEngine {
                 modifiedBy_ID: auditActor
             });
 
+            // Ensure RequestData record exists for the new step to enable frontend data capture
+            await INSERT.into(RequestData).entries({
+                step_ID: newStepId,
+                payload: JSON.stringify({}),
+                createdBy_ID: auditActor,
+                modifiedBy_ID: auditActor
+            });
+
+
             // Log Creation
             await INSERT.into(StepHistory).entries({
                 step_ID: newStepId,
@@ -214,7 +223,7 @@ export class WorkflowEngine {
                 );
 
                 if (approvers.length > 0) {
-                    await this.createApprovals(newStepId, approvers, auditActor);
+                    await this.createApprovals(requestId, newStepId, approvers, auditActor);
                 } else {
                     // Auto-complete (no approvers defined)
                     this.log.info(`No approvers for step ${def.stepName} - auto-completing`);
@@ -338,16 +347,19 @@ export class WorkflowEngine {
     /**
      * Shared method to create approvals for a step.
      * Used by WorkflowEngine (automatic) and RequestHandler (manual submit).
+     * @param requestId - The request ID (used for notification context)
      * @param stepId - The step ID to create approvals for
      * @param approvers - List of resolved approvers
      * @param userUUID - Optional ShadowUser UUID for audit trail
      */
-    public async createApprovals(stepId: string, approvers: ResolvedApprover[], userUUID?: string | null): Promise<void> {
+    public async createApprovals(requestId: string, stepId: string, approvers: ResolvedApprover[], userUUID?: string | null): Promise<void> {
         const { StepApprovals } = this.db.entities;
 
         for (let i = 0; i < approvers.length; i++) {
             const approver = approvers[i];
+            const approvalId = cds.utils.uuid();
             await INSERT.into(StepApprovals).entries({
+                ID: approvalId,
                 step_ID: stepId,
                 approver: approver.approverId,
                 approverDisplayName: approver.approverDisplayName,
@@ -356,6 +368,13 @@ export class WorkflowEngine {
                 approverType: approver.approverType,
                 createdBy_ID: userUUID,
                 modifiedBy_ID: userUUID
+            });
+
+            // Emit notification event (async, non-blocking)
+            (cds as any).emit('sap.cre.StepApprovalCreated', {
+                stepApprovalId: approvalId,
+                stepId,
+                requestId
             });
         }
         this.log.info(`Created ${approvers.length} approval(s) for step ${stepId}`);

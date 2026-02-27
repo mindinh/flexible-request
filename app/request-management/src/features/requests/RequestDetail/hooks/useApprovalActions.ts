@@ -43,7 +43,14 @@ export function useApprovalActions(requestId: string | undefined) {
             // 1. Save Data
             if (dataId) {
                 await api.patch(`/browse/RequestData(${dataId})`, { payload: jsonPayload });
+            } else {
+                // Fallback: create RequestData if it doesn't exist for some reason
+                await api.post('/browse/RequestData', {
+                    step_ID: stepId,
+                    payload: jsonPayload
+                });
             }
+
 
             // 2. Submit Step (Transition Status)
             await api.post(`/browse/Requests(${requestId})/RequestService.submitStep`, {

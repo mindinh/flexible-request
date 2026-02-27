@@ -6,19 +6,6 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { RequestService } from '../../services/RequestService';
 
-interface ApprovalItem {
-    ID: string;
-    status: string;
-    isGroupAssigned?: boolean;
-    step?: {
-        stepName: string;
-        request?: {
-            ID: string;
-            title: string;
-            requestType?: { title: string };
-        };
-    };
-}
 
 // InboxItem format returned by backend functions (getMyTasks, getTeamTasks, getCoordinatingRequests)
 interface InboxItem {
@@ -41,19 +28,15 @@ type InboxTab = 'my-tasks' | 'team-tasks' | 'coordinating';
 export const Inbox = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const [selectedItem, setSelectedItem] = useState<ApprovalItem | null>(null);
     const [selectedInboxItem, setSelectedInboxItem] = useState<InboxItem | null>(null);
     const [showRejectDialog, setShowRejectDialog] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
     const [activeTab, setActiveTab] = useState<InboxTab>('my-tasks');
 
-    // My direct approvals
+    // My direct approvals - uses getMyTasks() backend function which filters by logged-in user
     const { data: myApprovals = [], isLoading: isLoadingMy } = useQuery({
         queryKey: ['myApprovals'],
-        queryFn: async () => {
-            const response = await api.get('/browse/StepApprovals?$filter=status eq \'PENDING\'&$expand=step($expand=request($expand=requestType))');
-            return response.data.value || [];
-        },
+        queryFn: () => RequestService.getMyTasks(),
     });
 
     // Team approvals (group-assigned) - uses InboxItem format
@@ -77,7 +60,6 @@ export const Inbox = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
             queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
-            setSelectedItem(null);
             setSelectedInboxItem(null);
         },
     });
@@ -89,16 +71,11 @@ export const Inbox = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
             queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
-            setSelectedItem(null);
             setSelectedInboxItem(null);
             setShowRejectDialog(false);
             setRejectReason('');
         },
     });
-
-    const handleApprove = (item: ApprovalItem) => {
-        approveMutation.mutate(item.ID);
-    };
 
     const handleApproveInboxItem = (item: InboxItem) => {
         if (item.stepApprovalId) {
@@ -107,77 +84,11 @@ export const Inbox = () => {
     };
 
     const handleReject = () => {
-        if (selectedItem && rejectReason.trim()) {
-            rejectMutation.mutate({ approvalId: selectedItem.ID, reason: rejectReason });
-        } else if (selectedInboxItem?.stepApprovalId && rejectReason.trim()) {
+        if (selectedInboxItem?.stepApprovalId && rejectReason.trim()) {
             rejectMutation.mutate({ approvalId: selectedInboxItem.stepApprovalId, reason: rejectReason });
         }
     };
 
-    // Render approval card (for legacy OData format)
-    const renderApprovalCard = (item: ApprovalItem, showClaimBadge = false) => (
-        <Card key={item.ID} className="hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${showClaimBadge ? 'bg-violet-100' : 'bg-amber-100'
-                        }`}>
-                        {showClaimBadge ? (
-                            <Users className="w-5 h-5 text-violet-600" />
-                        ) : (
-                            <Clock className="w-5 h-5 text-amber-600" />
-                        )}
-                    </div>
-                    <div>
-                        <h3 className="font-medium text-gray-900">
-                            {item.step?.request?.title || 'Unknown Request'}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="neutral" size="sm">
-                                {item.step?.request?.requestType?.title}
-                            </Badge>
-                            <span className="text-sm text-gray-500">
-                                Step: {item.step?.stepName}
-                            </span>
-                            {showClaimBadge && (
-                                <Badge variant="secondary" size="sm" className="bg-violet-100 text-violet-700">
-                                    Team Task
-                                </Badge>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                            setSelectedItem(item);
-                            setShowRejectDialog(true);
-                        }}
-                    >
-                        <XCircle className="w-4 h-4" />
-                        Reject
-                    </Button>
-                    <Button
-                        size="sm"
-                        onClick={() => handleApprove(item)}
-                        isLoading={approveMutation.isPending}
-                    >
-                        <CheckCircle className="w-4 h-4" />
-                        Approve
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => navigate(`/requests/${item.step?.request?.ID}`)}
-                        className="text-gray-400 hover:text-gray-600"
-                    >
-                        <ChevronRight className="w-5 h-5" />
-                    </Button>
-                </div>
-            </div>
-        </Card>
-    );
 
     // Render inbox item card (for InboxItem format from backend functions)
     const renderInboxItemCard = (item: InboxItem, isTeamTask = false) => (
@@ -362,7 +273,7 @@ export const Inbox = () => {
                         />
                     ) : (
                         <div className="space-y-4">
-                            {myApprovals.map((item: ApprovalItem) => renderApprovalCard(item))}
+                            {myApprovals.map((item: InboxItem) => renderInboxItemCard(item))}
                         </div>
                     )}
                 </TabsContent>

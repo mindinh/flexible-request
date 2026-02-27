@@ -39,6 +39,7 @@ export interface Approval {
     ruleName?: string;
     comment?: string;
     decisionAt?: string;
+    decidedByDisplayName?: string;
 }
 
 /**
