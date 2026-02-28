@@ -1,14 +1,17 @@
 import type { UiRule, UiCondition } from '@/features/studio/types';
+import type { ApproverType } from '@/types';
 
 /**
  * Resolved approver information with rule metadata
  */
 export interface ResolvedApprover {
     ruleName: string;
-    approverType: string;
+    approverType: ApproverType;
     approverValue: string;
     approverDisplayName?: string;
     isFinal: boolean;
+    stepId: string;
+    ruleId: string;
 }
 
 /**
@@ -36,10 +39,12 @@ export function resolveApproversForStep(
         if (rule.conditions.length === 0) {
             matchedApprovers.push({
                 ruleName: rule.name || 'Default Rule',
-                approverType: rule.assignType,
+                approverType: (rule.assignType?.toUpperCase() || 'ROLE') as ApproverType,
                 approverValue: rule.assignTo,
                 approverDisplayName: rule.assignToName, // Pass display name
-                isFinal: rule.isFinal ?? false
+                isFinal: rule.isFinal ?? false,
+                stepId,            // Fix TS Error
+                ruleId: rule.id    // Fix TS Error
             });
             if (rule.isFinal) break;
             continue;
@@ -53,10 +58,12 @@ export function resolveApproversForStep(
         if (allConditionsMatch) {
             matchedApprovers.push({
                 ruleName: rule.name || `Rule ${rule.priority}`,
-                approverType: rule.assignType,
+                approverType: (rule.assignType?.toUpperCase() || 'ROLE') as ApproverType,
                 approverValue: rule.assignTo,
                 approverDisplayName: rule.assignToName, // Pass display name
-                isFinal: rule.isFinal ?? false
+                isFinal: rule.isFinal ?? false,
+                stepId,            // Fix TS Error
+                ruleId: rule.id    // Fix TS Error
             });
             if (rule.isFinal) break;
         }

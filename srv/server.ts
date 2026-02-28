@@ -1,5 +1,6 @@
 import cds from '@sap/cds';
 import { SlaJob } from './lib/sla-job';
+import { DraftJob } from './lib/draft-job';
 import { ObjectStoreProvider } from './lib/object-store';
 import { IdentityProvisioner } from './lib/identity-provisioner';
 
@@ -84,4 +85,14 @@ cds.on('served', () => {
         : 60 * 60 * 1000; // Default: 1 hour
 
     SlaJob.scheduleDaily(slaIntervalMs);
+
+    // Schedule Draft Garbage Collection
+    const draftGcIntervalMs = process.env.DRAFT_GC_INTERVAL_MS
+        ? parseInt(process.env.DRAFT_GC_INTERVAL_MS)
+        : 60 * 60 * 1000; // Default: 1 hour
+    const draftMaxAgeMs = process.env.DRAFT_MAX_AGE_MS
+        ? parseInt(process.env.DRAFT_MAX_AGE_MS)
+        : 3 * 60 * 60 * 1000; // Default: 3 hours
+
+    DraftJob.schedule(draftGcIntervalMs, draftMaxAgeMs);
 });

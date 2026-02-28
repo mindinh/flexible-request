@@ -31,9 +31,10 @@ export function useApproverResolver(
                         return [];
                     }
                 })(),
-                assignTo: rule.approverValue || '',
-                assignToName: rule.approverDisplayName || (rule as any).principalDisplayName || '', // Map backend virtual field
-                assignType: rule.approverType?.toLowerCase() || 'role',
+                assignTo: rule.approverValue || (rule as any).principalId || '',
+                // Robust display name: prefer explicit name, then backend virtual field, then empty (let consumer handle fallback)
+                assignToName: rule.approverDisplayName?.trim() || (rule as any).principalDisplayName?.trim() || '',
+                assignType: rule.approverType?.toLowerCase() || (rule as any).principalType?.toLowerCase() || 'role',
                 isActive: true,
                 expanded: false,
                 isFinal: (rule as any).isFinal ?? false

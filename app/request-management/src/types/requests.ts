@@ -28,7 +28,7 @@ export interface StepApproval {
 /**
  * Approver type enum
  */
-export type ApproverType = 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION';
+export type ApproverType = 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION' | 'DEPARTMENT';
 
 // =============================================================================
 // Step Types
