@@ -146,8 +146,8 @@ export const Inbox = () => {
                 priority: item.priority,
                 requester: item.requester,
                 dueDate: item.dueDate,
-            })),
-        [coordinatingRequests],
+            })), ``
+    [coordinatingRequests],
     );
 
     // ─── Active list based on tab ─────────────────────────────

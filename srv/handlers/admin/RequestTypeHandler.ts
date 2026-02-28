@@ -26,6 +26,14 @@ export class RequestTypeHandler {
         // Use after('READ') to enrich the payload (works for $expand and doesn't break default read).
         this.srv.after('READ', 'RequestTypes', this.afterRead.bind(this));
         this.srv.after('READ', 'RequestTypes.drafts', this.afterRead.bind(this));
+
+        // Enrich child entities directly — ensures virtual fields are populated
+        // even when CAP resolves $expand children independently
+        const sharedHandler = new SharedRequestTypeHandler(this.srv);
+        this.srv.after('READ', 'StepDefinitions', (data: any) => sharedHandler.enrichStepDefinitions(data));
+        this.srv.after('READ', 'StepDefinitions.drafts', (data: any) => sharedHandler.enrichStepDefinitions(data));
+        this.srv.after('READ', 'ApproverRules', (data: any) => sharedHandler.enrichApproverRules(data));
+        this.srv.after('READ', 'ApproverRules.drafts', (data: any) => sharedHandler.enrichApproverRules(data));
     }
 
     /**

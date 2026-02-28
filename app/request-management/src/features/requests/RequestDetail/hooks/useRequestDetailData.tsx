@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, User } from 'lucide-react';
 import { api } from '../../../../lib/api';
-import { DEV_USERS, DEV_GROUPS } from '../../../../lib/auth-context';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
+import { usePrincipalNames } from '../../../../hooks/usePrincipalNames';
 import { parseSchemaContent } from '../../../../lib/schemaParser';
 import type { WorkflowTimelineStep } from '../../../../components/shared';
 import type { RequestDetailData, HistoryItem, Step } from '../types';
@@ -187,8 +187,39 @@ export function useRequestDetailData(id: string | undefined) {
             });
         }
 
+        // 4. From RequestType ApproverRules (principalId → principalDisplayName)
+        //    Ensures pre-submission workflow preview shows names instead of UUIDs
+        if (request?.requestType?.steps) {
+            request.requestType.steps.forEach(stepDef => {
+                (stepDef.approverRules || []).forEach((rule: any) => {
+                    if (rule.principalId && rule.principalDisplayName) {
+                        map.set(rule.principalId, rule.principalDisplayName);
+                    }
+                    // Legacy shape fallback (older projections/services)
+                    if (rule.approverValue && rule.approverDisplayName) {
+                        map.set(rule.approverValue, rule.approverDisplayName);
+                    }
+                });
+            });
+        }
+
         return map;
     }, [request, auditLog]);
+
+    // Augment knownUsers with dynamically fetched principal names
+    // for UUIDs produced by the client-side approver resolver.
+    const enrichedKnownUsers = usePrincipalNames(resolvedApprovers, knownUsers);
+
+    // Resolve principal display names for timeline rows (approvers/owners).
+    const resolvePrincipalName = (id?: string, explicitName?: string) => {
+        if (explicitName && explicitName !== id) return explicitName;
+        if (!id) return id;
+
+        const known = enrichedKnownUsers.get(id);
+        if (known) return known;
+
+        return id;
+    };
 
     // Prepare workflow timeline steps
     const workflowSteps: WorkflowTimelineStep[] = useMemo(() => {
@@ -258,8 +289,8 @@ export function useRequestDetailData(id: string | undefined) {
                 const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
 
                 if (!ownerDisplayName || isUuid(ownerDisplayName)) {
-                    if (ownerId && knownUsers.has(ownerId)) {
-                        ownerDisplayName = knownUsers.get(ownerId);
+                    if (ownerId && enrichedKnownUsers.has(ownerId)) {
+                        ownerDisplayName = enrichedKnownUsers.get(ownerId);
                     }
                 }
 
@@ -268,15 +299,11 @@ export function useRequestDetailData(id: string | undefined) {
                     ownerDisplayName = request.coordinatorDisplayName;
                 }
 
-                // 3. Fallback to Dev Users/Groups configuration for name resolution
+                // 3. Fallback to enriched principal names (fetched from Identity Service)
                 if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId) {
-                    const devUser = DEV_USERS.find(u => u.id === ownerId);
-                    const devGroup = DEV_GROUPS.find(g => g.id === ownerId);
-
-                    if (devUser) {
-                        ownerDisplayName = devUser.name;
-                    } else if (devGroup) {
-                        ownerDisplayName = devGroup.name;
+                    const resolved = enrichedKnownUsers.get(ownerId);
+                    if (resolved) {
+                        ownerDisplayName = resolved;
                     }
                 }
 
@@ -314,7 +341,8 @@ export function useRequestDetailData(id: string | undefined) {
                     ? runtimeStep.approvals.map(approval => ({
                         ruleName: approval.ruleName || approval.approverDisplayName || approval.approver,
                         approvers: [{
-                            name: approval.approverDisplayName || approval.approver,
+                            // Resolve approver display names consistently for runtime approvals.
+                            name: resolvePrincipalName(approval.approver, approval.approverDisplayName),
                             type: (approval.approverType || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION',
                             status: approval.status as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
                             comment: approval.comment,
@@ -323,17 +351,19 @@ export function useRequestDetailData(id: string | undefined) {
                         }]
                     }))
                     : stepResolvedApprovers.length > 0
-                        ? stepResolvedApprovers.map(resolved => ({
-                            ruleName: resolved.ruleName,
-                            approvers: [{
-                                name: resolved.approverDisplayName || resolved.approverValue, // Prioritize display name
-                                type: (resolved.approverType?.toUpperCase() || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION'
-                            }]
-                        }))
+                        ? stepResolvedApprovers.map(resolved => {
+                            return {
+                                ruleName: resolved.ruleName,
+                                approvers: [{
+                                    name: resolvePrincipalName(resolved.approverValue, resolved.approverDisplayName),
+                                    type: (resolved.approverType?.toUpperCase() || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION'
+                                }]
+                            };
+                        })
                         : undefined
             };
         });
-    }, [request?.requestType?.steps, sortedSteps, resolvedApprovers, auditLog]);
+    }, [request?.requestType?.steps, sortedSteps, resolvedApprovers, auditLog, enrichedKnownUsers]);
 
     // Determine current step for actions
     // Priority: 1. User-selected step, 2. Step with pending approval for current user, 3. Active data entry step
