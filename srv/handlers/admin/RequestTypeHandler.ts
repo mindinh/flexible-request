@@ -1,8 +1,10 @@
-import { cds, SELECT, INSERT } from '../../lib/db';
+import { cds, SELECT, INSERT, DELETE } from '../../lib/db';
 import { SharedRequestTypeHandler } from '../SharedRequestTypeHandler';
 
+const LOG = cds.log('request-type-handler');
+
 /**
- * Handles RequestTypes operations: validation, clone action, response enrichment.
+ * Handles RequestTypes operations: validation, clone action, draft takeover, response enrichment.
  */
 export class RequestTypeHandler {
     private srv: cds.ApplicationService;
@@ -17,6 +19,7 @@ export class RequestTypeHandler {
     register() {
         this.srv.before('DELETE', 'RequestTypes', this.beforeDelete.bind(this));
         this.srv.on('clone', 'RequestTypes', this.onClone.bind(this));
+        this.srv.on('discardDraft', 'RequestTypes', this.onDiscardDraft.bind(this));
 
         // IMPORTANT:
         // Do NOT override READ with srv.on('READ', ...) unless you fully implement the read yourself.
@@ -47,6 +50,35 @@ export class RequestTypeHandler {
 
         if (activeRequests.length > 0) {
             return req.error(409, `Cannot delete: ${activeRequests.length} active request(s) use this type`);
+        }
+    }
+
+    /**
+     * Discard Draft (Force Unlock / Draft Takeover)
+     * 
+     * Directly deletes the draft of a RequestType from the DB,
+     * bypassing CAP's exclusive draft lock. This allows an admin
+     * to take over editing when another admin's session is abandoned.
+     */
+    private async onDiscardDraft(req: cds.Request) {
+        const param = req.params[0] as { ID: string };
+        const requestTypeId = param.ID;
+
+        LOG.info(`Discarding draft for RequestType ${requestTypeId} (requested by ${req.user?.id})`);
+
+        try {
+            const db = await cds.connect.to('db');
+            const { RequestTypes: RT } = db.entities;
+
+            // Delete draft rows directly from the drafts table
+            // This bypasses the framework-level lock check
+            const draftTable = `${RT.name}.drafts`;
+            await DELETE.from(draftTable).where({ ID: requestTypeId });
+
+            LOG.info(`Draft discarded for RequestType ${requestTypeId}`);
+        } catch (err: any) {
+            LOG.error(`Failed to discard draft for ${requestTypeId}:`, err.message);
+            return req.error(500, `Failed to discard draft: ${err.message}`);
         }
     }
 
