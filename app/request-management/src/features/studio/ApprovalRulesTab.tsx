@@ -66,7 +66,8 @@ export function ApprovalRulesTab() {
             assignToName: '',
             assignType: 'USER',  // Default to 'USER' type
             isFinal: false,
-            expanded: false
+            expanded: false,
+            isActive: false
         };
         const newRules = [...rules, newRule];
         setRules(newRules);

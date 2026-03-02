@@ -35,6 +35,10 @@ interface StudioState {
     selectedRuleId: string | null;
     isDryRunOpen: boolean;
 
+    // Draft Conflict State
+    draftConflict: boolean;               // True when a 409 conflict was detected
+    draftConflictMessage: string | null;   // The conflict message to display
+
     // Actions
     setActiveTab: (tab: string) => void;
     setDirty: (dirty: boolean) => void;
@@ -43,6 +47,7 @@ interface StudioState {
     saveChanges: () => Promise<void>;
     deleteRequestType: () => Promise<void>;
     deleteStep: (stepId: string) => void;
+    resolveDraftConflict: () => Promise<void>; // Discard other user's draft and retry
 
     // Updaters (Set Dirty automatically)
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
@@ -80,6 +85,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     selectedRuleId: null,
     isDryRunOpen: false,
 
+    // Draft Conflict
+    draftConflict: false,
+    draftConflictMessage: null,
+
     setActiveTab: (tab) => set({ activeTab: tab }),
     setDirty: (dirty) => set({ isDirty: dirty }),
     setActiveStepId: (id) => {
@@ -99,7 +108,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             return;
         }
 
-        set({ isLoading: true, error: null, requestTypeId: id });
+        set({ isLoading: true, error: null, draftConflict: false, draftConflictMessage: null, requestTypeId: id });
         try {
             console.log("Loading Request Type...", id);
             let fullDraft;
@@ -124,6 +133,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                         // If edit also fails with 404, the active entity doesn't exist
                         if (editErr.response?.status === 404) {
                             throw new Error("Request Type not found. It may have been deleted.");
+                        }
+                        // 409 = Draft conflict - another user has a draft lock
+                        if (editErr.response?.status === 409) {
+                            set({
+                                isLoading: false,
+                                draftConflict: true,
+                                draftConflictMessage: 'Another user is currently editing this Request Type. Do you want to discard their unsaved changes and take over?'
+                            });
+                            return;
                         }
                         throw new Error(`Could not create draft: ${editErr.message || 'Unknown error'}`);
                     }
@@ -396,6 +414,24 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 isSaving: false,
                 error: errMsg
             });
+        }
+    },
+
+    resolveDraftConflict: async () => {
+        const { requestTypeId } = get();
+        if (!requestTypeId) return;
+
+        set({ isLoading: true, draftConflict: false, draftConflictMessage: null, error: null });
+        try {
+            console.log("Resolving draft conflict: discarding other user's draft...");
+            await AdminService.discardDraft(requestTypeId);
+            console.log("Draft discarded. Retrying load...");
+            // Retry loading (which will create a new draft for the current user)
+            await get().loadRequestType(requestTypeId);
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : 'Failed to take over draft';
+            console.error("Draft conflict resolution failed:", err);
+            set({ isLoading: false, error: errMsg });
         }
     },
 

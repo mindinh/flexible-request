@@ -1,4 +1,4 @@
-import { AlertCircle, User, MousePointerClick } from 'lucide-react';
+import { AlertCircle, MousePointerClick } from 'lucide-react';
 import { WorkflowTimeline } from '../../../../components/shared';
 import type { WorkflowStepStatus } from '../../../../components/shared';
 import type { StepDefinition, ResolvedApproversMap } from '../../../../types';
@@ -23,8 +23,22 @@ interface WorkflowPreviewPanelProps {
 }
 
 /**
+ * Robust display name fallback to ensure assignee is never blank.
+ * Order: explicit display name → resolved principal name → safe label → raw ID
+ */
+function resolveDisplayName(
+    primary: string | null | undefined,
+    fallback: string | null | undefined,
+    safeLabel: string
+): string {
+    if (primary && primary.trim()) return primary.trim();
+    if (fallback && fallback.trim()) return fallback.trim();
+    return safeLabel;
+}
+
+/**
  * Sidebar panel showing workflow preview with dynamically resolved approvers.
- * Supports step selection for configuring step owners.
+ * Uses variant="preview" for enriched step cards with always-visible details.
  */
 export function WorkflowPreviewPanel({
     steps,
@@ -53,19 +67,24 @@ export function WorkflowPreviewPanel({
             ? stepResolvedApprovers.map(resolved => ({
                 ruleName: resolved.ruleName,
                 approvers: [{
-                    name: resolved.approverDisplayName || resolved.approverValue,
+                    // Robust fallback: displayName → approverValue → "Unassigned"
+                    name: resolveDisplayName(
+                        resolved.approverDisplayName,
+                        resolved.approverValue,
+                        'Unassigned'
+                    ),
                     type: (resolved.approverType?.toUpperCase() || 'ROLE') as 'USER' | 'ROLE'
                 }]
             }))
             : undefined;
 
-        // Get step owner - prioritize assigned owner from stepOwners map
+        // Get step owner — prioritize assigned owner from stepOwners map
         const assignedOwner = stepOwners[step.ID];
 
-        // If assignedOwner is present (even if empty/cleared), use it. Otherwise fallback to default.
+        // Robust owner display: assignedOwner → step default → "Request Coordinator"
         const ownerDisplayName = assignedOwner
-            ? (assignedOwner.ownerName || null)
-            : (step.ownerDisplayName || step.ownerId || null);
+            ? resolveDisplayName(assignedOwner.ownerName, assignedOwner.ownerId, 'Request Coordinator')
+            : resolveDisplayName(step.ownerDisplayName, step.ownerId, 'Request Coordinator');
 
         return {
             id: step.ID,
@@ -74,38 +93,15 @@ export function WorkflowPreviewPanel({
             slaDays: step.slaDays,
             ownerName: ownerDisplayName,
             approvalRules: approvalRules,
-            subtitle: (
-                <div className="space-y-1">
-                    {status === 'STARTED' && <span className="text-amber-600 font-medium">Data entry required</span>}
-                    {status === 'IN_PROGRESS' && <span className="text-blue-600 font-medium">In Progress</span>}
-                    {status === 'COMPLETED' && <span className="text-emerald-600 font-medium">Completed</span>}
-                    {status === 'REJECTED' && <span className="text-rose-600 font-medium">Rejected</span>}
-                    {status === 'SKIPPED' && <span className="text-slate-500">Skipped</span>}
-                    {status === 'UPCOMING' && <span className="text-slate-500">Upcoming</span>}
-
-                    {/* Display Step Owner */}
-                    {ownerDisplayName && (
-                        <div className="flex items-center gap-1 text-xs text-slate-500">
-                            <User className="w-3 h-3" />
-                            <span>{ownerDisplayName}</span>
-                        </div>
-                    )}
-                    {!ownerDisplayName && (
-                        <div className="flex items-center gap-1 text-xs text-slate-400 italic">
-                            <User className="w-3 h-3" />
-                            <span>Request Coordinator</span>
-                        </div>
-                    )}
-                </div>
-            )
         };
     });
 
     return (
         <div className="sticky top-6 space-y-6">
-            {/* Workflow Preview Card */}
+            {/* Workflow Preview Card — uses "preview" variant for rich step cards */}
             <WorkflowTimeline
                 steps={workflowSteps}
+                variant="preview"
                 onStepClick={onStepClick}
                 selectedStepId={selectedStepId}
             />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Eye, Sparkles, Loader2, ArrowLeft, ExternalLink, FormInput, Type, Copy, Settings2, ChevronDown, Trash2, List, FlaskConical } from 'lucide-react';
+import { Save, Eye, Sparkles, Loader2, ArrowLeft, ExternalLink, FormInput, Type, Copy, Settings2, ChevronDown, Trash2, List, FlaskConical, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { StudioLayout } from '../../layouts/StudioLayout';
 import { StepDetailsPanel, StudioHeader, TabNavigation, LeftPanel, RightPanel, FormField, StudioToastProvider, useStudioToast, getTopologicalSortedNodes } from '../../components/studio';
@@ -63,7 +63,11 @@ function StudioContent() {
         schema,
         updateSchema,
         selectedSchemaFieldId,
-        setSelectedSchemaFieldId
+        setSelectedSchemaFieldId,
+        // Draft conflict
+        draftConflict,
+        draftConflictMessage,
+        resolveDraftConflict
     } = useStudioStore();
 
     // To track previous saving state for toast
@@ -208,6 +212,39 @@ function StudioContent() {
                     >
                         Back to Studio
                     </Button>
+                </div>
+            </div>
+        );
+    }
+
+    // Draft conflict screen
+    if (draftConflict) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[var(--studio-bg-secondary)]">
+                <div className="max-w-md text-center p-8 rounded-xl bg-[var(--studio-bg-primary)] border border-[var(--studio-border)] shadow-lg">
+                    <div className="flex justify-center mb-4">
+                        <div className="w-16 h-16 rounded-full bg-amber-500/15 flex items-center justify-center">
+                            <AlertTriangle className="text-amber-500" size={32} />
+                        </div>
+                    </div>
+                    <h2 className="text-xl font-bold text-[var(--studio-text-primary)] mb-2">Draft Conflict</h2>
+                    <p className="text-[var(--studio-text-secondary)] mb-6">
+                        {draftConflictMessage || 'Another user is currently editing this Request Type.'}
+                    </p>
+                    <div className="flex gap-3 justify-center">
+                        <Button
+                            variant="ghost"
+                            onClick={() => navigate('/studio')}
+                        >
+                            Go Back
+                        </Button>
+                        <Button
+                            className="bg-amber-500 hover:bg-amber-600 text-white"
+                            onClick={resolveDraftConflict}
+                        >
+                            Edit
+                        </Button>
+                    </div>
                 </div>
             </div>
         );

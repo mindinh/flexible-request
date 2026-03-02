@@ -20,7 +20,8 @@ service AdminService @(
             steps : redirected to StepDefinitions
         }
         actions {
-            action clone() returns RequestTypes;
+            action clone()        returns RequestTypes;
+            action discardDraft() returns RequestTypes;
         };
 
     @restrict: [{

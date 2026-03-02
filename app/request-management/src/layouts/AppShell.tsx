@@ -1,5 +1,5 @@
-import { Outlet } from 'react-router-dom';
-import { useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Search, User } from 'lucide-react';
 import { Button } from '../components/ui';
@@ -8,7 +8,15 @@ import { DevUserSwitcher } from '../components/dev/DevUserSwitcher';
 import { NotificationPopover } from '../features/notifications/NotificationPopover';
 
 export const AppShell = () => {
+    const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+    // Auto-collapse sidebar when navigating to the Inbox page
+    useEffect(() => {
+        if (location.pathname === '/inbox') {
+            setSidebarCollapsed(true);
+        }
+    }, [location.pathname]);
 
     return (
         <div className="flex h-screen bg-gray-100 overflow-hidden">

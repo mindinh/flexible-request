@@ -62,10 +62,11 @@ export const AdminService = {
     },
 
     /**
-     * Discard a Draft
+     * Discard a Draft (Force Unlock / Draft Takeover)
+     * Uses the custom bound action that bypasses CAP's draft lock
      */
     async discardDraft(id: string): Promise<void> {
-        await api.delete(`${API_BASE}/RequestTypes(ID='${id}',IsActiveEntity=false)`);
+        await api.post(`${API_BASE}/RequestTypes(ID='${id}',IsActiveEntity=true)/AdminService.discardDraft`);
     },
 
     /**

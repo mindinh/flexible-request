@@ -1,5 +1,5 @@
-import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, ChevronRight, User, Users } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users, Calendar, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from '../ui';
 
 export type WorkflowStepStatus = 'COMPLETED' | 'IN_PROGRESS' | 'STARTED' | 'IN_CLARIFICATION' | 'UPCOMING' | 'PENDING' | 'REJECTED' | 'SKIPPED';
@@ -24,6 +24,14 @@ export interface WorkflowTimelineStep {
     subtitle?: React.ReactNode;
     status: WorkflowStepStatus;
     slaDays?: number;
+    /** Display name of the step owner/assignee */
+    ownerName?: string | null;
+    /** Decision date (ISO string) — rendered when available */
+    decisionDate?: string | null;
+    /** SLA info text (e.g. "2 days remaining", "1 day overdue") */
+    slaInfo?: string | null;
+    /** Decision note / comment */
+    decisionNote?: string | null;
     /** @deprecated Use approvalRules instead for grouped display */
     approvers?: { name: string; type?: string }[];
     /** Grouped approval rules with rule name and approvers */
@@ -36,10 +44,44 @@ interface WorkflowTimelineProps {
     requestStatus?: 'COMPLETED' | 'REJECTED' | 'WITHDRAWN' | string;
     showCompletion?: boolean;
     className?: string;
-    isSimulation?: boolean; // New prop to control "Live Simulation" badge
+    isSimulation?: boolean;
+    /**
+     * Display variant:
+     * - "default": Standard collapsible timeline (detail/inbox)
+     * - "preview": Rich step cards, auto-expanded, inline approval rules (form sidebar)
+     */
+    variant?: 'default' | 'preview';
     onStepClick?: (stepId: string) => void;
     selectedStepId?: string;
 }
+
+// ─── Status helpers ──────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<WorkflowStepStatus, {
+    label: string;
+    badgeBg: string;
+    badgeText: string;
+}> = {
+    COMPLETED: { label: 'Approved', badgeBg: 'bg-emerald-100', badgeText: 'text-emerald-700' },
+    REJECTED: { label: 'Rejected', badgeBg: 'bg-rose-100', badgeText: 'text-rose-700' },
+    IN_PROGRESS: { label: 'In Progress', badgeBg: 'bg-blue-100', badgeText: 'text-blue-700' },
+    STARTED: { label: 'Data Entry', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
+    IN_CLARIFICATION: { label: 'Clarification', badgeBg: 'bg-purple-100', badgeText: 'text-purple-700' },
+    PENDING: { label: 'Pending', badgeBg: 'bg-orange-100', badgeText: 'text-orange-700' },
+    UPCOMING: { label: 'Waiting', badgeBg: 'bg-slate-100', badgeText: 'text-slate-500' },
+    SKIPPED: { label: 'Skipped', badgeBg: 'bg-slate-100', badgeText: 'text-slate-400' },
+};
+
+function StatusBadge({ status }: { status: WorkflowStepStatus }) {
+    const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.UPCOMING;
+    return (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${cfg.badgeBg} ${cfg.badgeText}`}>
+            {cfg.label}
+        </span>
+    );
+}
+
+// ─── Main component ──────────────────────────────────────────────
 
 export function WorkflowTimeline({
     title = "Workflow Preview",
@@ -48,27 +90,64 @@ export function WorkflowTimeline({
     showCompletion = true,
     className,
     isSimulation,
+    variant = 'default',
     onStepClick,
     selectedStepId
 }: WorkflowTimelineProps) {
+    const isPreview = variant === 'preview';
+
     // Default isSimulation to true if title is "Workflow Preview", otherwise false
     const showSimulationBadge = isSimulation !== undefined ? isSimulation : title === "Workflow Preview";
 
-    // Calculate initial expanded state - auto-expand active steps
-    const initialExpandedSteps = useMemo(() => {
-        const activeStatuses = ['IN_PROGRESS', 'STARTED', 'IN_CLARIFICATION'];
-        return steps.reduce((acc, step) => {
-            if (activeStatuses.includes(step.status)) {
-                acc[step.id] = true;
-            }
-            return acc;
-        }, {} as Record<string, boolean>);
-    }, []); // Empty deps - only calculate once on mount
+    // ── Expansion state ──────────────────────────────────────────
+    // Derive which steps should be expanded based on variant + step data.
+    // Re-derive whenever steps array identity changes (new approvers / status).
+    const deriveExpanded = useMemo(() => {
+        const result: Record<string, boolean> = {};
+        for (const step of steps) {
+            const hasRules = (step.approvalRules && step.approvalRules.length > 0) ||
+                (step.approvers && step.approvers.length > 0);
 
-    const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>(initialExpandedSteps);
+            if (isPreview) {
+                // Preview: always expand steps that have rules
+                result[step.id] = !!hasRules;
+            } else {
+                // Default: expand active steps
+                const activeStatuses: WorkflowStepStatus[] = ['IN_PROGRESS', 'STARTED', 'IN_CLARIFICATION'];
+                if (activeStatuses.includes(step.status)) {
+                    result[step.id] = true;
+                }
+            }
+        }
+        return result;
+    }, [steps, isPreview]);
+
+    const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>(deriveExpanded);
+    const prevStepsRef = useRef(steps);
+
+    // Sync expansion state when steps change (additive — preserve user toggles for unchanged steps)
+    useEffect(() => {
+        if (prevStepsRef.current !== steps) {
+            setExpandedSteps(prev => {
+                const next = { ...prev };
+                for (const step of steps) {
+                    // Only auto-set for new/changed steps — don't override manual toggles
+                    if (deriveExpanded[step.id] !== undefined && prev[step.id] === undefined) {
+                        next[step.id] = deriveExpanded[step.id];
+                    }
+                    // In preview mode, force-expand when rules first appear
+                    if (isPreview && deriveExpanded[step.id] && !prev[step.id]) {
+                        next[step.id] = true;
+                    }
+                }
+                return next;
+            });
+            prevStepsRef.current = steps;
+        }
+    }, [steps, deriveExpanded, isPreview]);
 
     const toggleStep = (stepId: string, e: React.MouseEvent) => {
-        e.stopPropagation(); // Prevent step selection when clicking expand/collapse
+        e.stopPropagation();
         setExpandedSteps(prev => ({
             ...prev,
             [stepId]: !prev[stepId]
@@ -76,7 +155,6 @@ export function WorkflowTimeline({
     };
 
     const getTypeStyles = (status: WorkflowStepStatus) => {
-        // ... (existing implementation)
         switch (status) {
             case 'COMPLETED':
                 return {
@@ -84,7 +162,7 @@ export function WorkflowTimeline({
                     border: 'border-emerald-500',
                     icon: Check,
                     iconColor: 'text-white',
-                    lineColor: 'bg-emerald-500', // Solid background for solid line
+                    lineColor: 'bg-emerald-500',
                     lineStyle: 'solid'
                 };
             case 'REJECTED':
@@ -102,7 +180,7 @@ export function WorkflowTimeline({
                     border: 'border-blue-600',
                     icon: Loader2,
                     iconColor: 'text-white',
-                    lineColor: 'text-blue-200', // Text color for dashed line gradient
+                    lineColor: 'text-blue-200',
                     lineStyle: 'dashed'
                 };
             case 'STARTED':
@@ -166,13 +244,12 @@ export function WorkflowTimeline({
                 opacity: 'opacity-100'
             };
         }
-        // Default / Pending
         return {
             bg: 'bg-slate-50',
             border: 'border-slate-200',
-            icon: Circle, // Changed to Circle
+            icon: Circle,
             iconColor: 'text-slate-300',
-            opacity: 'opacity-60' // Kept opaque for pending state
+            opacity: 'opacity-60'
         };
     };
 
@@ -263,14 +340,62 @@ export function WorkflowTimeline({
                                                     </span>
                                                 )}
                                             </p>
-                                            <div className="text-xs text-slate-500 mt-1">
-                                                {step.subtitle}
-                                            </div>
-                                            {step.slaDays && (
-                                                <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                    <Clock className="w-3 h-3" />
-                                                    <span>SLA: {step.slaDays} days</span>
-                                                </p>
+
+                                            {/* ── Preview variant: rich detail rows ── */}
+                                            {isPreview ? (
+                                                <div className="mt-1.5 space-y-1">
+                                                    {/* Status badge */}
+                                                    <StatusBadge status={step.status} />
+
+                                                    {/* Assignee row — always visible, never empty */}
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                                        <User className="w-3 h-3 text-slate-400 flex-none" />
+                                                        <span className={step.ownerName ? 'font-medium' : 'italic text-slate-400'}>
+                                                            {step.ownerName || 'Unassigned'}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Decision date */}
+                                                    {step.decisionDate && (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                            <Calendar className="w-3 h-3 text-slate-400 flex-none" />
+                                                            <span>
+                                                                {new Date(step.decisionDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* SLA row */}
+                                                    {(step.slaInfo || step.slaDays) && (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                            <Clock className="w-3 h-3 text-slate-400 flex-none" />
+                                                            <span>{step.slaInfo || `SLA: ${step.slaDays} days`}</span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Decision note */}
+                                                    {step.decisionNote && (
+                                                        <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-1">
+                                                            <MessageSquare className="w-3 h-3 text-slate-400 flex-none mt-0.5" />
+                                                            <p className="italic leading-snug border-l-2 border-slate-200 pl-2">
+                                                                {step.decisionNote}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                /* ── Default variant: original subtitle + SLA ── */
+                                                <>
+                                                    <div className="text-xs text-slate-500 mt-1">
+                                                        {step.subtitle}
+                                                    </div>
+                                                    {step.slaDays && (
+                                                        <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                            <Clock className="w-3 h-3" />
+                                                            <span>SLA: {step.slaDays} days</span>
+                                                        </p>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>
@@ -302,7 +427,13 @@ export function WorkflowTimeline({
                                                                         ) : (
                                                                             <User className="w-2.5 h-2.5 text-slate-400" />
                                                                         )}
-                                                                        <span className="font-medium">{approver.name}</span>
+                                                                        <span className="font-medium">{approver.name || 'Unassigned'}</span>
+                                                                        {/* Type label for group/role assignments */}
+                                                                        {approver.type && ['ROLE', 'GROUP', 'TEAM', 'POSITION'].includes(approver.type) && (
+                                                                            <span className="text-[8px] uppercase px-1 py-0.5 rounded bg-slate-200/60 text-slate-500 font-medium">
+                                                                                {approver.type}
+                                                                            </span>
+                                                                        )}
                                                                         {/* Status Badge */}
                                                                         {approver.status && (
                                                                             <span className={`
