@@ -13,6 +13,12 @@ using {
     sap.cre.GroupMembers
 } from './schema/identity';
 
+// Import notifications schema
+using { sap.cre.Notifications } from './schema/notifications';
+
+// Import system settings schema (NumberRanges)
+using { sap.cre.NumberRanges } from './schema/settings';
+
 // ----------------------------------------------------------------------------
 // Configuration Entities (Blueprints)
 // ----------------------------------------------------------------------------
@@ -132,6 +138,7 @@ entity ApproverRules : cuid, managedWithUser {
  * An instance of a Request.
  */
 entity Requests : cuid, managedWithUser {
+    displayId       : String(50);  // Human-readable ID (e.g., LVE-001023), generated on creation
     title           : String;
     description     : LargeString; // Justification for the request
     requestType     : Association to RequestTypes;

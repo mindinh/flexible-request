@@ -8,7 +8,9 @@ import {
     Plug,
     ChevronLeft,
     ChevronRight,
+    SlidersHorizontal,
 } from 'lucide-react';
+import { useAuth } from '../lib/auth-context';
 
 interface NavItem {
     path: string;
@@ -22,6 +24,7 @@ const navItems: NavItem[] = [
     { path: '/studio', label: 'Request Type Studio', icon: <Settings style={{ width: '20px', height: '20px' }} /> },
     { path: '/organization', label: 'Organization', icon: <Users style={{ width: '20px', height: '20px' }} /> },
     { path: '/integrations', label: 'Integrations', icon: <Plug style={{ width: '20px', height: '20px' }} /> },
+    { path: '/settings', label: 'System Settings', icon: <SlidersHorizontal style={{ width: '20px', height: '20px' }} /> },
     { path: '/wiki', label: 'Wiki', icon: <BookOpen style={{ width: '20px', height: '20px' }} /> },
 ];
 
@@ -31,6 +34,16 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ collapsed = false, onToggle }: SidebarProps) => {
+    const { isAdmin } = useAuth();
+
+    const filteredNavItems = navItems.filter(item => {
+        // Admin-only paths
+        if (['/studio', '/organization', '/integrations', '/settings'].includes(item.path)) {
+            return isAdmin;
+        }
+        return true;
+    });
+
     return (
         <aside
             style={{
@@ -71,7 +84,7 @@ export const Sidebar = ({ collapsed = false, onToggle }: SidebarProps) => {
 
             {/* Navigation */}
             <nav style={{ flex: 1, padding: '16px 8px' }}>
-                {navItems.map((item) => (
+                {filteredNavItems.map((item) => (
                     <NavLink
                         key={item.path}
                         to={item.path}

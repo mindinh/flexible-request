@@ -98,4 +98,18 @@ service AdminService @(
         to   : 'admin'
     }]
     entity SamlGroupMappings as projection on db.SamlGroupMappings;
+
+    // === System Settings: Number Ranges ===
+    @restrict: [{
+        grant: '*',
+        to   : 'admin'
+    }]
+    entity NumberRanges      as projection on db.NumberRanges {
+        *,
+        requestType : redirected to RequestTypes
+    }
+    actions {
+        // Reset the counter back to startNumber
+        action resetRange();
+    };
 }

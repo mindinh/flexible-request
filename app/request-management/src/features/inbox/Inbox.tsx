@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, XCircle, Clock, User, Users, ChevronRight, Briefcase } from 'lucide-react';
-import { Button, Card, Badge, Dialog, TextArea, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
+import { Button, Card, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, TextArea, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { RequestService } from '../../services/RequestService';
+import type { Request as ProRequest } from '../../types';
 
 
 // InboxItem format returned by backend functions (getMyTasks, getTeamTasks, getCoordinatingRequests)
@@ -89,7 +90,6 @@ export const Inbox = () => {
         }
     };
 
-
     // Render inbox item card (for InboxItem format from backend functions)
     const renderInboxItemCard = (item: InboxItem, isTeamTask = false) => (
         <Card key={item.stepApprovalId || item.requestId} className="hover:shadow-md transition-shadow">
@@ -107,19 +107,19 @@ export const Inbox = () => {
                             {item.requestTitle || 'Unknown Request'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="neutral" size="sm">
+                            <Badge variant="neutral">
                                 {item.requestType}
                             </Badge>
                             <span className="text-sm text-gray-500">
                                 Step: {item.stepName}
                             </span>
                             {isTeamTask && (
-                                <Badge variant="secondary" size="sm" className="bg-violet-100 text-violet-700">
+                                <Badge variant="secondary" className="bg-violet-100 text-violet-700">
                                     Team Task
                                 </Badge>
                             )}
                             {item.claimedBy && (
-                                <Badge variant="secondary" size="sm" className="bg-blue-100 text-blue-700">
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                                     Claimed by: {item.claimedBy}
                                 </Badge>
                             )}
@@ -153,7 +153,11 @@ export const Inbox = () => {
                     <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => navigate(`/requests/${item.requestId}`)}
+                        onClick={() => {
+                            if (item.requestId && item.requestId !== 'null') {
+                                navigate(`/requests/${item.requestId}`);
+                            }
+                        }}
                         className="text-gray-400 hover:text-gray-600"
                     >
                         <ChevronRight className="w-5 h-5" />
@@ -163,37 +167,42 @@ export const Inbox = () => {
         </Card>
     );
 
-    // Render coordinating request card (uses InboxItem format)
-    const renderCoordinatingCard = (item: InboxItem) => (
-        <Card key={item.requestId} className="hover:shadow-md transition-shadow">
+    // Render coordinating request card (uses Project Request format)
+    const renderCoordinatingCard = (item: ProRequest) => (
+        <Card key={item.ID} className="hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
                         <Briefcase className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                        <h3 className="font-medium text-gray-900">{item.requestTitle}</h3>
+                        <h3 className="font-medium text-gray-900">{item.title}</h3>
                         <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="neutral" size="sm">
-                                {item.requestType}
+                            <Badge variant="neutral">
+                                {item.requestType?.title || 'Unknown Type'}
                             </Badge>
                             <Badge
                                 variant={item.status === 'IN_PROGRESS' ? 'warning' : 'neutral'}
-                                size="sm"
                             >
                                 {item.status}
                             </Badge>
                         </div>
                     </div>
                 </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => navigate(`/requests/${item.requestId}`)}
-                    className="text-gray-400 hover:text-gray-600"
-                >
-                    <ChevronRight className="w-5 h-5" />
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                            if (item.ID && item.ID !== 'null') {
+                                navigate(`/requests/${item.ID}`);
+                            }
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                    >
+                        <ChevronRight className="w-5 h-5" />
+                    </Button>
+                </div>
             </div>
         </Card>
     );
@@ -236,7 +245,7 @@ export const Inbox = () => {
                         <User className="w-4 h-4" />
                         My Tasks
                         {myApprovals.length > 0 && (
-                            <Badge variant="secondary" size="sm" className="ml-1">
+                            <Badge variant="secondary" className="ml-1">
                                 {myApprovals.length}
                             </Badge>
                         )}
@@ -245,7 +254,7 @@ export const Inbox = () => {
                         <Users className="w-4 h-4" />
                         Team Tasks
                         {teamApprovals.length > 0 && (
-                            <Badge variant="secondary" size="sm" className="ml-1 bg-violet-100 text-violet-700">
+                            <Badge variant="secondary" className="ml-1 bg-violet-100 text-violet-700">
                                 {teamApprovals.length}
                             </Badge>
                         )}
@@ -254,7 +263,7 @@ export const Inbox = () => {
                         <Briefcase className="w-4 h-4" />
                         Coordinating
                         {coordinatingRequests.length > 0 && (
-                            <Badge variant="secondary" size="sm" className="ml-1 bg-emerald-100 text-emerald-700">
+                            <Badge variant="secondary" className="ml-1 bg-emerald-100 text-emerald-700">
                                 {coordinatingRequests.length}
                             </Badge>
                         )}
@@ -307,7 +316,7 @@ export const Inbox = () => {
                         />
                     ) : (
                         <div className="space-y-4">
-                            {coordinatingRequests.map((item: InboxItem) => renderCoordinatingCard(item))}
+                            {coordinatingRequests.map((item: ProRequest) => renderCoordinatingCard(item))}
                         </div>
                     )}
                 </TabsContent>
@@ -316,36 +325,43 @@ export const Inbox = () => {
             {/* Reject Dialog */}
             <Dialog
                 open={showRejectDialog}
-                onClose={() => {
-                    setShowRejectDialog(false);
-                    setRejectReason('');
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setShowRejectDialog(false);
+                        setRejectReason('');
+                    }
                 }}
-                title="Reject Approval"
-                size="md"
-                footer={
-                    <>
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reject Approval</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <label className="text-sm font-medium text-gray-700">Reason for rejection</label>
+                        <TextArea
+                            placeholder="Please provide a reason..."
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            rows={4}
+                            required
+                        />
+                    </div>
+
+                    <DialogFooter>
                         <Button variant="ghost" onClick={() => setShowRejectDialog(false)}>
                             Cancel
                         </Button>
                         <Button
-                            variant="danger"
+                            variant="destructive"
                             onClick={handleReject}
                             disabled={!rejectReason.trim()}
                             isLoading={rejectMutation.isPending}
                         >
                             Reject
                         </Button>
-                    </>
-                }
-            >
-                <TextArea
-                    label="Reason for rejection"
-                    placeholder="Please provide a reason..."
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    rows={4}
-                    required
-                />
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
         </div>
     );

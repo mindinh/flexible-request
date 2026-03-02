@@ -115,6 +115,13 @@ service RequestService @(
     @readonly
     entity ApiConnections        as projection on db.ApiConnections;
 
+    // In-App Notifications (Bell Icon)
+    entity Notifications         as projection on db.Notifications
+        actions {
+            action markAsRead();
+            action markAllAsRead();
+        };
+
     // Organization Data (ReadOnly for Lookup)
     @readonly
     entity ShadowUsers           as projection on db.ShadowUsers;

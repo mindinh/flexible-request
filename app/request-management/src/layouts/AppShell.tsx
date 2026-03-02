@@ -1,10 +1,11 @@
 import { Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { Bell, Search, User } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { Button } from '../components/ui';
 import { Input } from '../components/ui/Input';
 import { DevUserSwitcher } from '../components/dev/DevUserSwitcher';
+import { NotificationPopover } from '../features/notifications/NotificationPopover';
 
 export const AppShell = () => {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -53,19 +54,8 @@ export const AppShell = () => {
                         {/* Dev User Switcher (only visible in development) */}
                         <DevUserSwitcher />
 
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="relative"
-                            aria-label="View notifications"
-                        >
-                            <Bell className="w-5 h-5 text-gray-600" aria-hidden="true" />
-                            <span
-                                className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"
-                                aria-label="New notifications available"
-                                role="status"
-                            />
-                        </Button>
+                        <NotificationPopover />
+
                         <Button
                             variant="ghost"
                             size="icon"

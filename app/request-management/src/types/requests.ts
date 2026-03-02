@@ -111,6 +111,7 @@ export interface RequestTypeConfig {
  */
 export interface RequestWithDetails {
     ID: string;
+    displayId: string;
     title: string;
     status: RequestStatus | string;
     priority: RequestPriority | string;
@@ -129,6 +130,7 @@ export interface RequestWithDetails {
  */
 export interface RequestListItem {
     ID: string;
+    displayId?: string;
     title: string;
     status: RequestStatus | string;
     priority: RequestPriority | string;

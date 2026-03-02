@@ -15,7 +15,7 @@ import type { Request as CdsRequest, RequestType as CdsRequestType, Step as CdsS
 // =============================================================================
 
 // Entity Types (use these for type annotations)
-export type Request = CdsRequest;
+export type Request = CdsRequest & { displayId?: string };
 export type RequestType = CdsRequestType;
 export type Step = CdsStep;
 

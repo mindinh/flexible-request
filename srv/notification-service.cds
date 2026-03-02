@@ -9,3 +9,8 @@ event StepApprovalCreated {
     stepId         : UUID;
     requestId      : UUID;
 }
+
+event StepActivated {
+    stepId         : UUID;
+    requestId      : UUID;
+}

@@ -33,6 +33,9 @@ const WikiPage = lazy(() =>
 const IntegrationsPage = lazy(() =>
   import('./features/integrations/IntegrationsPage').then(m => ({ default: m.IntegrationsPage }))
 );
+const NumberRangePage = lazy(() =>
+  import('./features/settings/NumberRangePage').then(m => ({ default: m.NumberRangePage }))
+);
 
 /**
  * Suspense wrapper with loading fallback
@@ -141,6 +144,15 @@ function App() {
                 element={
                   <SuspenseWrapper>
                     <IntegrationsPage />
+                  </SuspenseWrapper>
+                }
+              />
+              {/* System Settings */}
+              <Route
+                path="/settings"
+                element={
+                  <SuspenseWrapper>
+                    <NumberRangePage />
                   </SuspenseWrapper>
                 }
               />

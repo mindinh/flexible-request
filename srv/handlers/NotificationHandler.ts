@@ -1,16 +1,108 @@
 import cds from '@sap/cds';
-import { SELECT } from '../lib/db';
+import { SELECT, UPDATE } from '../lib/db';
 import { EmailService } from '../lib/email-service';
+import { IdentityProvisioner } from '../lib/identity-provisioner';
 
 export class NotificationHandler {
     private static log = cds.log('notification-handler');
 
-    static register() {
-        this.log.info('[notification-handler] Registering StepApprovalCreated listener...');
+    static register(srv: cds.ApplicationService) {
+        this.log.info('[notification-handler] Registering notifications logic...');
 
+        // 1. Event Listeners (from workflow engine)
         (cds as any).on('sap.cre.StepApprovalCreated', async (data: any) => {
             await this.handleStepApprovalCreated(data.stepApprovalId, data.stepId, data.requestId);
         });
+
+        (cds as any).on('sap.cre.StepActivated', async (data: any) => {
+            await this.handleStepActivated(data.stepId, data.requestId);
+        });
+
+        // 2. Action Handlers (from frontend)
+        srv.on('markAsRead', 'Notifications', async (req) => {
+            const { ID } = req.params[0];
+            await UPDATE('sap.cre.Notifications', ID).with({ isRead: true });
+            return true;
+        });
+
+        srv.on('markAllAsRead', 'Notifications', async (req) => {
+            const userId = req.user.id;
+            const origin = IdentityProvisioner.getOrigin(req.user);
+
+            const db = await cds.connect.to('db');
+            const { ShadowUsers } = db.entities('sap.cre');
+            const user = await SELECT.one.from(ShadowUsers).where({ userId, origin });
+
+            if (user) {
+                await UPDATE('sap.cre.Notifications').where({ recipient_ID: user.ID }).with({ isRead: true });
+            }
+            return true;
+        });
+    }
+
+    private static async handleStepActivated(stepId: string, requestId: string) {
+        try {
+            this.log.info(`[notification-handler] Processing StepActivated for step: ${stepId}`);
+
+            const db = await cds.connect.to('db');
+            const { Steps, Requests, ShadowUsers, GroupMembers } = db.entities('sap.cre');
+
+            // 1. Fetch Step and Request
+            const step = await SELECT.one.from(Steps, stepId).columns('ID', 'ownerId', 'ownerType');
+            const request = await SELECT.one.from(Requests, requestId).columns('ID', 'displayId', 'title', 'priority');
+
+            if (!step || !request) {
+                this.log.warn(`[notification-handler] Missing data for step ${stepId} or request ${requestId}`);
+                return;
+            }
+
+            // 2. Resolve owner IDs (could be multiple if group)
+            const recipientIds: string[] = [];
+            const groupTypes = ['GROUP', 'ROLE', 'TEAM', 'DEPARTMENT', 'POSITION'];
+
+            if (step.ownerType === 'USER' && step.ownerId) {
+                recipientIds.push(step.ownerId);
+            } else if (groupTypes.includes(step.ownerType) && step.ownerId) {
+                const members = await SELECT.from(GroupMembers).where({ group_ID: step.ownerId }).columns('user_ID');
+                members.forEach((m: any) => { if (m.user_ID) recipientIds.push(m.user_ID); });
+            }
+
+            // 3. Create Notifications
+            const title = 'Data Input Required';
+            const message = `${request.displayId || 'Request'} needs your input`;
+
+            for (const userId of recipientIds) {
+                await this.createInAppNotification(userId, title, message, request, stepId, 'DATA_INPUT', 'Step Owner');
+            }
+
+        } catch (error: any) {
+            this.log.error('[notification-handler] Failed to handle StepActivated:', error.message);
+        }
+    }
+
+    private static async createInAppNotification(
+        userId: string,
+        title: string,
+        message: string,
+        request: any,
+        stepId: string,
+        type: string,
+        role: string
+    ) {
+        const db = await cds.connect.to('db');
+        const { Notifications } = db.entities('sap.cre');
+
+        await db.create(Notifications).entries({
+            recipient_ID: userId,
+            title,
+            message,
+            priority: request.priority || 'MEDIUM',
+            type,
+            request_ID: request.ID,
+            stepId,
+            role
+        });
+        this.log.info(`[notification-handler] Created in-app notification (${type}) for user: ${userId}`);
     }
 
     private static async handleStepApprovalCreated(approvalId: string, stepId: string, requestId: string) {
@@ -24,7 +116,7 @@ export class NotificationHandler {
             const approval = await SELECT.one.from(StepApprovals, approvalId);
             const step = await SELECT.one.from(Steps, stepId)
                 .columns((s: any) => { s.ID; s.stepDefinition((sd: any) => { sd.stepName; }); });
-            const request = await SELECT.one.from(Requests, requestId).columns('ID', 'title', 'priority', 'createdBy');
+            const request = await SELECT.one.from(Requests, requestId).columns('ID', 'displayId', 'title', 'priority', 'createdBy');
 
             if (!approval || !step || !request) {
                 throw new Error('Missing data for notification, aborting.');
@@ -82,38 +174,62 @@ export class NotificationHandler {
                 } catch { /* ignore parse error */ }
             }
 
-            // 4. Build email content
-            const appUrl = process.env.APP_URL || 'https://flexible-request-management.cfapps.eu10.hana.ondemand.com';
-            const deepLink = `${appUrl}/request-management#Requests-display?ID=${requestId}`;
-            const subject = `Action Required: ${request.title}`;
+            // 4. Resolve Requester Name
+            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+            const requesterName = requester?.displayName || requester?.email || 'Requester';
+
+            // 5. Build email content 
+            const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
+            const deepLink = `${appUrl}/request/${requestId}`;
+            const subject = `New Approval Request [${request.displayId}] – Action Required`;
 
             const html = `
-                <div style="font-family: Arial, sans-serif; max-width: 620px; margin: auto; padding: 24px; border: 1px solid #e8e8e8; border-radius: 8px; color: #333;">
-                    <h2 style="color: #0070f3; margin-top: 0;">📋 New Approval Task Assigned</h2>
-                    <p>A new request requires your review in <strong>ProRequest</strong>.</p>
+                <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 20px; color: #333; line-height: 1.6;">
+                    <p>Dear Approver,</p>
+                    
+                    <p>You have been assigned a new request that requires your review and decision.</p>
+                    <p>Please find the details below:</p>
+                    
+                    <ul style="list-style: none; padding-left: 20px;">
+                        <li><strong>- Request:</strong> ${request.title}</li>
+                        <li><strong>- Step:</strong> ${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</li>
+                        <li><strong>- Priority:</strong> ${request.priority || 'MEDIUM'}</li>
+                        <li><strong>- Created By:</strong> ${requesterName}</li>
+                    </ul>
 
-                    <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
-                        <tr style="background:#f5f5f5"><td style="padding:8px 12px;font-weight:bold;width:140px;">Request</td><td style="padding:8px 12px;">${request.title}</td></tr>
-                        <tr><td style="padding:8px 12px;font-weight:bold;">Step</td><td style="padding:8px 12px;">${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</td></tr>
-                        <tr style="background:#f5f5f5"><td style="padding:8px 12px;font-weight:bold;">Priority</td><td style="padding:8px 12px;">${request.priority || '-'}</td></tr>
-                        <tr><td style="padding:8px 12px;font-weight:bold;">Submitted By</td><td style="padding:8px 12px;">${request.createdBy || '-'}</td></tr>
-                    </table>
+                    <p>Kindly review the request in the system and provide your approval or rejection at your earliest convenience.</p>
+                    <p>You can access the request here:<br/>
+                    <a href="${deepLink}" style="color: #0070f3; font-weight: bold; text-decoration: underline;">Open in ProRequest System</a></p>
 
-                    <h4 style="margin-bottom:4px;">Submitted Data:</h4>
-                    <pre style="background:#f9f9f9;padding:12px;border-radius:4px;font-size:12px;white-space:pre-wrap;">${dataSummary}</pre>
+                    <p>If you have any questions or require further clarification, please feel free to contact the requester.</p>
 
-                    <div style="margin-top: 24px; text-align: center;">
-                        <a href="${deepLink}" style="background-color:#0070f3;color:white;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
-                            Open in My Inbox →
-                        </a>
-                    </div>
-
-                    <hr style="margin-top:32px;border:none;border-top:1px solid #eee;" />
-                    <p style="font-size:11px;color:#aaa;text-align:center;">This is an automated message from ProRequest. Please do not reply.</p>
+                    <p>Thank you for your prompt attention.</p>
+                    <p>Best regards,<br/><strong>proRequest System</strong></p>
                 </div>
             `;
 
-            // 5. Send to all resolved emails
+            const text = `Dear Approver,\n\nYou have been assigned a new request that requires your review and decision.\n\nPlease find the details below:\n- Request: ${request.title}\n- Step: ${approval.ruleName || step.stepDefinition?.stepName}\n- Priority: ${request.priority}\n- Created By: ${requesterName}\n\nKindly review the request in the system and provide your approval or rejection at your earliest convenience.\nYou can access the request here: ${deepLink}\n\nIf you have any questions or require further clarification, please feel free to contact the requester.\n\nThank you for your prompt attention.\n\nBest regards,\nproRequest System`;
+
+            // 6. Create in-app notification records
+            const notificationTitle = 'Approval Required';
+            const notificationMessage = `Request ${request.displayId} needs your approval`;
+
+            for (const email of recipientEmails) {
+                const targetUser = await SELECT.one.from(ShadowUsers).where({ email }).columns('ID');
+                if (targetUser) {
+                    await this.createInAppNotification(
+                        targetUser.ID,
+                        notificationTitle,
+                        notificationMessage,
+                        request,
+                        stepId,
+                        'APPROVAL',
+                        'Approver'
+                    );
+                }
+            }
+
+            // 6. Send to all resolved emails
             this.log.info(`[notification-handler] Sending to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);
             for (const email of recipientEmails) {
                 await EmailService.sendMail({

@@ -212,6 +212,12 @@ export class WorkflowEngine {
                     timestamp: new Date().toISOString(),
                     comment: `Step "${def.stepName}" activated`
                 });
+
+                // Emit notification event for data input (async)
+                (cds as any).emit('sap.cre.StepActivated', {
+                    stepId: newStepId,
+                    requestId
+                });
             }
 
             // Create Approvals if needed
