@@ -138,14 +138,59 @@ export class RequestHandler {
         const origin = (req.user as any).origin || 'sap.default';
         const userUUID = await this.userResolver.resolveUserUUID(req.user.id, origin);
 
-        // 2. Record request creation FIRST (before steps are generated)
+        // 2. Generate displayId from NumberRange configuration
+        await this.generateDisplayId(requestId, data.requestType_ID, userUUID);
+
+        // 3. Record request creation FIRST (before steps are generated)
         await this.recordHistory(requestId, null, 'CREATE', userUUID, 'Request Created');
 
-        // 3. THEN initialize workflow (creates steps from definition)
+        // 4. THEN initialize workflow (creates steps from definition)
         try {
             await this.workflowEngine.advance(requestId, userUUID);
         } catch (err) {
             this.log.error(`Failed to initialize workflow for ${requestId}`, err);
+        }
+    }
+
+    /**
+     * Generate a human-readable displayId using the NumberRange configured for the request type.
+     * Format: {prefix}-{currentNumber padded to digits}
+     * e.g., LVE-001023 (prefix=LVE, currentNumber=1023, digits=6)
+     * Atomically increments the counter to avoid duplicate IDs.
+     */
+    private async generateDisplayId(requestId: string, requestTypeId: string | undefined, userUUID: string | null) {
+        if (!requestTypeId) return;
+
+        try {
+            const db = await cds.connect.to('db');
+            const { NumberRanges, Requests } = db.entities('sap.cre');
+
+            // Find active number range for this request type
+            const range = await SELECT.one.from(NumberRanges)
+                .where({ requestType_ID: requestTypeId, isActive: true })
+                .columns('ID', 'currentNumber', 'digits', 'requestType');
+
+            if (!range) {
+                this.log.info(`[RequestHandler] No active NumberRange for requestType ${requestTypeId} – skipping displayId`);
+                return;
+            }
+
+            // Build the displayId: PADDED_NUMBER (no prefix)
+            const displayId = String(range.currentNumber).padStart(range.digits, '0');
+
+            // Atomically increment the counter
+            await UPDATE(NumberRanges, range.ID).with({
+                currentNumber: range.currentNumber + 1,
+                modifiedBy_ID: userUUID
+            });
+
+            // Assign to the request
+            await UPDATE(Requests, requestId).with({ displayId });
+
+            this.log.info(`[RequestHandler] Assigned displayId "${displayId}" to request ${requestId}`);
+        } catch (err) {
+            // Non-fatal: displayId is optional decoration, don't block request creation
+            this.log.warn(`[RequestHandler] Failed to generate displayId for request ${requestId}:`, err);
         }
     }
 

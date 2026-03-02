@@ -6,9 +6,15 @@ const API_BASE = '/browse';
 export const RequestService = {
     /**
      * Fetch all requests with expanded related entities
+     * @param creatorId - Optional ID to filter by creator
      */
-    async getRequests(): Promise<Request[]> {
-        const response = await api.get(`${API_BASE}/Requests?$expand=requestType&$orderby=createdAt desc`);
+    async getRequests(creatorId?: string): Promise<Request[]> {
+        let url = `${API_BASE}/Requests?$expand=requestType&$orderby=createdAt desc`;
+        if (creatorId) {
+            const filter = `createdBy_ID eq '${creatorId}'`;
+            url += `&$filter=${encodeURIComponent(filter)}`;
+        }
+        const response = await api.get(url);
         return response.data.value || [];
     },
 
@@ -44,6 +50,13 @@ export const RequestService = {
     async updateRequest(id: string, data: Partial<Request>): Promise<Request> {
         const response = await api.patch(`${API_BASE}/Requests/${id}`, data);
         return response.data;
+    },
+
+    /**
+     * Delete a request
+     */
+    async deleteRequest(id: string): Promise<void> {
+        await api.delete(`${API_BASE}/Requests/${id}`);
     },
 
     // =========================================
@@ -94,6 +107,32 @@ export const RequestService = {
     async getCoordinatingRequests(): Promise<Request[]> {
         const response = await api.get(`${API_BASE}/getCoordinatingRequests()`);
         return response.data.value || [];
+    },
+
+    // =========================================
+    // Notifications (Header Bell Icon)
+    // =========================================
+
+    /**
+     * Fetch latest notifications for current user
+     */
+    async getNotifications(): Promise<any[]> {
+        const response = await api.get(`${API_BASE}/Notifications?$expand=request&$orderby=createdAt desc&$top=20`);
+        return response.data.value || [];
+    },
+
+    /**
+     * Mark all notifications as read for current user
+     */
+    async markAllNotificationsAsRead(): Promise<void> {
+        await api.post(`${API_BASE}/Notifications/RequestService.markAllAsRead`);
+    },
+
+    /**
+     * Mark a specific notification as read
+     */
+    async markNotificationAsRead(id: string): Promise<void> {
+        await api.post(`${API_BASE}/Notifications(${id})/RequestService.markAsRead`);
     }
 };
 

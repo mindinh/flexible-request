@@ -32,7 +32,7 @@ export default class RequestService extends cds.ApplicationService {
         new AuditLogHandler(this).register();
         new CoordinatorHandler(this).register();
         new InboxHandler(this).register();
-        NotificationHandler.register();
+        NotificationHandler.register(this);
 
         await super.init();
     }

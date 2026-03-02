@@ -1,15 +1,15 @@
-import { useState, useMemo, ReactNode } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Search, X, ListChecks, AlertTriangle, Files, CheckCircle } from 'lucide-react';
 import { Button, Card, Table, Badge, Input, Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui';
-import { api } from '../../lib/api';
 import { RequestService } from '../../services/RequestService';
 import { RequestTypeSelectionDialog } from './RequestTypeSelectionDialog';
 import { RequestTypeIcon } from '../../components/shared/RequestTypeIcon';
 import { RequestStatus, RequestPriority } from '../../types';
 import type { Request, RequestType } from '../../types';
 import { REQUEST_STATUS_CONFIG, PRIORITY_CONFIG } from '../../config';
+import { useAuth } from '../../lib/auth-context';
 
 // Use centralized configs (imported above)
 
@@ -36,14 +36,16 @@ export const RequestList = () => {
     const [priorityFilter, setPriorityFilter] = useState('all');
     const [typeFilter, setTypeFilter] = useState('all');
 
+    const { isAdmin, currentUserId } = useAuth();
+
     const handleTypeSelect = (typeId: string) => {
         setShowTypeDialog(false);
         navigate(`/requests/create/${typeId}`);
     };
 
     const { data: requests = [], isLoading } = useQuery({
-        queryKey: ['myRequests'],
-        queryFn: RequestService.getRequests,
+        queryKey: ['myRequests', isAdmin ? 'all' : currentUserId],
+        queryFn: () => RequestService.getRequests(isAdmin ? undefined : currentUserId),
     });
 
     const { data: requestTypes = [] } = useQuery<RequestType[]>({
@@ -82,6 +84,13 @@ export const RequestList = () => {
 
     const columns = [
         {
+            key: 'displayId',
+            header: 'Request ID',
+            render: (row: Request) => (
+                <div className="font-bold text-blue-600 text-base">{row.displayId || '-'}</div>
+            )
+        },
+        {
             key: 'title',
             header: 'Title',
             render: (row: Request) => (
@@ -93,7 +102,7 @@ export const RequestList = () => {
             header: 'Type',
             render: (row: Request) => (
                 <div className="flex items-center gap-2">
-                    <RequestTypeIcon icon={row.requestType?.icon} variant="withBackground" size="sm" />
+                    <RequestTypeIcon icon={row.requestType?.icon || 'workflow'} variant="withBackground" size="sm" />
                     <span className="text-slate-700 font-medium">{row.requestType?.title || '-'}</span>
                 </div>
             )
@@ -102,7 +111,7 @@ export const RequestList = () => {
             key: 'status',
             header: 'Status',
             render: (row: Request) => {
-                const config = REQUEST_STATUS_CONFIG[row.status] || REQUEST_STATUS_CONFIG.DRAFT;
+                const config = REQUEST_STATUS_CONFIG[row.status as RequestStatus] || REQUEST_STATUS_CONFIG.DRAFT;
                 return (
                     <Badge variant={config.variant} className="inline-flex items-center gap-1.5">
                         {config.icon}
@@ -115,7 +124,7 @@ export const RequestList = () => {
             key: 'priority',
             header: 'Priority',
             render: (row: Request) => {
-                const config = PRIORITY_CONFIG[row.priority] || PRIORITY_CONFIG.MEDIUM;
+                const config = PRIORITY_CONFIG[row.priority as RequestPriority] || PRIORITY_CONFIG.MEDIUM;
                 return (
                     <Badge variant={config.variant}>
                         {config.label}
@@ -128,11 +137,11 @@ export const RequestList = () => {
             header: 'Created',
             render: (row: Request) => (
                 <span className="text-slate-500 text-sm">
-                    {new Date(row.createdAt).toLocaleDateString()}
+                    {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'}
                 </span>
             ),
         },
-    ];
+    ].filter(Boolean) as any[];
 
     return (
         <div className="space-y-6">
@@ -242,10 +251,10 @@ export const RequestList = () => {
                             <SelectContent className="bg-white">
                                 <SelectItem value="all">All Types</SelectItem>
                                 {requestTypes.map((type) => (
-                                    <SelectItem key={type.ID} value={type.ID}>
+                                    <SelectItem key={type.ID || 'unknown'} value={type.ID || ''}>
                                         <span className="flex items-center gap-2">
-                                            <RequestTypeIcon icon={type.icon} variant="withBackground" size="sm" />
-                                            {type.title}
+                                            <RequestTypeIcon icon={type.icon || 'workflow'} variant="withBackground" size="sm" />
+                                            {type.title || ''}
                                         </span>
                                     </SelectItem>
                                 ))}
@@ -267,13 +276,17 @@ export const RequestList = () => {
             </Card>
 
             {/* Requests Table */}
-            <Card padding="none">
+            <Card className="overflow-hidden border-t-0 rounded-t-none sm:rounded-t-none">
                 <Table
                     columns={columns}
                     data={filteredRequests}
                     isLoading={isLoading}
                     emptyMessage="You haven't submitted any requests yet."
-                    onRowClick={(row) => navigate(`/requests/${row.ID}`)}
+                    onRowClick={(row) => {
+                        if (row.ID && row.ID !== 'null') {
+                            navigate(`/requests/${row.ID}`);
+                        }
+                    }}
                 />
             </Card>
 

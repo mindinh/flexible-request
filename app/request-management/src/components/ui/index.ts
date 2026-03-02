@@ -6,11 +6,11 @@ export { Input } from './Input';
 export { Textarea as TextArea } from './TextArea';
 export { Card, CardHeader } from './Card';
 export { Badge } from './Badge';
-export { Dialog } from './Dialog';
+export * from './Dialog';
 export { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from './Select';
 export { Switch } from './Switch';
 export { Table } from './Table';
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
 export { Drawer } from './Drawer';
 export { Skeleton, PageLoadingSkeleton, CardSkeleton, ListSkeleton, TableSkeleton } from './Skeleton';
 

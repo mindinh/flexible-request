@@ -3,14 +3,16 @@ import { resolveSecurityContext, isRLSEnabled, UserSecurityContext } from '../li
 
 /**
  * RLSHandler - Row-Level Security enforcement
- * 
- * Epic 4.1: Filters data access based on user context
- * 
+ *
  * Visibility Matrix:
- * - Requester: Own requests
- * - Coordinator: Coordinating requests
- * - Approver: Requests with assigned approvals
- * - Admin: All
+ * - Requester : Own requests (createdBy_ID = shadowUserId)
+ * - Coordinator: Requests where user or their group is coordinator
+ * - Approver   : Requests with any approval assigned to user or their groups
+ * - Admin      : All requests (bypass)
+ *
+ * Implementation Strategy:
+ * Pre-fetch visible request IDs, then inject a WHERE ID IN (...) filter.
+ * Returns nothing (ID IN []) when user has no visible requests.
  */
 export class RLSHandler {
     private srv: cds.ApplicationService;
@@ -27,140 +29,123 @@ export class RLSHandler {
         this.srv.before('READ', 'Requests', this.enforceRequestsRLS.bind(this));
         this.srv.before('READ', 'Steps', this.enforceStepsRLS.bind(this));
         this.srv.before('READ', 'StepApprovals', this.enforceApprovalsRLS.bind(this));
+        this.srv.before('READ', 'Notifications', this.enforceNotificationsRLS.bind(this));
     }
 
+    // -------------------------------------------------------------------------
+    // Requests RLS
+    // -------------------------------------------------------------------------
+
     /**
-     * Enforce RLS on Requests entity
+     * Enforce RLS on Requests entity.
+     *
+     * Users only see requests they are party to:
+     *   1. They created                (createdBy_ID match)
+     *   2. They are the coordinator    (coordinatorId match)
+     *   3. Their group is coordinator  (coordinatorId in groupIds)
+     *   4. They have an approval slot  (StepApprovals.approver match)
+     *
+     * Admins bypass all filters.
      */
     private async enforceRequestsRLS(req: cds.Request) {
-        // Check feature flag
         if (!isRLSEnabled()) {
-            this.log.debug('RLS disabled by feature flag');
+            this.log.debug('[RLS] Disabled by feature flag');
             return;
         }
 
         const ctx = await resolveSecurityContext(req);
 
-        // Admin bypass
+        // Admin bypass — see everything
         if (ctx.isAdmin) {
-            this.log.debug('Admin user - RLS bypass');
+            this.log.debug('[RLS] Admin bypass for Requests');
             return;
         }
 
-        // Not authenticated - block all
+        // Block unauthenticated access
         if (!ctx.isAuthenticated) {
-            this.log.warn('Unauthenticated access attempt');
-            (req.query as any).where({ 1: 0 }); // Return nothing
+            this.log.warn('[RLS] Unauthenticated access attempt blocked');
+            this.blockQuery(req);
             return;
         }
 
-        // User not in ShadowUsers table - block all (JIT provisioning may have failed)
+        // If user has no shadow record (JIT may not have run yet), block all
         if (!ctx.shadowUserId) {
-            this.log.warn(`User ${ctx.userId} has no ShadowUser record - blocking access. Check if JIT provisioning is working.`);
-            (req.query as any).where({ 1: 0 }); // Return nothing
+            this.log.warn(`[RLS] No ShadowUser for ${ctx.userId} — blocking access`);
+            this.blockQuery(req);
             return;
         }
 
-        // Build visibility filter using pre-fetched visible request IDs
-        const visibleRequestIds = await this.getVisibleRequestIds(ctx);
+        const visibleIds = await this.getVisibleRequestIds(ctx);
 
-        if (visibleRequestIds.length === 0) {
-            // User has no visible requests - block all
-            this.log.debug(`No visible requests for user ${ctx.userId}`);
-            (req.query as any).where({ 1: 0 });
+        if (visibleIds.length === 0) {
+            this.log.debug(`[RLS] No visible requests for ${ctx.userId}`);
+            this.blockQuery(req);
             return;
         }
 
-        this.log.debug(`Applying RLS filter for user ${ctx.userId}: ${visibleRequestIds.length} visible requests`);
-        (req.query as any).where({ ID: { in: visibleRequestIds } });
+        this.log.debug(`[RLS] User ${ctx.userId} can see ${visibleIds.length} request(s)`);
+        (req.query as any).where({ ID: { in: visibleIds } });
     }
 
     /**
-     * Get all request IDs visible to the current user
-     * This approach avoids complex OR conditions in the query
+     * Collect all request IDs that the current user is authorised to read.
      */
     private async getVisibleRequestIds(ctx: UserSecurityContext): Promise<string[]> {
-        const { Requests, StepApprovals, Steps } = this.srv.entities;
-
-        // Collect visible request IDs from multiple queries
+        const { Requests, Steps, StepApprovals } = this.srv.entities;
         const visibleIds = new Set<string>();
 
-        this.log.debug(`[RLS] Resolving visible requests for user: ${ctx.userId}, shadowId: ${ctx.shadowUserId}`);
-
-        // 1. Requests created by user (using UUID-based createdBy_ID)
-        const createdRequests = await SELECT.from(Requests)
-            .columns('ID')
-            .where({ createdBy_ID: ctx.shadowUserId });
-        createdRequests.forEach((r: { ID: string }) => visibleIds.add(r.ID));
-        this.log.debug(`[RLS] Created by user: ${createdRequests.length} requests`);
-
-        // 2. Requests where user is direct coordinator
-        const coordinatorRequests = await SELECT.from(Requests)
-            .columns('ID')
-            .where({ coordinatorId: ctx.shadowUserId });
-        coordinatorRequests.forEach((r: { ID: string }) => visibleIds.add(r.ID));
-        this.log.debug(`[RLS] Coordinator requests: ${coordinatorRequests.length} requests`);
-
-        // 3. Requests where user's group is coordinator (only if user has groups)
-        if (ctx.groupIds && ctx.groupIds.length > 0) {
-            const groupCoordinatorRequests = await SELECT.from(Requests)
-                .columns('ID')
-                .where({ coordinatorId: { in: ctx.groupIds } });
-            groupCoordinatorRequests.forEach((r: { ID: string }) => visibleIds.add(r.ID));
-            this.log.debug(`[RLS] Group coordinator requests: ${groupCoordinatorRequests.length} requests`);
-        }
-
-        // Build list of all principal IDs to check (user + their groups)
+        // Build principal list: user's own ID + all group IDs they belong to
         const principalIds: string[] = [];
         if (ctx.shadowUserId) principalIds.push(ctx.shadowUserId);
-        if (ctx.groupIds) principalIds.push(...ctx.groupIds);
+        if (ctx.groupIds?.length) principalIds.push(...ctx.groupIds);
 
-        if (principalIds.length === 0) {
-            this.log.warn(`[RLS] No valid principal IDs for user ${ctx.userId} - shadowUserId may be null`);
-            this.log.debug(`[RLS] Total visible requests: ${visibleIds.size}`);
-            return [...visibleIds];
+        // 1. Requests created by this user
+        const created = await SELECT.from(Requests)
+            .columns('ID')
+            .where({ createdBy_ID: ctx.shadowUserId });
+        created.forEach((r: { ID: string }) => visibleIds.add(r.ID));
+
+        // 2. Requests where user (or their group) is coordinator
+        if (principalIds.length > 0) {
+            const coordinated = await SELECT.from(Requests)
+                .columns('ID')
+                .where({ coordinatorId: { in: principalIds } });
+            coordinated.forEach((r: { ID: string }) => visibleIds.add(r.ID));
         }
 
-        // 4. Requests with pending/waiting approvals for user or their groups
-        this.log.debug(`[RLS] Checking approvals for principalIds: ${principalIds.join(', ')}`);
+        // 3. Requests with any approval assigned to user or their groups
+        if (principalIds.length > 0) {
+            const approvals = await SELECT.from(StepApprovals)
+                .columns('step_ID')
+                .where({ approver: { in: principalIds } });
 
-        const approvalRequests = await SELECT.from(StepApprovals)
-            .columns('step_ID', 'approver', 'status')
-            .where({
-                status: { in: ['PENDING', 'WAITING', 'SENDBACK', 'REAPPROVAL_NEEDED', 'APPROVED', 'REJECTED'] },
-                approver: { in: principalIds }
-            });
-
-        this.log.debug(`[RLS] Found ${approvalRequests.length} matching approvals`);
-
-        if (approvalRequests.length > 0) {
-            const stepIds = approvalRequests.map((a: { step_ID: string }) => a.step_ID);
-            const steps = await SELECT.from(Steps)
-                .columns('request_ID')
-                .where({ ID: { in: stepIds } });
-
-            steps.forEach((s: { request_ID: string }) => {
-                if (s.request_ID) visibleIds.add(s.request_ID);
-            });
-            this.log.debug(`[RLS] Approval-based requests: ${steps.length} requests`);
+            if (approvals.length > 0) {
+                const stepIds = [...new Set(approvals.map((a: { step_ID: string }) => a.step_ID))];
+                const steps = await SELECT.from(Steps)
+                    .columns('request_ID')
+                    .where({ ID: { in: stepIds } });
+                steps.forEach((s: { request_ID: string }) => {
+                    if (s.request_ID) visibleIds.add(s.request_ID);
+                });
+            }
         }
 
-        // 5. Requests where user is a step owner (directly or via group)
-        const ownedSteps = await SELECT.from(Steps)
-            .columns('request_ID')
-            .where({ ownerId: { in: principalIds } });
-
-        ownedSteps.forEach((s: { request_ID: string }) => {
-            if (s.request_ID) visibleIds.add(s.request_ID);
-        });
-        this.log.debug(`[RLS] Step owner requests: ${ownedSteps.length} requests`);
-
-        this.log.debug(`[RLS] Total visible requests: ${visibleIds.size}`);
+        this.log.debug(`[RLS] Resolved ${visibleIds.size} visible request(s) for ${ctx.userId}`);
         return [...visibleIds];
     }
 
+    // -------------------------------------------------------------------------
+    // Steps RLS
+    // -------------------------------------------------------------------------
+
     /**
-     * Enforce RLS on Steps - inherit from Request access
+     * Enforce RLS on Steps.
+     * Steps inherit visibility from their parent Request — if you can see
+     * the request, you can see its steps. No separate filter needed here
+     * because CAP will scope Steps via the parent Request's WHERE when
+     * navigating via $expand or navigation property.
+     *
+     * For direct access to /Steps, we apply the same principal filter.
      */
     private async enforceStepsRLS(req: cds.Request) {
         if (!isRLSEnabled()) return;
@@ -169,22 +154,29 @@ export class RLSHandler {
         if (ctx.isAdmin) return;
 
         if (!ctx.isAuthenticated || !ctx.shadowUserId) {
-            (req.query as any).where({ 1: 0 });
+            this.blockQuery(req);
             return;
         }
 
-        // Steps visibility follows Request visibility
-        // User can see step if they can see the parent request
-        // This is enforced at query level through request expansion
-        this.log.debug('Steps RLS applied via Request relationship');
+        // Steps visibility mirrors Request visibility — derive via visible request IDs
+        const visibleIds = await this.getVisibleRequestIds(ctx);
+
+        if (visibleIds.length === 0) {
+            this.blockQuery(req);
+            return;
+        }
+
+        (req.query as any).where({ request_ID: { in: visibleIds } });
     }
 
+    // -------------------------------------------------------------------------
+    // StepApprovals RLS
+    // -------------------------------------------------------------------------
+
     /**
-     * Enforce RLS on StepApprovals
-     * 
-     * Users may only see approvals that are assigned:
-     * - Directly to them (approverType = USER, approver = their ShadowUser ID)
-     * - To a group they are a member of
+     * Enforce RLS on StepApprovals.
+     * Users may only see approvals assigned directly to them or to a group
+     * they are a member of.
      */
     private async enforceApprovalsRLS(req: cds.Request) {
         if (!isRLSEnabled()) return;
@@ -193,23 +185,56 @@ export class RLSHandler {
         if (ctx.isAdmin) return;
 
         if (!ctx.isAuthenticated) {
-            (req.query as any).where({ 1: 0 });
+            this.blockQuery(req);
             return;
         }
 
-        // User not in ShadowUsers - block all
         if (!ctx.shadowUserId) {
-            this.log.warn(`[ApprovalsRLS] User ${ctx.userId} has no ShadowUser record - blocking access.`);
-            (req.query as any).where({ 1: 0 });
+            this.log.warn(`[RLS][Approvals] No ShadowUser for ${ctx.userId} — blocking`);
+            this.blockQuery(req);
             return;
         }
 
-        // Build list of principal IDs: user's own ID + all their group IDs
         const principalIds: string[] = [ctx.shadowUserId, ...ctx.groupIds];
 
-        this.log.debug(`[ApprovalsRLS] Filtering StepApprovals to principalIds: ${principalIds.join(', ')}`);
-
-        // Filter: only show approvals where approver is one of the principal IDs
+        this.log.debug(`[RLS][Approvals] Filtering to principalIds: ${principalIds.join(', ')}`);
         (req.query as any).where({ approver: { in: principalIds } });
+    }
+
+    // -------------------------------------------------------------------------
+    // Notifications RLS
+    // -------------------------------------------------------------------------
+
+    /**
+     * Enforce RLS on Notifications.
+     * Users only see notifications where they are the recipient.
+     */
+    private async enforceNotificationsRLS(req: cds.Request) {
+        if (!isRLSEnabled()) return;
+
+        const ctx = await resolveSecurityContext(req);
+
+        if (!ctx.isAuthenticated || !ctx.shadowUserId) {
+            this.blockQuery(req);
+            return;
+        }
+
+        this.log.debug(`[RLS][Notifications] Filtering for recipient: ${ctx.shadowUserId}`);
+        (req.query as any).where({ recipient_ID: ctx.shadowUserId });
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Inject a "WHERE 1 = 0" condition to return zero rows.
+     * Used instead of throwing an error so the API returns an empty list,
+     * which is the correct semantic for a filtered read.
+     */
+    private blockQuery(req: cds.Request) {
+        // Using a known-false condition: ID must be a non-empty UUID, 
+        // so matching against the empty string safely returns nothing.
+        (req.query as any).where({ ID: { '=': '' } });
     }
 }
