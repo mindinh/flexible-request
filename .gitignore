@@ -52,3 +52,5 @@ db.sqlite-shm
 
 db/data/*.csv
 db/data/*.json
+
+docs/tasks/todo.md
