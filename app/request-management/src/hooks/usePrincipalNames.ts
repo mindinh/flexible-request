@@ -71,7 +71,7 @@ export function usePrincipalNames(
         queryFn: async () => {
             if (userIds.length === 0) return {};
             const filter = userIds.map(id => `ID eq ${id}`).join(' or ');
-            const res = await fetch(`/identity/ShadowUsers?$filter=${encodeURIComponent(filter)}&$select=ID,displayName,email`);
+            const res = await fetch(`/browse/ShadowUsers?$filter=${encodeURIComponent(filter)}&$select=ID,displayName,email`);
             const json = await res.json();
             const map: Record<string, string> = {};
             for (const u of json.value || []) {
@@ -89,7 +89,7 @@ export function usePrincipalNames(
         queryFn: async () => {
             if (groupIds.length === 0) return {};
             const filter = groupIds.map(id => `ID eq ${id}`).join(' or ');
-            const res = await fetch(`/identity/ShadowGroups?$filter=${encodeURIComponent(filter)}&$select=ID,name`);
+            const res = await fetch(`/browse/ShadowGroups?$filter=${encodeURIComponent(filter)}&$select=ID,name`);
             const json = await res.json();
             const map: Record<string, string> = {};
             for (const g of json.value || []) {
