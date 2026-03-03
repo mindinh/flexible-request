@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
 import { parseSchemaContent, flattenSchemaFields } from '../../../../lib/schemaParser';
@@ -24,8 +24,30 @@ interface ExistingStepData {
 export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOptions) {
     const { currentUser, currentUserId } = useAuth();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [formData, setFormData] = useState<Record<string, any>>({});
     const isEditMode = !!requestId;
+
+    const invalidateQueries = async (id?: string) => {
+        const targetId = id || requestId;
+        const promises = [];
+
+        if (targetId) {
+            promises.push(queryClient.invalidateQueries({ queryKey: ['request', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['auditLog', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['requestForEdit', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['requestStepDataForEdit', targetId] }));
+        }
+
+        // List queries
+        promises.push(queryClient.invalidateQueries({ queryKey: ['requests'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['myRequests'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['myApprovals'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['teamApprovals'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['notifications'] }));
+
+        await Promise.all(promises);
+    };
 
     // Fetch existing request data (edit mode only)
     const { data: existingRequest, isLoading: isLoadingRequest } = useQuery({
@@ -243,7 +265,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
 
             return { ID: reqId };
         },
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
+            await invalidateQueries(data.ID);
             navigate(`/requests/${data.ID}/edit`);
         },
     });
@@ -312,7 +335,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
             await api.post(`/browse/Requests(${reqId})/RequestService.submit`);
             return { ID: reqId };
         },
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
+            await invalidateQueries(data.ID);
             navigate(`/requests/${data.ID}`);
         },
     });
@@ -322,7 +346,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         mutationFn: async () => {
             await api.delete(`/browse/Requests(${requestId})`);
         },
-        onSuccess: () => {
+        onSuccess: async () => {
+            await invalidateQueries();
             navigate('/requests');
         },
     });

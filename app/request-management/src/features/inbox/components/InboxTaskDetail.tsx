@@ -76,7 +76,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     } = useApprovalActions(requestId);
 
     // Auth context
-    const { currentUser, currentUserId } = useAuth();
+    const { currentUserId } = useAuth();
 
     // Calculate current user's approval responsibility
     const currentUserApproval = useMemo(() => {
@@ -191,7 +191,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         }));
     };
 
-    const handleStepSubmit = (step: any, stepDef: any) => {
+    const handleStepSubmit = (step: any) => {
         const data = stepFormData[step.ID] || (() => {
             try {
                 return step.data?.payload ? JSON.parse(step.data.payload) : {};
@@ -288,10 +288,12 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                     size="sm"
                                     onClick={() => {
                                         RequestService.releaseStep(currentStep.ID).then(() => {
-                                            queryClient.invalidateQueries({ queryKey: ['request'] });
+                                            queryClient.invalidateQueries({ queryKey: ['request', requestId] });
                                             queryClient.invalidateQueries({ queryKey: ['requests'] });
+                                            queryClient.invalidateQueries({ queryKey: ['myRequests'] });
                                             queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
                                             queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
+                                            queryClient.invalidateQueries({ queryKey: ['notifications'] });
                                         });
                                     }}
                                 >
@@ -453,7 +455,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 onFieldChange={(fieldId, value) =>
                                     handleStepFieldChange(step.ID, fieldId, value)
                                 }
-                                onSubmit={() => handleStepSubmit(step, stepDef)}
+                                onSubmit={() => handleStepSubmit(step)}
                                 isSubmitting={isSaving}
                                 claimRequired={stepClaimRequired}
                                 claimedByOther={stepClaimedByOther}

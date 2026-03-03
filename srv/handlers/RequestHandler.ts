@@ -67,13 +67,14 @@ export class RequestHandler {
         const items = Array.isArray(data) ? data : data ? [data] : [];
         if (items.length === 0) return;
 
-        this.log.info(`[RequestHandler] Enriching ${items.length} requests with coordinator/owner names`);
+        this.log.info(`[RequestHandler] Enriching ${items.length} requests with coordinator/owner/step names`);
 
-        const { ShadowUsers, ShadowGroups } = this.srv.entities;
+        const { ShadowUsers, ShadowGroups, Steps, StepDefinitions } = this.srv.entities;
         const userIds = new Set<string>();
         const groupIds = new Set<string>();
+        const requestIds = items.map(i => i.ID);
 
-        // Collect IDs
+        // 1. Collect Coordinator IDs
         for (const item of items) {
             if (item.coordinatorId) {
                 if (item.coordinatorType === 'USER') {
@@ -84,8 +85,39 @@ export class RequestHandler {
             }
         }
 
-        this.log.info(`[RequestHandler] Found userIds: ${[...userIds]}, groupIds: ${[...groupIds]}`);
+        // 2. Fetch Active Steps for all requests (Bulk)
+        // We look for steps that are "active" (not COMPLETE/SKIPPED/REJECTED/UPCOMING)
+        const activeSteps = await SELECT.from(Steps)
+            .where({
+                request_ID: { in: requestIds },
+                status: { in: ['STARTED', 'IN_PROGRESS', 'IN_CLARIFICATION'] }
+            })
+            .columns('request_ID', 'stepDefinition_ID', 'dueDate');
 
+        // Resolve step names by batch-fetching the relevant StepDefinitions
+        const stepDefIds = [...new Set(activeSteps.map((s: any) => s.stepDefinition_ID).filter(Boolean))];
+        const stepDefinitionMap = new Map<string, string>();
+        if (stepDefIds.length > 0) {
+            const defs = await SELECT.from(StepDefinitions)
+                .where({ ID: { in: stepDefIds } })
+                .columns('ID', 'stepName');
+            for (const def of defs) {
+                stepDefinitionMap.set(def.ID, def.stepName);
+            }
+        }
+
+        const stepMap = new Map<string, { name: string, dueDate: string }>();
+        for (const s of activeSteps) {
+            // Note: If multiple active steps (parallel), we just take the first one for the list view
+            if (!stepMap.has(s.request_ID)) {
+                stepMap.set(s.request_ID, {
+                    name: stepDefinitionMap.get(s.stepDefinition_ID) || 'Active',
+                    dueDate: s.dueDate
+                });
+            }
+        }
+
+        // 3. Resolve Display Names (Users/Groups)
         const nameMap = new Map<string, string>();
 
         // Fetch Users
@@ -116,12 +148,17 @@ export class RequestHandler {
             }
         }
 
-        // Apply
+        // 4. Apply to items
         for (const item of items) {
+            // Step Name & Due Date
+            const activeStep = stepMap.get(item.ID);
+            item.currentStepName = activeStep?.name || (item.status === 'COMPLETED' ? 'Completed' : '-');
+            item.dueDate = activeStep?.dueDate || null;
+
+            // Coordinator Name
             if (item.coordinatorId) {
                 const resolvedName = nameMap.get(item.coordinatorId);
                 item.coordinatorDisplayName = resolvedName || item.coordinatorId;
-                this.log.info(`[RequestHandler] Resolved ${item.coordinatorId} -> ${item.coordinatorDisplayName}`);
             }
         }
     }
@@ -144,9 +181,22 @@ export class RequestHandler {
         // 3. Record request creation FIRST (before steps are generated)
         await this.recordHistory(requestId, null, 'CREATE', userUUID, 'Request Created');
 
-        // 4. THEN initialize workflow (creates steps from definition)
+        // 4. Resolve source request ID for copying Step 1 data
+        let sourceRequestId = data.refRequest_ID;
+        if (!sourceRequestId) {
+            this.log.debug(`[RequestHandler] refRequest_ID not in data, fetching from DB for request ${requestId}`);
+            const { Requests } = this.srv.entities;
+            const res = await SELECT.one.from(Requests, requestId).columns('refRequest_ID');
+            sourceRequestId = res?.refRequest_ID;
+        }
+
+        if (sourceRequestId) {
+            this.log.info(`[RequestHandler] Detected copy from source request: ${sourceRequestId}`);
+        }
+
+        // 5. THEN initialize workflow (creates steps from definition)
         try {
-            await this.workflowEngine.advance(requestId, userUUID);
+            await this.workflowEngine.advance(requestId, userUUID, sourceRequestId);
         } catch (err) {
             this.log.error(`Failed to initialize workflow for ${requestId}`, err);
         }

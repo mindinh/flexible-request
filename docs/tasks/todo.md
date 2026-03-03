@@ -1,13 +1,19 @@
-# Data Entry Step Routing Fix Plan
+# My Requests UI Adjustment Plan
 
 ## Objective
-Fix the issue where assigning a step owner for data entry finishes the step instead of sending it to the user's inbox to input data. Check if this data-entry routing function has been implemented and plan its implementation/fix.
-
-## Investigation Steps
-- [ ] Investigate the backend endpoint processing request submissions to see how dynamic steps and their step owners are processed.
-- [ ] Determine how steps transition states. If it goes straight to `COMPLETED` when it should be `PENDING` awaiting data entry, find out why.
-- [ ] Check if the notification mechanism is integrated for data entry assignment.
-- [ ] Draft an implementation plan (`implementation_plan.md`) to fix the backend workflow logic for step routing.
+Adjust the "My Requests" page UI in `flexible-request\app\request-management\src\features\requests\RequestList.tsx` to match the premium design provided in the screenshot.
 
 ## Implementation Steps
-- [ ] Pending investigation results
+- [ ] Update `StatCard` component and layout with trend icons
+- [ ] Refactor filter section to 3rd row grid layout
+- [ ] Add "Go", "Clear All", "Hidden Filter", "Filter" buttons
+- [ ] Add functional buttons: "Create New Request" (primary red), "Copy", "Delete"
+- [ ] Update Table columns (ID, Name, Type, Ref, Status, Step, Priority, Due Date, Coordinator)
+- [ ] Implement custom status badges and priority dots
+- [ ] Verify UI changes against screenshot
+- [ ] Fix any lint or type issues
+
+---
+
+# Data Entry Step Routing Fix Plan
+...

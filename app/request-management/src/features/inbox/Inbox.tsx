@@ -1,29 +1,22 @@
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     CheckCircle,
     CheckCircle2,
-    XCircle,
-    Clock,
     User,
     Users,
-    ChevronRight,
-    Briefcase,
     Search,
     Inbox as InboxIcon,
     Hand,
     Lock,
     ClipboardList,
 } from 'lucide-react';
-import { Button, Card, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, TextArea, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
+import { Badge, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
 import { useState, useMemo } from 'react';
-import { api } from '../../lib/api';
 import { RequestService } from '../../services/RequestService';
-import type { Request as ProRequest } from '../../types';
+import type { } from '../../types';
 import { InboxTaskDetail } from './components/InboxTaskDetail';
 import { getPriorityConfig } from '../../config';
 import { useAuth } from '../../lib/auth-context';
-
 
 
 interface InboxItem {
@@ -84,15 +77,11 @@ function getActionTitle(task: UnifiedTask): string {
  * Center pane + Right pane: InboxTaskDetail (form schema + collapsible workflow)
  */
 export const Inbox = () => {
-    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { currentUserId } = useAuth();
-    const [activeTab, setActiveTab] = useState<InboxTab | 'coordinating'>('my-tasks');
+    const [activeTab, setActiveTab] = useState<InboxTab>('my-tasks');
     const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [rejectReason, setRejectReason] = useState('');
-    const [showRejectDialog, setShowRejectDialog] = useState(false);
-    const [selectedInboxItem, setSelectedInboxItem] = useState<InboxItem | null>(null);
 
     // ─── Data Fetching ────────────────────────────────────────
     // My Tasks: direct user assignments + claimed group tasks (via backend)
@@ -107,33 +96,8 @@ export const Inbox = () => {
         enabled: activeTab === 'team-tasks',
     });
 
-    const { data: coordinatingRequests = [], isLoading: isLoadingCoordinating } = useQuery({
-        queryKey: ['coordinatingRequests'],
-        queryFn: () => RequestService.getCoordinatingRequests(),
-        enabled: activeTab === 'coordinating',
-    });
 
     // ─── Mutations ────────────────────────────────────────────
-    const approveMutation = useMutation({
-        mutationFn: (item: InboxItem) => api.post(`/browse/Steps(${item.stepId})/RequestService.approveStep`),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
-            queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
-            setSelectedRequestId(null);
-        },
-    });
-
-    const rejectMutation = useMutation({
-        mutationFn: (data: { stepId: string; reason: string }) =>
-            api.post(`/browse/Steps(${data.stepId})/RequestService.rejectStep`, { reason: data.reason }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
-            queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
-            setShowRejectDialog(false);
-            setRejectReason('');
-            setSelectedRequestId(null);
-        },
-    });
 
     // ─── Claim Step Mutation (quick claim from card) ──────────
     const claimMutation = useMutation({
@@ -225,18 +189,6 @@ export const Inbox = () => {
         queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
     };
 
-    const handleApproveInboxItem = (item: InboxItem) => {
-        approveMutation.mutate(item);
-    };
-
-    const handleReject = () => {
-        if (selectedInboxItem && selectedInboxItem.stepId) {
-            rejectMutation.mutate({
-                stepId: selectedInboxItem.stepId,
-                reason: rejectReason
-            });
-        }
-    };
 
     const handleClaimTask = (e: React.MouseEvent, stepId: string) => {
         e.stopPropagation();
@@ -248,25 +200,6 @@ export const Inbox = () => {
         releaseMutation.mutate(stepId);
     };
 
-    const renderCoordinatingCard = (request: any) => (
-        <Card key={request.ID} className="p-4 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/requests/${request.ID}`)}>
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <Briefcase className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div>
-                        <h3 className="font-medium text-gray-900">{request.title}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="neutral">{request.requestType?.label || request.requestTypeID}</Badge>
-                            <span className="text-sm text-gray-500">ID: {request.displayId}</span>
-                        </div>
-                    </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
-            </div>
-        </Card>
-    );
 
     // ─── Render ───────────────────────────────────────────────
     return (
@@ -324,17 +257,6 @@ export const Inbox = () => {
                                     </Badge>
                                 )}
                             </TabsTrigger>
-                            <TabsTrigger
-                                value="coordinating"
-                                className="text-sm gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-primary px-4 pb-2"
-                            >
-                                Coordinating
-                                {coordinatingRequests.length > 0 && (
-                                    <Badge variant="secondary" className="ml-1 bg-emerald-100 text-emerald-700 text-[10px]">
-                                        {coordinatingRequests.length}
-                                    </Badge>
-                                )}
-                            </TabsTrigger>
                         </TabsList>
                     </div>
 
@@ -368,23 +290,6 @@ export const Inbox = () => {
                                 emptySubtitle="No group-assigned tasks available."
                             />
                         </TabsContent>
-                        <TabsContent value="coordinating" className="mt-0 p-3 space-y-3">
-                            {isLoadingCoordinating ? (
-                                <div className="space-y-3">
-                                    {[1, 2, 3].map((i) => (
-                                        <div key={i} className="animate-pulse h-20 bg-slate-50 rounded-lg border border-slate-100" />
-                                    ))}
-                                </div>
-                            ) : coordinatingRequests.length === 0 ? (
-                                <div className="text-center py-16 px-4">
-                                    <Briefcase className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-                                    <p className="text-sm font-medium text-slate-700">No coordinating tasks</p>
-                                    <p className="text-xs text-slate-500 mt-1">You are not coordinating any requests.</p>
-                                </div>
-                            ) : (
-                                coordinatingRequests.map((request: any) => renderCoordinatingCard(request))
-                            )}
-                        </TabsContent>
                     </div>
                 </Tabs>
             </div>
@@ -403,47 +308,6 @@ export const Inbox = () => {
                 </div>
             )}
 
-            {/* Reject Dialog */}
-            <Dialog
-                open={showRejectDialog}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setShowRejectDialog(false);
-                        setRejectReason('');
-                    }
-                }}
-            >
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Reject Approval</DialogTitle>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-4">
-                        <label className="text-sm font-medium text-gray-700">Reason for rejection</label>
-                        <TextArea
-                            placeholder="Please provide a reason..."
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            rows={4}
-                            required
-                        />
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setShowRejectDialog(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleReject}
-                            disabled={!rejectReason.trim()}
-                            isLoading={rejectMutation.isPending}
-                        >
-                            Reject
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

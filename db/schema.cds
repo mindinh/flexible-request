@@ -142,6 +142,7 @@ entity Requests : cuid, managedWithUser {
     title           : String;
     description     : LargeString; // Justification for the request
     requestType     : Association to RequestTypes;
+    refRequest      : Association to Requests; // Source request for copies
     priority        : String enum {
         HIGH;
         MEDIUM;

@@ -25,7 +25,7 @@ export class NotificationHandler {
             return true;
         });
 
-        srv.on('markAllAsRead', 'Notifications', async (req) => {
+        srv.on('markAllAsRead', async (req) => {
             const userId = req.user.id;
             const origin = IdentityProvisioner.getOrigin(req.user);
 
@@ -35,6 +35,21 @@ export class NotificationHandler {
 
             if (user) {
                 await UPDATE('sap.cre.Notifications').where({ recipient_ID: user.ID }).with({ isRead: true });
+            }
+            return true;
+        });
+
+        srv.on('deleteAll', async (req) => {
+            const userId = req.user.id;
+            const origin = IdentityProvisioner.getOrigin(req.user);
+
+            const db = await cds.connect.to('db');
+            const { ShadowUsers } = db.entities('sap.cre');
+            const user = await SELECT.one.from(ShadowUsers).where({ userId, origin });
+
+            if (user) {
+                const { Notifications } = db.entities('sap.cre');
+                await db.delete(Notifications).where({ recipient_ID: user.ID });
             }
             return true;
         });
