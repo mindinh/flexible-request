@@ -38,6 +38,7 @@ export function RequestDetail() {
         request,
         auditLog,
         isLoading,
+        isFetching,
         startStep,
         formData,
         stepFormData,
@@ -63,14 +64,16 @@ export function RequestDetail() {
     // Get current user from auth context
     const { currentUserId } = useAuth();
 
-    // Redirect DRAFT requests to edit page — only when data is settled (not loading).
-    // Guard: if loading is still in progress (e.g. React Query refetch after submit),
-    // do NOT redirect — the status in cache may be stale while the updated data arrives.
+    // Redirect DRAFT requests to edit page — only when data is fully settled.
+    // Key: use `isFetching` (not `isLoading`) because React Query's `isLoading` is only true
+    // on the FIRST fetch with no cache. After a submit triggers invalidation, React Query does
+    // a BACKGROUND refetch — `isLoading` stays false but the stale cache still shows DRAFT,
+    // causing a bogus redirect. `isFetching` covers both first-load AND background refetches.
     useEffect(() => {
-        if (!isLoading && request?.status === 'DRAFT' && id) {
+        if (!isFetching && request?.status === 'DRAFT' && id) {
             navigate(`/requests/${id}/edit`, { replace: true });
         }
-    }, [request?.status, id, navigate, isLoading]);
+    }, [request?.status, id, navigate, isFetching]);
 
     // Calculate current user's approval responsibility
     const currentUserApproval = useMemo(() => {

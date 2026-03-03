@@ -59,7 +59,7 @@ export const NotificationPopover = () => {
             await markAsReadMutation.mutateAsync(notification.ID);
         }
         if (notification.request?.ID) {
-            navigate(`/requests/${notification.request.ID}`);
+            navigate(`/inbox/request/${notification.request.ID}`);
         }
     };
 

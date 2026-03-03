@@ -14,6 +14,7 @@ interface DynamicFormSectionProps {
     schemaItems: SchemaItem[];
     formData: FormData;
     onFieldChange: (fieldId: string, value: FieldValue) => void;
+    isEditMode?: boolean;
 }
 
 const handleDownloadTemplate = (table: SchemaTable) => {
@@ -36,13 +37,17 @@ const handleDownloadTemplate = (table: SchemaTable) => {
 export function DynamicFormSection({
     schemaItems,
     formData,
-    onFieldChange
+    onFieldChange,
+    isEditMode = false
 }: DynamicFormSectionProps) {
     // Track selected rows for each table
     const [rowSelections, setRowSelections] = useState<Record<string, string[]>>({});
 
     // Seed formData with field defaultValues on mount
+    // ONLY for new requests (not in edit/copy mode)
     useEffect(() => {
+        if (isEditMode) return;
+
         const allFields = flattenSchemaFields(schemaItems);
         allFields.forEach(field => {
             if (field.defaultValue && !formData[field.id]) {
@@ -50,7 +55,7 @@ export function DynamicFormSection({
             }
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [schemaItems]);
+    }, [schemaItems, isEditMode]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, table: SchemaTable) => {
         const file = e.target.files?.[0];

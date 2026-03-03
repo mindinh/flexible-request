@@ -229,26 +229,40 @@ export function DynamicField({
             const staticOptions = getFieldOptions(field);
             const allOptions = isDynamic ? [...staticOptions, ...dynamicOptions] : staticOptions;
             const effectiveValue = value || field.defaultValue || '';
+
+            // Robust Value Matching: Radix UI Select only displays values found in its children.
+            // When dynamic options are loading, or if the stored value isn't in the current set of
+            // results (due to pagination/filtering), it will appear blank.
+            // Fix: ALWAYS inject a 'phantom' option if the current value exists but isn't in allOptions.
+            const valueExistsInOptions = allOptions.some(opt => String(opt.value) === String(effectiveValue));
+            const phantomOption = (effectiveValue && !valueExistsInOptions)
+                ? { value: String(effectiveValue), label: String(effectiveValue) }
+                : null;
+
+            const displayOptions = phantomOption
+                ? [phantomOption, ...allOptions]
+                : allOptions;
+
             return (
                 <Select
-                    value={effectiveValue || undefined}
+                    value={effectiveValue ? String(effectiveValue) : undefined}
                     onValueChange={(val) => onChange(val)}
-                    disabled={isDisabled || dynamicLoading}
+                    disabled={!!(isDisabled || (isDynamic && dynamicLoading && !effectiveValue))}
                 >
                     <SelectTrigger>
                         <SelectValue placeholder={
-                            dynamicLoading
+                            isDynamic && dynamicLoading && !effectiveValue
                                 ? 'Loading options...'
                                 : field.placeholder || `Select ${field.label}...`
                         } />
                     </SelectTrigger>
                     <SelectContent>
-                        {allOptions.map(opt => (
+                        {displayOptions.map(opt => (
                             <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                             </SelectItem>
                         ))}
-                        {allOptions.length === 0 && !dynamicLoading && (
+                        {displayOptions.length === 0 && !dynamicLoading && (
                             <div className="px-3 py-2 text-xs text-slate-400 text-center">
                                 No options available
                             </div>

@@ -195,7 +195,7 @@ export class NotificationHandler {
 
             // 5. Build email content 
             const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
-            const deepLink = `${appUrl}/request/${requestId}`;
+            const deepLink = `${appUrl}/inbox/request/${requestId}`;
             const subject = `New Approval Request [${request.displayId}] – Action Required`;
 
             const html = `
@@ -206,7 +206,7 @@ export class NotificationHandler {
                     <p>Please find the details below:</p>
                     
                     <ul style="list-style: none; padding-left: 20px;">
-                        <li><strong>Request:</strong> ${requestId} - ${request.title}</li>
+                        <li><strong>Request:</strong> ${request.displayId} - ${request.title}</li>
                         <li><strong>Step:</strong> ${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</li>
                         <li><strong>Priority:</strong> ${NotificationHandler.formatPriority(request.priority)}</li>
                         <li><strong>Created By:</strong> ${requesterName}</li>

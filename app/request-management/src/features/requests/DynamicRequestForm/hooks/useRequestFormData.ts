@@ -102,30 +102,34 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
     // Get display name - works for both dev (.name) and production (.displayName)
     const currentUserDisplayName = (currentUser as any).displayName || (currentUser as any).name || '';
 
+    const [isInitializing, setIsInitializing] = useState(isEditMode);
+
     // Populate form data when editing
     useEffect(() => {
-        if (isEditMode && existingStepData?.data) {
+        if (isEditMode && existingStepData?.data && existingRequest) {
             setFormData(prev => ({
                 ...prev,
                 ...existingStepData.data,
-                title: existingRequest?.title || '',
-                description: existingRequest?.description || '',
-                priority: existingRequest?.priority || 'MEDIUM'
+                title: existingRequest.title || prev.title || '',
+                description: existingRequest.description || prev.description || '',
+                priority: existingRequest.priority || prev.priority || 'MEDIUM'
             }));
+            setIsInitializing(false);
         } else if (!isEditMode) {
             setFormData(prev => ({
                 ...prev,
-                priority: 'MEDIUM',
+                priority: prev.priority || 'MEDIUM',
                 coordinatorId: prev.coordinatorId || currentUserId,
                 coordinatorType: prev.coordinatorType || 'USER',
                 coordinatorName: prev.coordinatorName || currentUserDisplayName
             }));
+            setIsInitializing(false);
         }
     }, [isEditMode, existingStepData, existingRequest, currentUserId, currentUserDisplayName]);
 
     // Initialize step owner from StepDefinition's default owner, fallback to coordinator
     useEffect(() => {
-        if (startStep && !formData.stepOwnerId) {
+        if (startStep && !formData.stepOwnerId && !isInitializing) {
             // Use StepDefinition's default owner if defined
             if (startStep.ownerId) {
                 setFormData(prev => ({
@@ -144,7 +148,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                 }));
             }
         }
-    }, [startStep, formData.coordinatorId, formData.stepOwnerId]);
+    }, [startStep, formData.coordinatorId, formData.stepOwnerId, isInitializing]);
 
     // Get schema items - render exactly as defined in the Form Schema
     const schemaItems = parseSchemaContent(startStep?.schemaContent);
@@ -356,7 +360,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         setFormData(prev => ({ ...prev, [fieldId]: value }));
     };
 
-    const isPageLoading = isLoadingType || (isEditMode && (isLoadingRequest || isLoadingStepData));
+    const isPageLoading = isLoadingType || (isEditMode && (isLoadingRequest || isLoadingStepData)) || isInitializing;
 
     return {
         // Data
@@ -371,6 +375,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         // State
         isEditMode,
         isPageLoading,
+        isInitializing,
         error,
 
         // Mutations
