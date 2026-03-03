@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, XCircle, Clock, User, Users, ChevronRight, Briefcase } from 'lucide-react';
@@ -7,24 +6,6 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { RequestService } from '../../services/RequestService';
 import type { Request as ProRequest } from '../../types';
-=======
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    CheckCircle,
-    Clock,
-    User,
-    Users,
-    Briefcase,
-    Search,
-    Inbox as InboxIcon,
-} from 'lucide-react';
-import { Badge, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
-import { useState, useMemo } from 'react';
-import { api } from '../../lib/api';
-import { RequestService } from '../../services/RequestService';
-import { InboxTaskDetail } from './components/InboxTaskDetail';
-import { getPriorityConfig } from '../../config';
->>>>>>> cf9f985b538c278148496475c245f00970889943
 
 /** Format returned by the legacy OData $expand query for My Tasks */
 interface ApprovalItem {
@@ -201,7 +182,6 @@ export const Inbox = () => {
         queryClient.invalidateQueries({ queryKey: ['coordinatingRequests'] });
     };
 
-<<<<<<< HEAD
     // Render inbox item card (for InboxItem format from backend functions)
     const renderInboxItemCard = (item: InboxItem, isTeamTask = false) => (
         <Card key={item.stepApprovalId || item.requestId} className="hover:shadow-md transition-shadow">
@@ -342,9 +322,6 @@ export const Inbox = () => {
         </div>
     );
 
-=======
-    // ─── Render ───────────────────────────────────────────────
->>>>>>> cf9f985b538c278148496475c245f00970889943
     return (
         <div className="flex h-[calc(100vh-4rem)] -m-6 bg-white">
             {/* ─── LEFT PANE: Task List ─── */}
@@ -417,12 +394,11 @@ export const Inbox = () => {
                                 emptyTitle="No team tasks"
                                 emptySubtitle="No group-assigned tasks available."
                             />
-                        </TabsContent>
+                        </TabsContent>{/* Tabs */}
                     </div>
                 </Tabs>
             </div>
 
-<<<<<<< HEAD
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as InboxTab)}>
                 <TabsList className="grid w-full grid-cols-3">
@@ -548,22 +524,7 @@ export const Inbox = () => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-=======
-            {/* ─── CENTER + RIGHT PANES ─── */}
-            {selectedRequestId ? (
-                <InboxTaskDetail
-                    requestId={selectedRequestId}
-                    onDeselect={handleDeselect}
-                />
-            ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
-                    <InboxIcon className="w-16 h-16 text-slate-200" />
-                    <p className="text-lg font-medium text-slate-500">Select a task</p>
-                    <p className="text-sm">Choose a task from the list to view its details</p>
-                </div>
-            )}
->>>>>>> cf9f985b538c278148496475c245f00970889943
-        </div>
+        </div >
     );
 };
 
