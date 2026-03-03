@@ -167,17 +167,21 @@ service RequestService @(
     function getCoordinatingRequests()    returns array of InboxItem;
 
     type InboxItem {
-        stepApprovalId : UUID; // StepApproval ID
-        stepId         : UUID; // Step ID
-        requestId      : UUID; // Request ID
-        requestTitle   : String; // Request title
-        requestType    : String; // Request type name
-        stepName       : String; // Step name
-        status         : String; // Approval status
-        assignedTo     : String; // Assigned approver/group name
-        assignedType   : String; // USER or GROUP
-        claimedBy      : String; // Who claimed (if any)
-        createdAt      : Timestamp;
-        dueDate        : Timestamp;
+        stepApprovalId  : UUID; // StepApproval ID
+        stepId          : UUID; // Step ID
+        requestId       : UUID; // Request ID
+        requestTitle    : String; // Request title
+        displayId       : String; // Human-readable number (e.g. 001023)
+        requestType     : String; // Request type name
+        stepName        : String; // Step name
+        status          : String; // Approval status
+        assignedTo      : String; // Assigned approver/group name
+        assignedType    : String; // USER or GROUP
+        claimedBy       : String; // Who claimed (if any)
+        claimedByUserId : UUID; // ShadowUser ID of claimer (for "is me?" check)
+        requester       : String; // Display name of the requester
+        priority        : String; // Request priority
+        createdAt       : Timestamp;
+        dueDate         : Timestamp;
     }
 }

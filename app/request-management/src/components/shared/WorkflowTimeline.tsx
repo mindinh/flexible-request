@@ -1,4 +1,4 @@
-import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users, Calendar, MessageSquare } from 'lucide-react';
+import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from '../ui';
 
@@ -71,15 +71,6 @@ const STATUS_CONFIG: Record<WorkflowStepStatus, {
     UPCOMING: { label: 'Waiting', badgeBg: 'bg-slate-100', badgeText: 'text-slate-500' },
     SKIPPED: { label: 'Skipped', badgeBg: 'bg-slate-100', badgeText: 'text-slate-400' },
 };
-
-function StatusBadge({ status }: { status: WorkflowStepStatus }) {
-    const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.UPCOMING;
-    return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${cfg.badgeBg} ${cfg.badgeText}`}>
-            {cfg.label}
-        </span>
-    );
-}
 
 // ─── Main component ──────────────────────────────────────────────
 
@@ -343,43 +334,61 @@ export function WorkflowTimeline({
 
                                             {/* ── Preview variant: rich detail rows ── */}
                                             {isPreview ? (
-                                                <div className="mt-1.5 space-y-1">
-                                                    {/* Status badge */}
-                                                    <StatusBadge status={step.status} />
+                                                <div className="mt-1.5 space-y-1.5">
+                                                    {/* Status row — labeled */}
+                                                    <div className="flex items-center gap-1.5 text-xs">
+                                                        <span className="text-slate-500">Status:</span>
+                                                        <span className={`font-semibold ${step.status === 'COMPLETED' ? 'text-emerald-600' :
+                                                            step.status === 'REJECTED' ? 'text-rose-600' :
+                                                                step.status === 'IN_PROGRESS' ? 'text-blue-600' :
+                                                                    step.status === 'STARTED' ? 'text-amber-600' :
+                                                                        step.status === 'IN_CLARIFICATION' ? 'text-purple-600' :
+                                                                            step.status === 'PENDING' ? 'text-orange-600' :
+                                                                                'text-slate-400'
+                                                            }`}>
+                                                            {STATUS_CONFIG[step.status]?.label || step.status}
+                                                        </span>
+                                                    </div>
 
-                                                    {/* Assignee row — always visible, never empty */}
+                                                    {/* Assignee row — labeled */}
                                                     <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                        <User className="w-3 h-3 text-slate-400 flex-none" />
+                                                        <span className="text-slate-500">Assignee:</span>
                                                         <span className={step.ownerName ? 'font-medium' : 'italic text-slate-400'}>
                                                             {step.ownerName || 'Unassigned'}
                                                         </span>
                                                     </div>
 
-                                                    {/* Decision date */}
+                                                    {/* Decision date — labeled */}
                                                     {step.decisionDate && (
                                                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                            <Calendar className="w-3 h-3 text-slate-400 flex-none" />
-                                                            <span>
-                                                                {new Date(step.decisionDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            <span>Decision Date:</span>
+                                                            <span className="font-medium text-slate-700">
+                                                                {new Date(step.decisionDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                                             </span>
                                                         </div>
                                                     )}
 
-                                                    {/* SLA row */}
+                                                    {/* SLA row — colored */}
                                                     {(step.slaInfo || step.slaDays) && (
-                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                            <Clock className="w-3 h-3 text-slate-400 flex-none" />
-                                                            <span>{step.slaInfo || `SLA: ${step.slaDays} days`}</span>
+                                                        <div className="flex items-center gap-1.5 text-xs">
+                                                            <span className="text-slate-500">SLA:</span>
+                                                            <span className={`font-medium ${step.slaInfo?.includes('overdue') ? 'text-rose-600' : 'text-emerald-600'
+                                                                }`}>
+                                                                {step.slaInfo || `${step.slaDays} days`}
+                                                            </span>
                                                         </div>
                                                     )}
 
-                                                    {/* Decision note */}
+                                                    {/* Decision note — colored box */}
                                                     {step.decisionNote && (
-                                                        <div className="flex items-start gap-1.5 text-xs text-slate-500 mt-1">
-                                                            <MessageSquare className="w-3 h-3 text-slate-400 flex-none mt-0.5" />
-                                                            <p className="italic leading-snug border-l-2 border-slate-200 pl-2">
-                                                                {step.decisionNote}
-                                                            </p>
+                                                        <div className={`mt-1.5 px-3 py-2 rounded-md text-xs leading-snug border-l-3 ${step.status === 'COMPLETED'
+                                                            ? 'bg-emerald-50 text-emerald-800 border-l-emerald-400'
+                                                            : step.status === 'REJECTED'
+                                                                ? 'bg-rose-50 text-rose-800 border-l-rose-400'
+                                                                : 'bg-slate-50 text-slate-700 border-l-slate-300'
+                                                            }`}>
+                                                            <p className="font-medium">Decision Note:</p>
+                                                            <p className="mt-0.5">{step.decisionNote}</p>
                                                         </div>
                                                     )}
                                                 </div>

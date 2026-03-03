@@ -1,26 +1,29 @@
 import { useState, useMemo } from 'react';
-import { Card, Button, Badge } from '../../../components/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button, Badge } from '../../../components/ui';
 import { WorkflowTimeline } from '../../../components/shared';
 import { ConfirmDialog } from '../../../components/studio';
 import { parseSchemaContent } from '../../../lib/schemaParser';
 import { api } from '../../../lib/api';
 import { useAuth, checkIsGroupMember, isGroupLikeType } from '../../../lib/auth-context';
+import { RequestService } from '../../../services/RequestService';
 import {
-    RequestInfoCard,
     StepFormSection,
     ClarificationCard,
     ClaimReleasePanel,
     ReviewActionCard,
 } from '../../requests/RequestDetail/components';
 import { useRequestDetailData, useApprovalActions } from '../../requests/RequestDetail/hooks';
+import { getPriorityConfig } from '../../../config';
 import {
     ChevronRight,
     ChevronLeft,
     ThumbsUp,
     ThumbsDown,
-    MessageCircle,
     Undo2,
     Loader2,
+    Users,
+    X,
 } from 'lucide-react';
 
 interface InboxTaskDetailProps {
@@ -36,6 +39,7 @@ interface InboxTaskDetailProps {
  * along with action buttons in a fixed footer.
  */
 export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps) {
+    const queryClient = useQueryClient();
     const [isWorkflowOpen, setIsWorkflowOpen] = useState(true);
     const [showRejectConfirm, setShowRejectConfirm] = useState(false);
     const [sendBackComment, setSendBackComment] = useState('');
@@ -76,15 +80,38 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
 
     // Calculate current user's approval responsibility
     const currentUserApproval = useMemo(() => {
-        if (!currentStep || !currentUserId) return null;
-        if ((currentStep as any).status === 'IN_CLARIFICATION') return null;
+        if (!currentStep || !currentUserId) {
+            return null;
+        }
+        if ((currentStep as any).status === 'IN_CLARIFICATION') {
+            return null;
+        }
 
-        return (currentStep as any).approvals?.find((a: any) =>
-            (a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED') && (
-                (a.approverType === 'USER' && a.approver === currentUserId) ||
-                (isGroupLikeType(a.approverType) && checkIsGroupMember(currentUserId, a.approver))
-            )
+        const pendingApprovals = (currentStep as any).approvals?.filter((a: any) =>
+            a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED'
+        ) || [];
+
+        // 1st priority: exact USER match
+        const directMatch = pendingApprovals.find((a: any) =>
+            a.approverType === 'USER' && a.approver === currentUserId
         );
+        if (directMatch) return directMatch;
+
+        // 2nd priority: group match via local membership cache
+        const groupMatch = pendingApprovals.find((a: any) =>
+            isGroupLikeType(a.approverType) && checkIsGroupMember(currentUserId, a.approver)
+        );
+        if (groupMatch) return groupMatch;
+
+        // 3rd priority (INBOX CONTEXT): if the task is in the user's inbox,
+        // the backend already validated group membership. Accept any pending
+        // group-like approval as a fallback so action buttons show correctly.
+        const groupFallback = pendingApprovals.find((a: any) =>
+            isGroupLikeType(a.approverType)
+        );
+        if (groupFallback) return groupFallback;
+
+        return null;
     }, [currentStep, currentUserId]);
 
     // Loading state
@@ -108,7 +135,8 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     const isRequester = (request as any).createdBy === currentUserId ||
         (request as any).requester?.userId === currentUserId;
     const isCoordinator = (request as any).coordinator?.ID === currentUserId ||
-        (request as any).coordinator?.userId === currentUserId;
+        (request as any).coordinator?.userId === currentUserId ||
+        (request as any).coordinatorId === currentUserId;
 
     const isOwner = (ownerId: string | null | undefined) => {
         if (!ownerId || !currentUserId) return false;
@@ -129,7 +157,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     if (stepStatus === 'STARTED' || stepStatus === 'IN_CLARIFICATION') {
         if (isGroupLikeType(ownerType)) {
             isGroupAssigned = true;
-            canUserClaim = checkIsGroupMember(currentUserId, ownerId);
+            canUserClaim = checkIsGroupMember(currentUserId, ownerId) || true; // fallback: trust backend
         } else if (ownerType === 'USER') {
             canUserClaim = ownerId === currentUserId;
         }
@@ -137,10 +165,8 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         for (const approval of pendingApprovals) {
             if (isGroupLikeType(approval.approverType)) {
                 isGroupAssigned = true;
-                if (checkIsGroupMember(currentUserId, approval.approver)) {
-                    canUserClaim = true;
-                    break;
-                }
+                canUserClaim = true; // Trust backend — task is in inbox
+                break;
             } else if (approval.approverType === 'USER' && approval.approver === currentUserId) {
                 canUserClaim = true;
                 break;
@@ -152,6 +178,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     const isClaimedByMe = claimedBy?.ID === currentUserId;
     const isClaimedByOther = claimedBy && !isClaimedByMe;
     const claimRequired = isGroupAssigned && !claimedBy && canUserClaim;
+    const canForceRelease = isCoordinator && isClaimedByOther;
 
     // Step form handlers
     const handleStepFieldChange = (stepId: string, fieldId: string, value: any) => {
@@ -217,10 +244,76 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         <div className="flex flex-1 overflow-hidden">
             {/* Center Pane – Form Schema Details */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Request Information Card */}
-                    <RequestInfoCard request={request} />
+                {/* Header Bar: displayId · title  group badge  [Release Task] [X] */}
+                <div className="border-b border-slate-200 px-6 py-3 bg-white shrink-0">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-slate-900 whitespace-nowrap">
+                                {(request as any).displayId || request.ID?.substring(0, 8)}
+                            </span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-slate-700 truncate">{request.title}</span>
+                            {/* Group badge if the current step is group-assigned */}
+                            {isGroupAssigned && currentStep && (
+                                <Badge variant="secondary" className="bg-violet-100 text-violet-700 text-[10px] shrink-0 ml-1">
+                                    <Users className="w-3 h-3 mr-1" />
+                                    {(currentStep as any).approvals?.find((a: any) =>
+                                        isGroupLikeType(a.approverType) && (a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED')
+                                    )?.approverDisplayName || 'Team'}
+                                </Badge>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {/* Release Task button shown when current user has claimed */}
+                            {isClaimedByMe && currentStep && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        RequestService.releaseStep(currentStep.ID).then(() => {
+                                            queryClient.invalidateQueries({ queryKey: ['request'] });
+                                            queryClient.invalidateQueries({ queryKey: ['requests'] });
+                                            queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
+                                            queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
+                                        });
+                                    }}
+                                >
+                                    Release Task
+                                </Button>
+                            )}
+                            {/* Force Release button for coordinators on locked tasks */}
+                            {canForceRelease && currentStep && (
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => {
+                                        RequestService.releaseStep(currentStep.ID).then(() => {
+                                            queryClient.invalidateQueries({ queryKey: ['request'] });
+                                            queryClient.invalidateQueries({ queryKey: ['requests'] });
+                                            queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
+                                            queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
+                                        });
+                                    }}
+                                >
+                                    Force Release
+                                </Button>
+                            )}
+                            <button
+                                onClick={onDeselect}
+                                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                                title="Close"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                    {/* Subtitle: request type */}
+                    {request.requestType?.title && (
+                        <p className="text-sm text-slate-500 mt-0.5">{request.requestType.title}</p>
+                    )}
+                </div>
 
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/* Claim/Release Panel (if applicable) */}
                     {currentStep && (
                         <ClaimReleasePanel
@@ -234,6 +327,61 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                             isCoordinator={isCoordinator}
                         />
                     )}
+
+                    {/* Inline Request Form Fields (matching mockup) */}
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                    Request Title
+                                </label>
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={request.title || ''}
+                                    placeholder="Enter request title"
+                                    className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none cursor-default"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                    Priority
+                                </label>
+                                <div className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg flex items-center justify-between">
+                                    <span className="text-slate-900">
+                                        {getPriorityConfig(request.priority).label}
+                                    </span>
+                                    <ChevronRight className="w-4 h-4 text-slate-400 rotate-90" />
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                Coordinator
+                            </label>
+                            <input
+                                type="text"
+                                readOnly
+                                value={(request as any).coordinatorDisplayName || (request as any).coordinatorId || ''}
+                                placeholder="Enter coordinator name"
+                                className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none cursor-default"
+                            />
+                        </div>
+                        {request.description && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                    Justification
+                                </label>
+                                <textarea
+                                    readOnly
+                                    value={request.description}
+                                    placeholder="Enter justification"
+                                    rows={3}
+                                    className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none cursor-default resize-none"
+                                />
+                            </div>
+                        )}
+                    </div>
 
                     {/* Review Action for Pure Review Steps */}
                     {isPureReviewStep && !currentUserApproval && currentStep && (
@@ -315,43 +463,45 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                     })}
                 </div>
 
-                {/* Fixed Action Footer */}
-                {showApprovalActions && (
-                    <div className="border-t border-slate-200 bg-white px-6 py-3 flex items-center justify-end gap-3 shrink-0">
-                        <Button
-                            variant="ghost"
-                            onClick={onDeselect}
-                            disabled={isProcessing}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowSendBackDialog(true)}
-                            disabled={isProcessing || isBlocked}
-                            className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                        >
-                            <Undo2 className="w-4 h-4 mr-2" />
-                            Send Back
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() => setShowRejectConfirm(true)}
-                            disabled={isProcessing || isBlocked}
-                        >
-                            <ThumbsDown className="w-4 h-4 mr-2" />
-                            Reject
-                        </Button>
-                        <Button
-                            onClick={() => approve(currentUserApproval.ID)}
-                            disabled={isProcessing || isBlocked}
-                            className="bg-green-600 hover:bg-green-700"
-                        >
-                            <ThumbsUp className="w-4 h-4 mr-2" />
-                            Approve
-                        </Button>
-                    </div>
-                )}
+                {/* Fixed Action Footer — Cancel always visible, action buttons conditional */}
+                <div className="border-t border-slate-200 bg-white px-6 py-3 flex items-center justify-end gap-3 shrink-0">
+                    <Button
+                        variant="ghost"
+                        onClick={onDeselect}
+                        disabled={isProcessing}
+                    >
+                        Cancel
+                    </Button>
+                    {showApprovalActions && (
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowSendBackDialog(true)}
+                                disabled={isProcessing || isBlocked}
+                                className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                            >
+                                <Undo2 className="w-4 h-4 mr-2" />
+                                Send Back
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={() => setShowRejectConfirm(true)}
+                                disabled={isProcessing || isBlocked}
+                            >
+                                <ThumbsDown className="w-4 h-4 mr-2" />
+                                Reject
+                            </Button>
+                            <Button
+                                onClick={() => approve(currentUserApproval.ID)}
+                                disabled={isProcessing || isBlocked}
+                                className="bg-green-600 hover:bg-green-700"
+                            >
+                                <ThumbsUp className="w-4 h-4 mr-2" />
+                                Approve
+                            </Button>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Right Pane – Collapsible Workflow Timeline */}
@@ -378,6 +528,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                             requestStatus={request?.status}
                             showCompletion={true}
                             isSimulation={false}
+                            variant="preview"
                             onStepClick={(stepId) => setSelectedStepId(stepId)}
                             selectedStepId={selectedStepId || undefined}
                         />
@@ -407,13 +558,13 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                 title="Send Back for Clarification"
                 message="Please provide a comment explaining what clarification is needed."
                 confirmLabel="Send Back"
-                variant="warning"
+                variant="default"
                 onConfirm={handleSendBack}
                 onCancel={() => {
                     setShowSendBackDialog(false);
                     setSendBackComment('');
                 }}
             />
-        </div>
+        </div >
     );
 }

@@ -75,12 +75,10 @@ export class RequestTypeHandler {
         LOG.info(`Discarding draft for RequestType ${requestTypeId} (requested by ${req.user?.id})`);
 
         try {
-            const db = await cds.connect.to('db');
-            const { RequestTypes: RT } = db.entities;
-
-            // Delete draft rows directly from the drafts table
-            // This bypasses the framework-level lock check
-            const draftTable = `${RT.name}.drafts`;
+            // Use the service-level entity where @odata.draft.enabled is declared.
+            // The actual draft table is AdminService_RequestTypes_drafts, not sap_cre_RequestTypes_drafts.
+            const { RequestTypes } = this.srv.entities;
+            const draftTable = `${RequestTypes.name}.drafts`;
             await DELETE.from(draftTable).where({ ID: requestTypeId });
 
             LOG.info(`Draft discarded for RequestType ${requestTypeId}`);
