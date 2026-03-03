@@ -48,6 +48,7 @@ interface StudioState {
     deleteRequestType: () => Promise<void>;
     deleteStep: (stepId: string) => void;
     resolveDraftConflict: () => Promise<void>; // Discard other user's draft and retry
+    discardChanges: () => Promise<void>; // Discard current draft and reset store
 
     // Updaters (Set Dirty automatically)
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
@@ -433,6 +434,45 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             console.error("Draft conflict resolution failed:", err);
             set({ isLoading: false, error: errMsg });
         }
+    },
+
+    discardChanges: async () => {
+        const { requestTypeId } = get();
+        if (!requestTypeId) return;
+
+        try {
+            console.log('Discarding draft for:', requestTypeId);
+            await AdminService.discardDraft(requestTypeId);
+            console.log('Draft discarded successfully.');
+        } catch (err: unknown) {
+            // Ignore errors (draft may already be gone)
+            console.warn('Failed to discard draft (may already be deleted):', err);
+        }
+
+        // Reset store to initial state
+        set({
+            requestTypeId: null,
+            metadata: null,
+            workflow: { nodes: [], edges: [] },
+            originalNodes: [],
+            originalEdges: [],
+            originalRules: [],
+            schemas: {},
+            schema: [],
+            rules: [],
+            statusNetwork: { nodes: [], edges: [] },
+            activeTab: 'workflow',
+            isLoading: false,
+            isSaving: false,
+            isDirty: false,
+            error: null,
+            activeStepId: null,
+            selectedSchemaFieldId: null,
+            selectedRuleId: null,
+            isDryRunOpen: false,
+            draftConflict: false,
+            draftConflictMessage: null,
+        });
     },
 
     deleteRequestType: async () => {

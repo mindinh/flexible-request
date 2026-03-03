@@ -27,9 +27,10 @@ export class InboxHandler {
 
     /**
      * Get approvals directly assigned to current user
+     * ALSO includes group-assigned approvals that this user has claimed.
      */
     private async onGetMyTasks(req: cds.Request) {
-        const { StepApprovals, ShadowUsers } = this.srv.entities;
+        const { StepApprovals } = this.srv.entities;
 
         // Get current user's info
         const origin = IdentityProvisioner.getOrigin(req.user);
@@ -38,24 +39,68 @@ export class InboxHandler {
             return [];
         }
 
-        // Find pending approvals assigned to this user
-        const approvals = await SELECT.from(StepApprovals)
-            .columns(
-                'ID', 'approver', 'approverType', 'status', 'createdAt',
-                'step.ID as stepId', 'step.status as stepStatus',
-                'step.dueDate', 'step.claimedBy.displayName as claimedBy',
-                'step.stepDefinition.stepName',
-                'step.request.ID as requestId', 'step.request.title as requestTitle',
-                'step.request.requestType.title as requestType'
-            )
+        // NOTE: CDS CQL cannot resolve 3-level deep association paths in SELECT columns
+        // (e.g. step.claimedBy.displayName from StepApprovals). So we fetch claimedBy
+        // info separately from Steps and merge by stepId.
+        const INBOX_COLUMNS = [
+            'ID', 'approver', 'approverType', 'status', 'createdAt',
+            'step.ID as stepId', 'step.status as stepStatus',
+            'step.dueDate',
+            'step.stepDefinition.stepName',
+            'step.request.ID as requestId', 'step.request.title as requestTitle',
+            'step.request.requestType.title as requestType'
+        ];
+
+        // 1) Direct USER approvals assigned to this user
+        const directApprovals = await SELECT.from(StepApprovals)
+            .columns(...INBOX_COLUMNS)
             .where({
                 approverType: 'USER',
                 approver: shadowUser.ID,
                 status: 'PENDING'
             });
 
-        // Resolve generic display names (though for My Tasks it's usually just the user)
-        return this.mapToInboxItems(approvals, 'USER', shadowUser.displayName);
+        // 2) Group/Team approvals where the step is claimed by this user
+        //    Query db-level Steps to reliably access claimedBy_ID FK column
+        const db = await cds.connect.to('db');
+        const { Steps: DbSteps } = db.entities('sap.cre');
+        const claimedSteps = await SELECT.from(DbSteps)
+            .columns('ID')
+            .where({ claimedBy_ID: shadowUser.ID });
+        const claimedStepIds = claimedSteps.map((s: any) => s.ID).filter(Boolean);
+
+        let claimedGroupApprovals: Record<string, unknown>[] = [];
+        if (claimedStepIds.length > 0) {
+            claimedGroupApprovals = await SELECT.from(StepApprovals)
+                .columns(...INBOX_COLUMNS)
+                .where({
+                    approverType: { in: ['GROUP', 'TEAM', 'DEPARTMENT', 'ROLE'] },
+                    status: 'PENDING',
+                    step_ID: { in: claimedStepIds }
+                });
+        }
+
+        // 3) Merge and deduplicate by approval ID
+        const seen = new Set<string>();
+        const merged: Record<string, unknown>[] = [];
+        for (const a of [...directApprovals, ...claimedGroupApprovals]) {
+            const id = a.ID as string;
+            if (!seen.has(id)) {
+                seen.add(id);
+                merged.push(a);
+            }
+        }
+
+        // 4) Enrich with claimedBy info from Steps
+        const stepIds = [...new Set(merged.map((a: any) => a.stepId).filter(Boolean))];
+        const claimedByMap = await this.getClaimedByMap(stepIds as string[]);
+        for (const a of merged) {
+            const info = claimedByMap.get(a.stepId as string);
+            (a as any).claimedBy = info?.displayName ?? null;
+            (a as any).claimedByUserId = info?.userId ?? null;
+        }
+
+        return this.mapToInboxItems(merged, undefined, shadowUser.displayName);
     }
 
     /**
@@ -86,7 +131,7 @@ export class InboxHandler {
             .columns(
                 'ID', 'approver', 'approverType', 'status', 'createdAt',
                 'step.ID as stepId', 'step.status as stepStatus',
-                'step.dueDate', 'step.claimedBy.displayName as claimedBy',
+                'step.dueDate',
                 'step.stepDefinition.stepName',
                 'step.request.ID as requestId', 'step.request.title as requestTitle',
                 'step.request.requestType.title as requestType'
@@ -97,6 +142,20 @@ export class InboxHandler {
                 status: 'PENDING'
             });
 
+        // Enrich with claimedBy info from Steps
+        const stepIds = [...new Set(teamApprovals.map((a: any) => a.stepId).filter(Boolean))];
+        const claimedByMap = await this.getClaimedByMap(stepIds as string[]);
+
+        // Filter out tasks claimed by the current user (they appear in My Tasks instead)
+        const filtered = teamApprovals.filter((a: any) => {
+            const info = claimedByMap.get(a.stepId as string);
+            if (info?.userId === shadowUser.ID) return false;
+            // Enrich the remaining tasks
+            (a as any).claimedBy = info?.displayName ?? null;
+            (a as any).claimedByUserId = info?.userId ?? null;
+            return true;
+        });
+
         // We need to map Group IDs to Names
         const groups = await SELECT.from(ShadowGroups)
             .where({ ID: { in: groupIds } })
@@ -105,7 +164,7 @@ export class InboxHandler {
         const groupMap = new Map<string, string>();
         groups.forEach((g: any) => groupMap.set(g.ID, g.name));
 
-        return this.mapToInboxItems(teamApprovals, 'GROUP', undefined, groupMap);
+        return this.mapToInboxItems(filtered, undefined, undefined, groupMap);
     }
 
     /**
@@ -150,11 +209,58 @@ export class InboxHandler {
     }
 
     /**
-     * Map raw approval data to InboxItem type
+     * Fetch claimedBy displayName + userId for a batch of step IDs.
+     * Uses cds.db entities directly (not service projections) because CDS service-level
+     * SELECT columns silently drop generated FK columns like claimedBy_ID.
+     */
+    private async getClaimedByMap(
+        stepIds: string[]
+    ): Promise<Map<string, { displayName: string | null; userId: string | null }>> {
+        const map = new Map<string, { displayName: string | null; userId: string | null }>();
+        if (stepIds.length === 0) return map;
+
+        const db = await cds.connect.to('db');
+        const { Steps, ShadowUsers } = db.entities('sap.cre');
+
+        // 1) Get claimedBy_ID (direct FK) from db-level Steps
+        const steps = await SELECT.from(Steps)
+            .columns('ID', 'claimedBy_ID')
+            .where({ ID: { in: stepIds } });
+
+        this.log.debug('[getClaimedByMap] Steps result:', JSON.stringify(steps));
+
+        // 2) Collect unique claimer IDs and resolve display names
+        const claimerIds = [...new Set(steps.map((s: any) => s.claimedBy_ID).filter(Boolean))];
+        const nameMap = new Map<string, string>();
+        if (claimerIds.length > 0) {
+            const users = await SELECT.from(ShadowUsers)
+                .columns('ID', 'displayName')
+                .where({ ID: { in: claimerIds } });
+            for (const u of users) {
+                nameMap.set(u.ID as string, (u as any).displayName ?? '');
+            }
+        }
+
+        // 3) Build the map
+        for (const s of steps) {
+            const claimerId = (s as any).claimedBy_ID as string | null;
+            map.set(s.ID as string, {
+                displayName: claimerId ? (nameMap.get(claimerId) ?? null) : null,
+                userId: claimerId ?? null
+            });
+        }
+        return map;
+    }
+
+    /**
+     * Map raw approval data to InboxItem type.
+     * 
+     * @param assignedTypeOverride - If provided, forces all items to this type.
+     *   When undefined, uses the approval's own approverType (dynamic).
      */
     private mapToInboxItems(
         approvals: Record<string, unknown>[],
-        assignedType: string,
+        assignedTypeOverride?: string,
         fixedName?: string,
         nameMap?: Map<string, string>
     ) {
@@ -173,8 +279,9 @@ export class InboxHandler {
                 stepName: a.stepName,
                 status: a.status,
                 assignedTo: assignedToName,
-                assignedType,
+                assignedType: assignedTypeOverride ?? (a.approverType as string),
                 claimedBy: a.claimedBy,
+                claimedByUserId: a.claimedByUserId ?? null,
                 createdAt: a.createdAt,
                 dueDate: a.dueDate
             };

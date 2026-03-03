@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Pencil, Check, X, ChevronDown, Search } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { getIconConfig, getAllIcons, searchIcons, ICON_CATEGORIES, type IconCategory } from '../../config/iconConfig';
@@ -17,6 +17,7 @@ interface StudioHeaderProps {
     onActiveChange?: (isActive: boolean) => void;
     onIconChange?: (icon: string) => void;
     onDiscard?: () => void;
+    onBack?: () => void;
     actions?: React.ReactNode;
     isDirty?: boolean;
 }
@@ -32,9 +33,11 @@ export function StudioHeader({
     onActiveChange,
     onIconChange,
     onDiscard,
+    onBack,
     actions,
     isDirty = false,
 }: StudioHeaderProps) {
+    const navigate = useNavigate();
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [isEditingDesc, setIsEditingDesc] = useState(false);
     const [editTitleValue, setEditTitleValue] = useState(title);
@@ -112,13 +115,13 @@ export function StudioHeader({
         >
             {/* Left Side: Back + Icon + Title + Description + Status */}
             <div className="flex items-center gap-4 min-w-0 flex-1 mr-4">
-                <Link
-                    to={backLink}
-                    className="flex items-center gap-2 text-slate-500 hover:text-[#b10e10] transition-colors text-sm flex-shrink-0"
+                <button
+                    onClick={() => onBack ? onBack() : navigate(backLink)}
+                    className="flex items-center gap-2 text-slate-500 hover:text-[#b10e10] transition-colors text-sm flex-shrink-0 bg-transparent border-none cursor-pointer"
                 >
                     <ArrowLeft size={16} />
                     <span>Back</span>
-                </Link>
+                </button>
                 <div className="h-8 w-px bg-slate-200 flex-shrink-0" />
 
                 {/* Icon Picker */}
