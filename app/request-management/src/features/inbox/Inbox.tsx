@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui';
 import { useState, useMemo } from 'react';
+import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { RequestService } from '../../services/RequestService';
 import { InboxTaskDetail } from './components/InboxTaskDetail';
 import { getPriorityConfig } from '../../config';
@@ -78,8 +79,15 @@ function getActionTitle(task: UnifiedTask): string {
 export const Inbox = () => {
     const queryClient = useQueryClient();
     const { currentUserId } = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
     const [activeTab, setActiveTab] = useState<InboxTab>('my-tasks');
-    const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+
+    // Derive selectedRequestId from the URL instead of local state
+    const selectedRequestId = useMemo(() => {
+        const match = matchPath('/inbox/request/:requestId', location.pathname);
+        return match?.params.requestId || null;
+    }, [location.pathname]);
     const [searchQuery, setSearchQuery] = useState('');
 
     // ─── Data Fetching ────────────────────────────────────────
@@ -176,11 +184,11 @@ export const Inbox = () => {
 
     // ─── Handlers ─────────────────────────────────────────────
     const handleSelectTask = (task: UnifiedTask) => {
-        setSelectedRequestId(task.requestId);
+        navigate(`/inbox/request/${task.requestId}`);
     };
 
     const handleDeselect = () => {
-        setSelectedRequestId(null);
+        navigate('/inbox');
         queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
         queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
     };
@@ -224,7 +232,7 @@ export const Inbox = () => {
                     value={activeTab}
                     onValueChange={(val) => {
                         setActiveTab(val as InboxTab);
-                        setSelectedRequestId(null);
+                        navigate('/inbox');
                     }}
                 >
                     <div className="px-4">

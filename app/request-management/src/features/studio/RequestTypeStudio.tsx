@@ -67,7 +67,8 @@ function StudioContent() {
         // Draft conflict
         draftConflict,
         draftConflictMessage,
-        resolveDraftConflict
+        resolveDraftConflict,
+        discardChanges
     } = useStudioStore();
 
     // To track previous saving state for toast
@@ -250,9 +251,18 @@ function StudioContent() {
         );
     }
 
-    const handleDiscard = () => {
-        // Reload to discard changes
-        if (id) loadRequestType(id);
+    const handleDiscard = async () => {
+        await discardChanges();
+        navigate('/studio');
+    };
+
+    const handleBack = async () => {
+        if (isDirty) {
+            const confirmed = window.confirm('You have unsaved changes. Are you sure you want to leave? Your draft will be discarded.');
+            if (!confirmed) return;
+        }
+        await discardChanges();
+        navigate('/studio');
     };
 
     return (
@@ -268,6 +278,7 @@ function StudioContent() {
                     onActiveChange={(isEnabled) => updateMetadata({ isEnabled })}
                     onIconChange={(icon) => updateMetadata({ icon })}
                     onDiscard={handleDiscard}
+                    onBack={handleBack}
                     isDirty={isDirty}
                     actions={
                         <motion.button

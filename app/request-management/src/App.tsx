@@ -104,7 +104,7 @@ function App() {
                 }
               />
               <Route
-                path="/inbox"
+                path="/inbox/*"
                 element={
                   <SuspenseWrapper>
                     <Inbox />
