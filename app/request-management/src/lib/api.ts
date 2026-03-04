@@ -105,8 +105,14 @@ api.interceptors.response.use(
             }
         }
 
-        // Emit global event for Toast
-        globalEvents.emit(EVENT_TYPES.API_ERROR, message);
+        // Suppress global toast if the request opted out via X-Quiet-Error header
+        const isQuiet = error.config?.headers?.['X-Quiet-Error'] === 'true' ||
+            error.config?.headers?.['X-Quiet-Error'] === true;
+
+        if (!isQuiet) {
+            // Emit global event for Toast
+            globalEvents.emit(EVENT_TYPES.API_ERROR, message);
+        }
 
         return Promise.reject(error);
     }
