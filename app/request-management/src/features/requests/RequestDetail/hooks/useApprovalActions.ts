@@ -32,6 +32,10 @@ export function useApprovalActions(requestId: string | undefined) {
     const invalidateQueries = () => {
         queryClient.invalidateQueries({ queryKey: ['request', requestId] });
         queryClient.invalidateQueries({ queryKey: ['requests'] });
+        queryClient.invalidateQueries({ queryKey: ['myRequests'] });
+        queryClient.invalidateQueries({ queryKey: ['myApprovals'] });
+        queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
+        queryClient.invalidateQueries({ queryKey: ['notifications'] });
         queryClient.invalidateQueries({ queryKey: ['auditLog', requestId] });
     };
 

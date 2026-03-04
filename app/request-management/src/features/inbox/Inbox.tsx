@@ -14,6 +14,7 @@ import { Badge, Tabs, TabsList, TabsTrigger, TabsContent } from '../../component
 import { useState, useMemo } from 'react';
 import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { RequestService } from '../../services/RequestService';
+import type { } from '../../types';
 import { InboxTaskDetail } from './components/InboxTaskDetail';
 import { getPriorityConfig } from '../../config';
 import { useAuth } from '../../lib/auth-context';
@@ -102,6 +103,9 @@ export const Inbox = () => {
         queryFn: () => RequestService.getTeamApprovals(),
         enabled: activeTab === 'team-tasks',
     });
+
+
+    // ─── Mutations ────────────────────────────────────────────
 
     // ─── Claim Step Mutation (quick claim from card) ──────────
     const claimMutation = useMutation({
@@ -193,6 +197,7 @@ export const Inbox = () => {
         queryClient.invalidateQueries({ queryKey: ['teamApprovals'] });
     };
 
+
     const handleClaimTask = (e: React.MouseEvent, stepId: string) => {
         e.stopPropagation();
         claimMutation.mutate(stepId);
@@ -202,6 +207,7 @@ export const Inbox = () => {
         e.stopPropagation();
         releaseMutation.mutate(stepId);
     };
+
 
     // ─── Render ───────────────────────────────────────────────
     return (
@@ -309,6 +315,7 @@ export const Inbox = () => {
                     <p className="text-sm">Choose a task from the list to view its details</p>
                 </div>
             )}
+
         </div>
     );
 };

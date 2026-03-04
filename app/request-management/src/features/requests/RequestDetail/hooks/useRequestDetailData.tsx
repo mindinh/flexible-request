@@ -14,7 +14,8 @@ import { mapStepStatus as mapStatus } from '../types';
  */
 export function useRequestDetailData(id: string | undefined) {
     // Fetch request details with expanded request type and steps
-    const { data: request, isLoading } = useQuery({
+    const { data: request, isLoading, isFetching } = useQuery({
+
         queryKey: ['request', id],
         queryFn: async () => {
             const response = await api.get(
@@ -416,6 +417,7 @@ export function useRequestDetailData(id: string | undefined) {
         request,
         auditLog,
         isLoading,
+        isFetching,
         startStep,
         startStepData,
         formData,

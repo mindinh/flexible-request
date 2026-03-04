@@ -21,3 +21,4 @@ export { Calendar } from './Calendar';
 export { DatePicker } from './DatePicker';
 export * from './DropdownMenu';
 export { Toaster, toast } from './Sonner';
+export { Checkbox } from './Checkbox';

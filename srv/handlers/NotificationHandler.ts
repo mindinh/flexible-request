@@ -25,7 +25,7 @@ export class NotificationHandler {
             return true;
         });
 
-        srv.on('markAllAsRead', 'Notifications', async (req) => {
+        srv.on('markAllAsRead', async (req) => {
             const userId = req.user.id;
             const origin = IdentityProvisioner.getOrigin(req.user);
 
@@ -35,6 +35,21 @@ export class NotificationHandler {
 
             if (user) {
                 await UPDATE('sap.cre.Notifications').where({ recipient_ID: user.ID }).with({ isRead: true });
+            }
+            return true;
+        });
+
+        srv.on('deleteAll', async (req) => {
+            const userId = req.user.id;
+            const origin = IdentityProvisioner.getOrigin(req.user);
+
+            const db = await cds.connect.to('db');
+            const { ShadowUsers } = db.entities('sap.cre');
+            const user = await SELECT.one.from(ShadowUsers).where({ userId, origin });
+
+            if (user) {
+                const { Notifications } = db.entities('sap.cre');
+                await db.delete(Notifications).where({ recipient_ID: user.ID });
             }
             return true;
         });
@@ -180,7 +195,7 @@ export class NotificationHandler {
 
             // 5. Build email content 
             const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
-            const deepLink = `${appUrl}/request/${requestId}`;
+            const deepLink = `${appUrl}/inbox/request/${requestId}`;
             const subject = `New Approval Request [${request.displayId}] – Action Required`;
 
             const html = `
@@ -191,10 +206,10 @@ export class NotificationHandler {
                     <p>Please find the details below:</p>
                     
                     <ul style="list-style: none; padding-left: 20px;">
-                        <li><strong>- Request:</strong> ${request.title}</li>
-                        <li><strong>- Step:</strong> ${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</li>
-                        <li><strong>- Priority:</strong> ${request.priority || 'MEDIUM'}</li>
-                        <li><strong>- Created By:</strong> ${requesterName}</li>
+                        <li><strong>Request:</strong> ${request.displayId} - ${request.title}</li>
+                        <li><strong>Step:</strong> ${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</li>
+                        <li><strong>Priority:</strong> ${NotificationHandler.formatPriority(request.priority)}</li>
+                        <li><strong>Created By:</strong> ${requesterName}</li>
                     </ul>
 
                     <p>Kindly review the request in the system and provide your approval or rejection at your earliest convenience.</p>
@@ -208,7 +223,7 @@ export class NotificationHandler {
                 </div>
             `;
 
-            const text = `Dear Approver,\n\nYou have been assigned a new request that requires your review and decision.\n\nPlease find the details below:\n- Request: ${request.title}\n- Step: ${approval.ruleName || step.stepDefinition?.stepName}\n- Priority: ${request.priority}\n- Created By: ${requesterName}\n\nKindly review the request in the system and provide your approval or rejection at your earliest convenience.\nYou can access the request here: ${deepLink}\n\nIf you have any questions or require further clarification, please feel free to contact the requester.\n\nThank you for your prompt attention.\n\nBest regards,\nproRequest System`;
+            const text = `Dear Approver,\n\nYou have been assigned a new request that requires your review and decision.\n\nPlease find the details below:\n- Request: ${request.title}\n- Step: ${approval.ruleName || step.stepDefinition?.stepName}\n- Priority: ${NotificationHandler.formatPriority(request.priority)}\n- Created By: ${requesterName}\n\nKindly review the request in the system and provide your approval or rejection at your earliest convenience.\nYou can access the request here: ${deepLink}\n\nIf you have any questions or require further clarification, please feel free to contact the requester.\n\nThank you for your prompt attention.\n\nBest regards,\nproRequest System`;
 
             // 6. Create in-app notification records
             const notificationTitle = 'Approval Required';
@@ -243,5 +258,10 @@ export class NotificationHandler {
         } catch (error: any) {
             NotificationHandler.log.error('[notification-handler] Failed to process notification:', error.message);
         }
+    }
+
+    private static formatPriority(priority: string): string {
+        const p = (priority || 'MEDIUM').toLowerCase();
+        return p.charAt(0).toUpperCase() + p.slice(1);
     }
 }

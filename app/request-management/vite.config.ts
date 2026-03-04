@@ -6,8 +6,8 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Use relative paths for BTP AppRouter deployment
-  base: './',
+  // Use absolute paths for BTP AppRouter deployment to support deep linking
+  base: '/',
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

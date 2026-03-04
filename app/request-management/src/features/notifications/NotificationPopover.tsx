@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle2, FileText, AlertCircle, Clock } from 'lucide-react';
+import { Bell, CheckCircle2, FileText, AlertCircle, Clock, Trash2 } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -40,13 +40,37 @@ export const NotificationPopover = () => {
         },
     });
 
+    const deleteNotificationMutation = useMutation({
+        mutationFn: RequestService.deleteNotification,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+    });
+
+    const deleteAllNotificationsMutation = useMutation({
+        mutationFn: RequestService.deleteAllNotifications,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+    });
+
     const handleNotificationClick = async (notification: any) => {
         if (!notification.isRead) {
             await markAsReadMutation.mutateAsync(notification.ID);
         }
         if (notification.request?.ID) {
-            navigate(`/requests/${notification.request.ID}`);
+            navigate(`/inbox/request/${notification.request.ID}`);
         }
+    };
+
+    const handleDelete = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        deleteNotificationMutation.mutate(id);
+    };
+
+    const handleClearAll = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        deleteAllNotificationsMutation.mutate();
     };
 
     return (
@@ -82,13 +106,23 @@ export const NotificationPopover = () => {
                                     </div>
                                 )}
                             </div>
-                            {unreadCount > 0 && (
-                                <button
-                                    onClick={() => markAllAsReadMutation.mutate()}
-                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                                >
-                                    Mark all as read
-                                </button>
+                            {notifications.length > 0 && (
+                                <div className="flex items-center gap-3">
+                                    {unreadCount > 0 && (
+                                        <button
+                                            onClick={() => markAllAsReadMutation.mutate()}
+                                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                        >
+                                            Mark all as read
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={handleClearAll}
+                                        className="text-xs text-red-600 hover:text-red-700 font-medium"
+                                    >
+                                        Clear all
+                                    </button>
+                                </div>
                             )}
                         </div>
                         <p className="text-sm text-slate-500">
@@ -126,9 +160,18 @@ export const NotificationPopover = () => {
                                                 <p className="font-bold text-slate-900 leading-tight">
                                                     {n.title}
                                                 </p>
-                                                {n.priority === 'HIGH' && (
-                                                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                                                )}
+                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                    {n.priority === 'HIGH' && (
+                                                        <AlertCircle className="w-4 h-4 text-red-500" />
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => handleDelete(e, n.ID)}
+                                                        className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                                        aria-label="Delete notification"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                             <p className="text-sm text-slate-600 mb-2 truncate">
                                                 {n.message}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
 import { parseSchemaContent, flattenSchemaFields } from '../../../../lib/schemaParser';
@@ -24,8 +24,30 @@ interface ExistingStepData {
 export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOptions) {
     const { currentUser, currentUserId } = useAuth();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [formData, setFormData] = useState<Record<string, any>>({});
     const isEditMode = !!requestId;
+
+    const invalidateQueries = async (id?: string) => {
+        const targetId = id || requestId;
+        const promises = [];
+
+        if (targetId) {
+            promises.push(queryClient.invalidateQueries({ queryKey: ['request', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['auditLog', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['requestForEdit', targetId] }));
+            promises.push(queryClient.invalidateQueries({ queryKey: ['requestStepDataForEdit', targetId] }));
+        }
+
+        // List queries
+        promises.push(queryClient.invalidateQueries({ queryKey: ['requests'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['myRequests'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['myApprovals'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['teamApprovals'] }));
+        promises.push(queryClient.invalidateQueries({ queryKey: ['notifications'] }));
+
+        await Promise.all(promises);
+    };
 
     // Fetch existing request data (edit mode only)
     const { data: existingRequest, isLoading: isLoadingRequest } = useQuery({
@@ -80,30 +102,34 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
     // Get display name - works for both dev (.name) and production (.displayName)
     const currentUserDisplayName = (currentUser as any).displayName || (currentUser as any).name || '';
 
+    const [isInitializing, setIsInitializing] = useState(isEditMode);
+
     // Populate form data when editing
     useEffect(() => {
-        if (isEditMode && existingStepData?.data) {
+        if (isEditMode && existingStepData?.data && existingRequest) {
             setFormData(prev => ({
                 ...prev,
                 ...existingStepData.data,
-                title: existingRequest?.title || '',
-                description: existingRequest?.description || '',
-                priority: existingRequest?.priority || 'MEDIUM'
+                title: existingRequest.title || prev.title || '',
+                description: existingRequest.description || prev.description || '',
+                priority: existingRequest.priority || prev.priority || 'MEDIUM'
             }));
+            setIsInitializing(false);
         } else if (!isEditMode) {
             setFormData(prev => ({
                 ...prev,
-                priority: 'MEDIUM',
+                priority: prev.priority || 'MEDIUM',
                 coordinatorId: prev.coordinatorId || currentUserId,
                 coordinatorType: prev.coordinatorType || 'USER',
                 coordinatorName: prev.coordinatorName || currentUserDisplayName
             }));
+            setIsInitializing(false);
         }
     }, [isEditMode, existingStepData, existingRequest, currentUserId, currentUserDisplayName]);
 
     // Initialize step owner from StepDefinition's default owner, fallback to coordinator
     useEffect(() => {
-        if (startStep && !formData.stepOwnerId) {
+        if (startStep && !formData.stepOwnerId && !isInitializing) {
             // Use StepDefinition's default owner if defined
             if (startStep.ownerId) {
                 setFormData(prev => ({
@@ -122,7 +148,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
                 }));
             }
         }
-    }, [startStep, formData.coordinatorId, formData.stepOwnerId]);
+    }, [startStep, formData.coordinatorId, formData.stepOwnerId, isInitializing]);
 
     // Get schema items - render exactly as defined in the Form Schema
     const schemaItems = parseSchemaContent(startStep?.schemaContent);
@@ -243,7 +269,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
 
             return { ID: reqId };
         },
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
+            await invalidateQueries(data.ID);
             navigate(`/requests/${data.ID}/edit`);
         },
     });
@@ -312,7 +339,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
             await api.post(`/browse/Requests(${reqId})/RequestService.submit`);
             return { ID: reqId };
         },
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
+            await invalidateQueries(data.ID);
             navigate(`/requests/${data.ID}`);
         },
     });
@@ -322,7 +350,8 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         mutationFn: async () => {
             await api.delete(`/browse/Requests(${requestId})`);
         },
-        onSuccess: () => {
+        onSuccess: async () => {
+            await invalidateQueries();
             navigate('/requests');
         },
     });
@@ -331,7 +360,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         setFormData(prev => ({ ...prev, [fieldId]: value }));
     };
 
-    const isPageLoading = isLoadingType || (isEditMode && (isLoadingRequest || isLoadingStepData));
+    const isPageLoading = isLoadingType || (isEditMode && (isLoadingRequest || isLoadingStepData)) || isInitializing;
 
     return {
         // Data
@@ -346,6 +375,7 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         // State
         isEditMode,
         isPageLoading,
+        isInitializing,
         error,
 
         // Mutations

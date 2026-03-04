@@ -42,8 +42,9 @@ export class WorkflowEngine {
      * Evaluates the current state of all steps and activates next steps based on dependencies.
      * @param requestId - The request ID
      * @param userUUID - Optional ShadowUser UUID for audit trail (null for system operations)
+     * @param sourceRequestId - Optional source request ID for copying data
      */
-    public async advance(requestId: string, userUUID?: string | null): Promise<void> {
+    public async advance(requestId: string, userUUID?: string | null, sourceRequestId?: string): Promise<void> {
         this.log.info(`Advancing Request ${requestId}`);
 
         const { Requests, StepDefinitions, Steps, StepDependencies } = this.db.entities;
@@ -117,7 +118,7 @@ export class WorkflowEngine {
 
         // 5. Activate New Steps
         if (stepsToActivate.length > 0) {
-            await this.activateNewSteps(requestId, request, stepsToActivate, userUUID);
+            await this.activateNewSteps(requestId, request, stepsToActivate, userUUID, sourceRequestId);
         } else {
             // 6. Check Completion
             await this.checkWorkflowCompletion(requestId, request, definitions.length, existingSteps, userUUID);
@@ -131,7 +132,8 @@ export class WorkflowEngine {
         requestId: string,
         request: Request & { createdBy: string; coordinatorType?: string; coordinatorId?: string },
         stepsToActivate: StepDefinitionWithOwner[],
-        userUUID?: string | null
+        userUUID?: string | null,
+        sourceRequestId?: string
     ) {
         const { Steps, StepHistory, RequestData } = this.db.entities;
         this.log.info(`Activating ${stepsToActivate.length} new step(s)`);
@@ -179,9 +181,60 @@ export class WorkflowEngine {
             });
 
             // Ensure RequestData record exists for the new step to enable frontend data capture
+            let initialPayload = '{}';
+            if (sourceRequestId && def.isStartStep) {
+                this.log.info(`[WorkflowEngine] Attempting to deep copy Step 1 data from source request ${sourceRequestId} to new request ${requestId}`);
+
+                try {
+                    // NOTE: .and('stepDefinition.isStartStep = true') does NOT work in programmatic
+                    // SELECT on db entities — association path joins are not supported at runtime.
+                    // Instead, we use an explicit 2-step lookup:
+
+                    // 1. Get all steps for the source request that share the SAME stepDefinition
+                    //    as the current start step being activated (defId).
+                    const sourceStep = await SELECT.one.from(Steps)
+                        .where({ request_ID: sourceRequestId, stepDefinition_ID: defId })
+                        .columns('ID');
+
+                    if (sourceStep) {
+                        this.log.debug(`[WorkflowEngine] Found source step ${sourceStep.ID} for definition ${defId}`);
+
+                        // 2. Fetch the payload from RequestData for that step
+                        const sourceData = await SELECT.one.from(RequestData)
+                            .where({ step_ID: sourceStep.ID })
+                            .columns('payload');
+
+                        if (sourceData?.payload && sourceData.payload !== '{}') {
+                            initialPayload = sourceData.payload;
+                            this.log.info(`[WorkflowEngine] Copied Step 1 payload (${initialPayload.length} chars) from source request ${sourceRequestId}`);
+                        } else {
+                            // Fallback: try to find ANY step in source request and grab its RequestData
+                            // This handles the case where stepDefinition_ID differs due to schema changes
+                            this.log.warn(`[WorkflowEngine] Step found but payload empty - trying any step in source request...`);
+                            const anyStep = await SELECT.one.from(Steps)
+                                .where({ request_ID: sourceRequestId })
+                                .columns('ID');
+                            if (anyStep) {
+                                const fallbackData = await SELECT.one.from(RequestData)
+                                    .where({ step_ID: anyStep.ID })
+                                    .columns('payload');
+                                if (fallbackData?.payload && fallbackData.payload !== '{}') {
+                                    initialPayload = fallbackData.payload;
+                                    this.log.info(`[WorkflowEngine] Fallback: copied payload (${initialPayload.length} chars) from step ${anyStep.ID}`);
+                                }
+                            }
+                        }
+                    } else {
+                        this.log.warn(`[WorkflowEngine] No step found with stepDefinition_ID=${defId} in source request ${sourceRequestId}`);
+                    }
+                } catch (err) {
+                    this.log.error(`[WorkflowEngine] Error during Step 1 data copy from ${sourceRequestId}:`, err);
+                }
+            }
+
             await INSERT.into(RequestData).entries({
                 step_ID: newStepId,
-                payload: JSON.stringify({}),
+                payload: initialPayload,
                 createdBy_ID: auditActor,
                 modifiedBy_ID: auditActor
             });
@@ -251,7 +304,7 @@ export class WorkflowEngine {
                     });
 
                     // Recurse
-                    await this.advance(requestId, userUUID);
+                    await this.advance(requestId, userUUID, sourceRequestId);
                 }
             }
         }

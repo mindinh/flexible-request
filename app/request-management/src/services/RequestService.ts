@@ -9,7 +9,7 @@ export const RequestService = {
      * @param creatorId - Optional ID to filter by creator
      */
     async getRequests(creatorId?: string): Promise<Request[]> {
-        let url = `${API_BASE}/Requests?$expand=requestType&$orderby=createdAt desc`;
+        let url = `${API_BASE}/Requests?$expand=requestType,createdBy,refRequest&$orderby=createdAt desc`;
         if (creatorId) {
             const filter = `createdBy_ID eq '${creatorId}'`;
             url += `&$filter=${encodeURIComponent(filter)}`;
@@ -59,6 +59,61 @@ export const RequestService = {
         await api.delete(`${API_BASE}/Requests/${id}`);
     },
 
+    /**
+     * Copy a request: creates a new draft, then explicitly copies Step 1 data client-side.
+     * Client-side copy is used instead of relying on the backend `after CREATE` hook because
+     * CAP does not consistently expose `refRequest_ID` in the after-handler's data payload.
+     */
+    async copyRequest(id: string): Promise<Request> {
+        // 1. Fetch source request with steps and step data
+        const expand = 'requestType,steps($expand=stepDefinition,data)';
+        const sourceResp = await api.get(`${API_BASE}/Requests/${id}?$expand=${expand}`);
+        const source = sourceResp.data;
+
+        // 2. Find the source start step's data payload
+        const sourceStartStep = source.steps?.find((s: any) => s.stepDefinition?.isStartStep) || source.steps?.[0];
+        const sourcePayload: string | null = sourceStartStep?.data?.payload || null;
+
+        // 3. Create the new draft request with refRequest_ID (for audit trail)
+        const createResp = await api.post(`${API_BASE}/Requests`, {
+            title: `Copy of ${source.title}`,
+            description: source.description,
+            priority: source.priority,
+            requestType_ID: source.requestType?.ID,
+            refRequest_ID: source.ID,
+        });
+        const newRequest = createResp.data;
+        const newRequestId = newRequest.ID;
+
+        // 4. Only proceed if source had real data to copy
+        if (sourcePayload && sourcePayload !== '{}') {
+            // Fetch the newly created request's steps to find the start step
+            const newReqResp = await api.get(
+                `${API_BASE}/Requests(${newRequestId})?$expand=steps($expand=stepDefinition,data)`
+            );
+            const newStartStep =
+                newReqResp.data.steps?.find((s: any) => s.stepDefinition?.isStartStep) ||
+                newReqResp.data.steps?.[0];
+
+            if (newStartStep) {
+                if (newStartStep.data?.ID) {
+                    // PATCH existing RequestData record with source payload
+                    await api.patch(`${API_BASE}/RequestData(${newStartStep.data.ID})`, {
+                        payload: sourcePayload,
+                    });
+                } else {
+                    // POST new RequestData record if one wasn't created by the workflow
+                    await api.post(`${API_BASE}/RequestData`, {
+                        step_ID: newStartStep.ID,
+                        payload: sourcePayload,
+                    });
+                }
+            }
+        }
+
+        return newRequest;
+    },
+
     // =========================================
     // Sprint 3: Step Claim/Release Actions
     // =========================================
@@ -105,7 +160,7 @@ export const RequestService = {
      * Uses backend getCoordinatingRequests() function which handles user lookup
      */
     async getCoordinatingRequests(): Promise<Request[]> {
-        const response = await api.get(`${API_BASE}/getCoordinatingRequests()`);
+        const response = await api.get(`${API_BASE}/getCoordinatingRequests()?$expand=refRequest`);
         return response.data.value || [];
     },
 
@@ -125,7 +180,7 @@ export const RequestService = {
      * Mark all notifications as read for current user
      */
     async markAllNotificationsAsRead(): Promise<void> {
-        await api.post(`${API_BASE}/Notifications/RequestService.markAllAsRead`);
+        await api.post(`${API_BASE}/markAllAsRead`);
     },
 
     /**
@@ -133,6 +188,28 @@ export const RequestService = {
      */
     async markNotificationAsRead(id: string): Promise<void> {
         await api.post(`${API_BASE}/Notifications(${id})/RequestService.markAsRead`);
+    },
+
+    /**
+     * Delete a specific notification
+     */
+    async deleteNotification(id: string): Promise<void> {
+        await api.delete(`${API_BASE}/Notifications(${id})`);
+    },
+
+    /**
+     * Delete all notifications for current user
+     */
+    async deleteAllNotifications(): Promise<void> {
+        await api.post(`${API_BASE}/deleteAll`);
+    },
+
+    /**
+     * Fetch all shadow users for coordinator filtering
+     */
+    async getShadowUsers(): Promise<any[]> {
+        const response = await api.get(`${API_BASE}/ShadowUsers?$orderby=displayName`);
+        return response.data.value || [];
     }
 };
 

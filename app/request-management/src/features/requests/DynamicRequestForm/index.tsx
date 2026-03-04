@@ -16,7 +16,6 @@ import {
 } from './components';
 import { parseSchemaContent } from '../../../lib/schemaParser';
 import type { Principal } from '../../../components/shared/PrincipalSelect';
-import type { StepOwnerAssignment } from './components/WorkflowPreviewPanel';
 
 /**
  * Dynamic Request Form
@@ -223,6 +222,7 @@ export function DynamicRequestForm() {
                                 schemaItems={currentSchemaItems}
                                 formData={currentFormData}
                                 onFieldChange={handleCurrentFieldChange}
+                                isEditMode={isEditMode}
                             />
                         ) : (
                             <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center">
@@ -275,12 +275,12 @@ export function DynamicRequestForm() {
             {/* Discard Confirmation Dialog */}
             <ConfirmDialog
                 isOpen={showDiscardConfirm}
-                onClose={() => setShowDiscardConfirm(false)}
+                onCancel={() => setShowDiscardConfirm(false)}
                 onConfirm={() => deleteMutation.mutate()}
                 title="Discard Request?"
-                description="Are you sure you want to discard this request? This action cannot be undone and the request will be permanently deleted."
-                confirmText="Discard Request"
-                type="danger"
+                message="Are you sure you want to discard this request? This action cannot be undone and the request will be permanently deleted."
+                confirmLabel="Discard Request"
+                variant="danger"
             />
         </div>
     );

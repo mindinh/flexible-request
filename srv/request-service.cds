@@ -49,7 +49,10 @@ service RequestService @(
             *,
             requestType                            : redirected to RequestTypes,
             steps                                  : redirected to Steps,
-            virtual null as coordinatorDisplayName : String // Virtual field for display
+            refRequest                             : redirected to Requests,
+            virtual null as coordinatorDisplayName : String, // Virtual field for display
+            virtual null as currentStepName        : String, // Virtual field for active step name
+            virtual null as dueDate                : Timestamp // Virtual field for active step due date
         }
         actions {
             action submit();
@@ -119,8 +122,10 @@ service RequestService @(
     entity Notifications         as projection on db.Notifications
         actions {
             action markAsRead();
-            action markAllAsRead();
         };
+
+    action markAllAsRead();
+    action deleteAll();
 
     // Organization Data (ReadOnly for Lookup)
     @readonly
