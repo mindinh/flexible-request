@@ -1,4 +1,5 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, AlertTriangle, X, Info } from 'lucide-react';
 import { Button } from '../ui/Button';
@@ -178,6 +179,10 @@ interface ConfirmDialogProps {
     onConfirm: () => void;
     onCancel: () => void;
     variant?: 'danger' | 'default';
+    /** Optional custom content rendered between message and buttons */
+    children?: ReactNode;
+    /** If true, the confirm button is disabled */
+    confirmDisabled?: boolean;
 }
 
 export function ConfirmDialog({
@@ -189,6 +194,8 @@ export function ConfirmDialog({
     onConfirm,
     onCancel,
     variant = 'default',
+    children,
+    confirmDisabled = false,
 }: ConfirmDialogProps) {
     if (!isOpen) return null;
 
@@ -208,9 +215,10 @@ export function ConfirmDialog({
                     <h3 className="text-lg font-semibold text-[var(--studio-text-primary)] mb-2">
                         {title}
                     </h3>
-                    <p className="text-sm text-[var(--studio-text-secondary)] mb-6">
+                    <p className="text-sm text-[var(--studio-text-secondary)] mb-4">
                         {message}
                     </p>
+                    {children && <div className="mb-4">{children}</div>}
                     <div className="flex gap-3 justify-end">
                         <Button variant="outline" onClick={onCancel}>
                             {cancelLabel}
@@ -218,6 +226,7 @@ export function ConfirmDialog({
                         <Button
                             variant={variant === 'danger' ? 'destructive' : 'default'}
                             onClick={onConfirm}
+                            disabled={confirmDisabled}
                         >
                             {confirmLabel}
                         </Button>

@@ -422,11 +422,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const { requestTypeId } = get();
         if (!requestTypeId) return;
 
-        set({ isLoading: true, draftConflict: false, draftConflictMessage: null, error: null });
+        // Only dismiss the conflict dialog. Do NOT set isLoading here —
+        // loadRequestType will set it, and setting it here triggers the
+        // duplicate-load guard ("already loading, skipping").
+        set({ draftConflict: false, draftConflictMessage: null, error: null });
         try {
             console.log("Resolving draft conflict: discarding other user's draft...");
             await AdminService.discardDraft(requestTypeId);
             console.log("Draft discarded. Retrying load...");
+            // Reset requestTypeId so loadRequestType doesn't skip as "same ID"
+            set({ requestTypeId: null });
             // Retry loading (which will create a new draft for the current user)
             await get().loadRequestType(requestTypeId);
         } catch (err: unknown) {
@@ -440,6 +445,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         const { requestTypeId } = get();
         if (!requestTypeId) return;
 
+        // Show loading spinner while the API call runs.
+        // Do NOT reset the full store here — the caller will navigate away,
+        // which unmounts the component. Resetting store before navigation
+        // causes a re-render with null metadata → blank screen crash.
+        set({ isLoading: true, error: null });
+
         try {
             console.log('Discarding draft for:', requestTypeId);
             await AdminService.discardDraft(requestTypeId);
@@ -448,31 +459,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Ignore errors (draft may already be gone)
             console.warn('Failed to discard draft (may already be deleted):', err);
         }
-
-        // Reset store to initial state
-        set({
-            requestTypeId: null,
-            metadata: null,
-            workflow: { nodes: [], edges: [] },
-            originalNodes: [],
-            originalEdges: [],
-            originalRules: [],
-            schemas: {},
-            schema: [],
-            rules: [],
-            statusNetwork: { nodes: [], edges: [] },
-            activeTab: 'workflow',
-            isLoading: false,
-            isSaving: false,
-            isDirty: false,
-            error: null,
-            activeStepId: null,
-            selectedSchemaFieldId: null,
-            selectedRuleId: null,
-            isDryRunOpen: false,
-            draftConflict: false,
-            draftConflictMessage: null,
-        });
+        // Caller is responsible for navigating away after this resolves.
     },
 
     deleteRequestType: async () => {
