@@ -20,7 +20,9 @@ export const AdminService = {
     async getRequestTypeById(id: string, isDraft = false): Promise<AdminRequestType> {
         const expand = 'steps($expand=predecessors,approverRules),statusNetwork';
         const isActive = !isDraft;
-        const response = await api.get(`${API_BASE}/RequestTypes(ID='${id}',IsActiveEntity=${isActive})?$expand=${expand}`);
+        // Suppress global error toast for draft checks (expected 404 when no draft exists)
+        const config = isDraft ? { headers: { 'X-Quiet-Error': 'true' } } : undefined;
+        const response = await api.get(`${API_BASE}/RequestTypes(ID='${id}',IsActiveEntity=${isActive})?$expand=${expand}`, config);
         return response.data;
     },
 

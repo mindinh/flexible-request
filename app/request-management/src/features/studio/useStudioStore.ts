@@ -459,7 +459,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Ignore errors (draft may already be gone)
             console.warn('Failed to discard draft (may already be deleted):', err);
         }
-        // Caller is responsible for navigating away after this resolves.
+
+        // Reset requestTypeId so the load guard doesn't block re-entry
+        // to the same request type. Leave isLoading true to prevent layout flash.
+        set({ requestTypeId: null });
     },
 
     deleteRequestType: async () => {
