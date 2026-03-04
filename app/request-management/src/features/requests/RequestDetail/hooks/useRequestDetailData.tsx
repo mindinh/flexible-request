@@ -332,12 +332,56 @@ export function useRequestDetailData(id: string | undefined) {
                 );
             };
 
+            // Resolve owner name for the preview variant
+            const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
+            let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
+            const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
+            if (!ownerDisplayName || isUuid(ownerDisplayName)) {
+                if (ownerId) ownerDisplayName = enrichedKnownUsers.get(ownerId) || ownerDisplayName;
+            }
+            if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId && request?.coordinatorId && ownerId === request.coordinatorId) {
+                ownerDisplayName = request.coordinatorDisplayName;
+            }
+
+            // Extract decision note from completed approval comment
+            const decisionApproval = completedApprovals.find(a => a.comment);
+            const decisionNote = decisionApproval?.comment || null;
+            const decisionDate = completedApprovals[0]?.decisionAt || null;
+
+            // Calculate SLA info
+            let slaInfo: string | null = null;
+            if (stepDef.slaDays && runtimeStep) {
+                if (status === 'COMPLETED' || status === 'REJECTED') {
+                    // No SLA display needed for completed steps
+                } else if (status === 'IN_PROGRESS' || status === 'STARTED' || status === 'IN_CLARIFICATION') {
+                    const startedAt = (runtimeStep as any).startedAt || (runtimeStep as any).createdAt;
+                    if (startedAt) {
+                        const start = new Date(startedAt);
+                        const dueDate = new Date(start.getTime() + stepDef.slaDays * 24 * 60 * 60 * 1000);
+                        const now = new Date();
+                        const diffMs = dueDate.getTime() - now.getTime();
+                        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                        if (diffDays > 0) {
+                            slaInfo = `${diffDays} day${diffDays !== 1 ? 's' : ''} remaining`;
+                        } else if (diffDays === 0) {
+                            slaInfo = 'Due today';
+                        } else {
+                            slaInfo = `${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''} overdue`;
+                        }
+                    }
+                }
+            }
+
             return {
                 id: stepDef.ID,
                 title: stepDef.stepName || 'Unknown Step',
                 status: mapStatus(status),
                 subtitle: getSubtitle(),
                 slaDays: stepDef.slaDays,
+                ownerName: ownerDisplayName || null,
+                decisionDate,
+                decisionNote,
+                slaInfo,
                 approvalRules: runtimeStep?.approvals && runtimeStep.approvals.length > 0
                     ? runtimeStep.approvals.map(approval => ({
                         ruleName: approval.ruleName || approval.approverDisplayName || approval.approver,

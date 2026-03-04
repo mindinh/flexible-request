@@ -251,6 +251,19 @@ function StudioContent() {
         );
     }
 
+    // Safety guard: metadata not yet loaded (or store was reset).
+    // Show the loading spinner so we never render StudioLayout with null data.
+    if (!metadata) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[var(--studio-bg-secondary)]">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="animate-spin text-[var(--studio-primary)]" size={48} />
+                    <p className="text-[var(--studio-text-secondary)] font-medium">Loading Request Type Studio...</p>
+                </div>
+            </div>
+        );
+    }
+
     const handleDiscard = async () => {
         await discardChanges();
         navigate('/studio');

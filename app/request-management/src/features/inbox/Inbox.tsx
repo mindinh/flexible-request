@@ -169,8 +169,16 @@ export const Inbox = () => {
         [teamApprovals],
     );
 
-    // ─── Active list based on tab ─────────────────────────────
-    const activeList = activeTab === 'my-tasks' ? myTasks : teamTasks;
+    // ─── Active list based on tab, sorted most recent first ──
+    const activeList = useMemo(() => {
+        const list = activeTab === 'my-tasks' ? myTasks : teamTasks;
+        return [...list].sort((a, b) => {
+            const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+            const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+            // Sort by dueDate descending (most recent first); if no dates, keep order
+            return dateB - dateA;
+        });
+    }, [activeTab, myTasks, teamTasks]);
     const isLoadingList = activeTab === 'my-tasks' ? isLoadingMy : isLoadingTeam;
 
     // ─── Filter by search ─────────────────────────────────────
@@ -179,9 +187,9 @@ export const Inbox = () => {
         const q = searchQuery.toLowerCase();
         return activeList.filter(
             (t) =>
-                t.title.toLowerCase().includes(q) ||
-                t.requestType.toLowerCase().includes(q) ||
-                t.stepName.toLowerCase().includes(q) ||
+                (t.title || '').toLowerCase().includes(q) ||
+                (t.requestType || '').toLowerCase().includes(q) ||
+                (t.stepName || '').toLowerCase().includes(q) ||
                 (t.displayId && t.displayId.toLowerCase().includes(q)),
         );
     }, [activeList, searchQuery]);

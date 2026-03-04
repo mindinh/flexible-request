@@ -42,8 +42,12 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     const queryClient = useQueryClient();
     const [isWorkflowOpen, setIsWorkflowOpen] = useState(true);
     const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+    const [rejectComment, setRejectComment] = useState('');
+    const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+    const [approveComment, setApproveComment] = useState('');
     const [sendBackComment, setSendBackComment] = useState('');
     const [showSendBackDialog, setShowSendBackDialog] = useState(false);
+    const [panelWidth, setPanelWidth] = useState(320);
 
     // Data fetching
     const {
@@ -494,7 +498,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 Reject
                             </Button>
                             <Button
-                                onClick={() => approve(currentUserApproval.ID)}
+                                onClick={() => setShowApproveConfirm(true)}
                                 disabled={isProcessing || isBlocked}
                                 className="bg-green-600 hover:bg-green-700"
                             >
@@ -506,23 +510,35 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                 </div>
             </div>
 
-            {/* Right Pane – Collapsible Workflow Timeline */}
-            <div className={`border-l border-slate-200 bg-slate-50/50 flex flex-col transition-all duration-300 ${isWorkflowOpen ? 'w-80' : 'w-10'
-                }`}>
-                {/* Toggle Button */}
-                <button
-                    onClick={() => setIsWorkflowOpen(!isWorkflowOpen)}
-                    className="flex items-center justify-center h-10 border-b border-slate-200 hover:bg-slate-100 transition-colors"
-                    aria-label={isWorkflowOpen ? 'Collapse workflow panel' : 'Expand workflow panel'}
-                >
-                    {isWorkflowOpen ? (
-                        <ChevronRight className="w-4 h-4 text-slate-500" />
-                    ) : (
-                        <ChevronLeft className="w-4 h-4 text-slate-500" />
-                    )}
-                </button>
-
+            {/* Right Pane – Resizable Collapsible Workflow Timeline */}
+            <div
+                className={`relative border-l border-slate-200 bg-slate-50/50 flex flex-col transition-all duration-200 overflow-hidden ${isWorkflowOpen ? '' : 'w-10'}`}
+                style={isWorkflowOpen ? { width: `${panelWidth}px`, minWidth: `${panelWidth}px` } : undefined}
+            >
+                {/* Drag handle for resizing */}
                 {isWorkflowOpen && (
+                    <div
+                        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 z-10"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startWidth = panelWidth;
+                            const onMouseMove = (ev: MouseEvent) => {
+                                const delta = startX - ev.clientX;
+                                const newWidth = Math.min(480, Math.max(240, startWidth + delta));
+                                setPanelWidth(newWidth);
+                            };
+                            const onMouseUp = () => {
+                                document.removeEventListener('mousemove', onMouseMove);
+                                document.removeEventListener('mouseup', onMouseUp);
+                            };
+                            document.addEventListener('mousemove', onMouseMove);
+                            document.addEventListener('mouseup', onMouseUp);
+                        }}
+                    />
+                )}
+
+                {isWorkflowOpen ? (
                     <div className="flex-1 overflow-y-auto p-4">
                         <WorkflowTimeline
                             title="Workflow"
@@ -535,24 +551,86 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                             selectedStepId={selectedStepId || undefined}
                         />
                     </div>
+                ) : (
+                    /* Spacer pushes button to bottom when collapsed */
+                    <div className="flex-1" />
                 )}
+
+                {/* Collapse/Expand Toggle — pinned to bottom, centered */}
+                <button
+                    onClick={() => setIsWorkflowOpen(!isWorkflowOpen)}
+                    className="flex items-center justify-center gap-2 h-10 border-t border-slate-200 hover:bg-slate-100 transition-colors text-slate-500 hover:text-slate-700 shrink-0"
+                    aria-label={isWorkflowOpen ? 'Collapse workflow panel' : 'Expand workflow panel'}
+                >
+                    {isWorkflowOpen ? (
+                        <>
+                            <ChevronRight className="w-4 h-4" />
+                            <span className="text-xs font-medium">Collapse</span>
+                        </>
+                    ) : (
+                        <ChevronLeft className="w-4 h-4" />
+                    )}
+                </button>
             </div>
+
+            {/* Approve Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={showApproveConfirm}
+                title="Approve Request"
+                message="Add an optional note for this approval."
+                confirmLabel="Approve"
+                variant="default"
+                onConfirm={() => {
+                    if (currentUserApproval) {
+                        approve(currentUserApproval.ID, approveComment.trim() || undefined);
+                    }
+                    setShowApproveConfirm(false);
+                    setApproveComment('');
+                }}
+                onCancel={() => {
+                    setShowApproveConfirm(false);
+                    setApproveComment('');
+                }}
+            >
+                <textarea
+                    value={approveComment}
+                    onChange={(e) => setApproveComment(e.target.value)}
+                    placeholder="Add your approval note (optional)..."
+                    maxLength={200}
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+            </ConfirmDialog>
 
             {/* Reject Confirmation Dialog */}
             <ConfirmDialog
                 isOpen={showRejectConfirm}
                 title="Reject Request"
-                message="Are you sure you want to reject this request? This action cannot be undone."
+                message="Please provide a reason for rejecting this request. This action cannot be undone."
                 confirmLabel="Reject Request"
                 variant="danger"
+                confirmDisabled={!rejectComment.trim()}
                 onConfirm={() => {
-                    if (currentUserApproval) {
-                        reject(currentUserApproval.ID);
+                    if (currentUserApproval && rejectComment.trim()) {
+                        reject(currentUserApproval.ID, rejectComment.trim());
                     }
                     setShowRejectConfirm(false);
+                    setRejectComment('');
                 }}
-                onCancel={() => setShowRejectConfirm(false)}
-            />
+                onCancel={() => {
+                    setShowRejectConfirm(false);
+                    setRejectComment('');
+                }}
+            >
+                <textarea
+                    value={rejectComment}
+                    onChange={(e) => setRejectComment(e.target.value)}
+                    placeholder="Reason for rejection (required)..."
+                    maxLength={200}
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+                />
+            </ConfirmDialog>
 
             {/* Send Back Dialog */}
             <ConfirmDialog
@@ -561,12 +639,22 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                 message="Please provide a comment explaining what clarification is needed."
                 confirmLabel="Send Back"
                 variant="default"
+                confirmDisabled={!sendBackComment.trim()}
                 onConfirm={handleSendBack}
                 onCancel={() => {
                     setShowSendBackDialog(false);
                     setSendBackComment('');
                 }}
-            />
+            >
+                <textarea
+                    value={sendBackComment}
+                    onChange={(e) => setSendBackComment(e.target.value)}
+                    placeholder="Explain what clarification is needed (required)..."
+                    maxLength={200}
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+            </ConfirmDialog>
         </div >
     );
 }
