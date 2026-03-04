@@ -103,21 +103,41 @@ export const StudioAdapter = {
         const nodes: UiWorkflowNode[] = [];
         const edges: UiWorkflowEdge[] = [];
 
+        // Map backend stepType to React Flow node type key
+        const STEP_TYPE_TO_NODE: Record<string, string> = {
+            start: 'startNode',
+            end: 'endNode',
+            action: 'actionNode',
+            condition: 'conditionNode',
+        };
+
+        // Fallback: infer React Flow node type from legacy step data
+        const inferNodeType = (step: AdminStepDefinition): string => {
+            if (step.isStartStep) return 'startNode';
+            if (step.syncTrigger === 'END' || step.stepName?.toLowerCase().includes('end')) return 'endNode';
+            return 'actionNode';
+        };
+
         steps.forEach(step => {
-            // Node
+            // Use stored stepType if available, else infer from legacy data
+            const nodeType = step.stepType
+                ? (STEP_TYPE_TO_NODE[step.stepType] || 'actionNode')
+                : inferNodeType(step);
+
             nodes.push({
                 id: step.ID,
-                type: 'stepNode', // Custom node type
-                position: { x: 0, y: 0 }, // Layout will handle this
+                type: nodeType,
+                position: { x: 0, y: 0 },
                 data: {
                     label: step.stepName,
                     sla: step.slaDays,
                     isStart: step.isStartStep,
                     syncTrigger: step.syncTrigger || 'NONE',
+                    actionSubType: step.actionSubType || undefined,
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
-                    ownerName: (step as any).ownerDisplayName || '', // Use virtual field from backend
+                    ownerName: (step as any).ownerDisplayName || '',
                 }
             });
 

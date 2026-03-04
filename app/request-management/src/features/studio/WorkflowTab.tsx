@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useRef } from 'react';
 import {
     ReactFlow,
     Controls,
@@ -9,32 +9,43 @@ import {
     type Edge,
     type Node,
     type OnConnect,
-    Handle,
-    Position,
-    type NodeProps,
     useReactFlow,
     ReactFlowProvider,
     Panel
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, AlertCircle, Play, Wand2 } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import dagre from 'dagre';
 import { useStudioStore } from './useStudioStore';
 import { Button } from '../../components/ui/Button';
+import { nodeTypes } from './nodes';
 
-// Dagre layout helper
+// Map palette nodeType strings to React Flow node type keys
+const PALETTE_TO_NODE_TYPE: Record<string, string> = {
+    START: 'startNode',
+    END: 'endNode',
+    ACTION: 'actionNode',
+    CONDITION: 'conditionNode',
+};
+
+// Dagre layout helper — different sizes per node type
+const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
+    startNode: { width: 160, height: 52 },
+    endNode: { width: 140, height: 52 },
+    actionNode: { width: 220, height: 60 },
+    conditionNode: { width: 180, height: 70 },
+    stepNode: { width: 220, height: 60 }, // legacy fallback
+};
+
 const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-    const nodeWidth = 220;
-    const nodeHeight = 100;
-
     dagreGraph.setGraph({ rankdir: direction, nodesep: 60, ranksep: 100, edgesep: 40 });
 
     nodes.forEach((node) => {
-        dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+        const dims = NODE_DIMENSIONS[node.type || 'actionNode'] || NODE_DIMENSIONS.actionNode;
+        dagreGraph.setNode(node.id, dims);
     });
 
     edges.forEach((edge) => {
@@ -45,11 +56,12 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => 
 
     const layoutedNodes = nodes.map((node) => {
         const nodeWithPosition = dagreGraph.node(node.id);
+        const dims = NODE_DIMENSIONS[node.type || 'actionNode'] || NODE_DIMENSIONS.actionNode;
         return {
             ...node,
             position: {
-                x: nodeWithPosition.x - nodeWidth / 2,
-                y: nodeWithPosition.y - nodeHeight / 2,
+                x: nodeWithPosition.x - dims.width / 2,
+                y: nodeWithPosition.y - dims.height / 2,
             },
         };
     });
@@ -57,166 +69,20 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => 
     return { nodes: layoutedNodes, edges };
 };
 
-// Custom Step Node Component
-function StepNode({ data, selected }: NodeProps) {
-    const getStatusIcon = () => {
-        switch (data.status) {
-            case 'completed':
-                return <CheckCircle2 size={18} className="text-green-500" />;
-            case 'in-progress':
-                return <Clock size={18} className="text-amber-500" />;
-            case 'pending':
-                return <AlertCircle size={18} className="text-gray-400" />;
-            default:
-                return <Play size={18} className="text-primary" />;
-        }
-    };
-
-    const getStatusColor = () => {
-        switch (data.status) {
-            case 'completed':
-                return { bg: '#dcfce7', border: '#22c55e' };
-            case 'in-progress':
-                return { bg: '#fef3c7', border: '#f59e0b' };
-            case 'pending':
-                return { bg: '#f8fafc', border: '#e2e8f0' };
-            default:
-                return { bg: '#fff', border: '#e2e8f0' };
-        }
-    };
-
-    const colors = getStatusColor();
-
-    return (
-        <motion.div
-            style={{
-                backgroundColor: colors.bg,
-                borderColor: selected ? 'var(--brand-red)' : colors.border,
-                borderWidth: '2px',
-                borderStyle: 'solid',
-                borderRadius: '12px',
-                padding: '16px 20px',
-                minWidth: '200px',
-                boxShadow: selected
-                    ? '0 10px 25px -5px rgba(177, 14, 16, 0.15)'
-                    : '0 4px 12px rgba(0, 0, 0, 0.08)',
-                cursor: 'pointer',
-            }}
-            whileHover={{ scale: 1.02, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.12)' }}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-        >
-            <Handle
-                type="target"
-                position={Position.Left}
-                style={{
-                    width: '12px',
-                    height: '12px',
-                    backgroundColor: 'var(--brand-red)',
-                    border: '2px solid white',
-                }}
-            />
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '10px',
-                    backgroundColor: 'var(--brand-red-light)', // Assuming you have a light variant or stick to rgba(177, 14, 16, 0.1) if not available
-                    // Better to use Tailwind class if possible, but this is inline style.
-                    // Let's stick to the color variable if possible or keep rgbal but derivate.
-                }}>
-                    {getStatusIcon()}
-                </div>
-                <div>
-                    <div style={{
-                        fontWeight: 600,
-                        fontSize: '14px',
-                        color: '#1e293b',
-                        marginBottom: '2px',
-                    }}>
-                        {data.label}
-                    </div>
-                    <div style={{
-                        fontSize: '12px',
-                        color: '#64748b',
-                    }}>
-                        {data.role || 'No role assigned'}
-                    </div>
-                </div>
-            </div>
-
-            {data.sla && (
-                <div style={{
-                    marginTop: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '12px',
-                    color: '#64748b',
-                }}>
-                    <Clock size={14} />
-                    <span>SLA: {data.sla} {data.sla === 1 ? 'day' : 'days'}</span>
-                </div>
-            )}
-
-            {data.outcomes && data.outcomes.length > 0 && (
-                <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {data.outcomes.slice(0, 3).map((outcome: string, i: number) => (
-                        <span
-                            key={i}
-                            style={{
-                                padding: '2px 8px',
-                                fontSize: '10px',
-                                borderRadius: '12px',
-                                backgroundColor: '#f1f5f9',
-                                color: '#64748b',
-                                fontWeight: 500,
-                            }}
-                        >
-                            {outcome}
-                        </span>
-                    ))}
-                </div>
-            )}
-
-            <Handle
-                type="source"
-                position={Position.Right}
-                style={{
-                    width: '12px',
-                    height: '12px',
-                    backgroundColor: 'var(--brand-red)',
-                    border: '2px solid white',
-                }}
-            />
-        </motion.div>
-    );
-}
-
-const nodeTypes = {
-    stepNode: StepNode,
-};
-
-
 interface WorkflowTabProps {
     onNodeSelect?: (nodeId: string | null) => void;
 }
 
 function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     const { workflow, updateWorkflow, activeStepId } = useStudioStore();
+    const reactFlowWrapper = useRef<HTMLDivElement>(null);
+    const { screenToFlowPosition } = useReactFlow();
 
-    // Determine if we need to run layout
-    // Run layout if ANY node is at (0,0) - this handles mixed scenarios where some nodes
-    // are loaded from backend (at 0,0) and some are newly added (with explicit positions)
+    // Run layout if ANY node is at (0,0)
     const { nodes: autoLayoutedNodes, edges: autoLayoutedEdges } = useMemo(() => {
         const hasUnpositionedNodes = workflow.nodes.some(n => n.position.x === 0 && n.position.y === 0);
 
         if (workflow.nodes.length > 0 && hasUnpositionedNodes) {
-            console.log("Running auto-layout due to unpositioned nodes");
             return getLayoutedElements(workflow.nodes as unknown as Node[], workflow.edges as unknown as Edge[], 'LR');
         }
         return { nodes: workflow.nodes as unknown as Node[], edges: workflow.edges as unknown as Edge[] };
@@ -262,16 +128,67 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         [onNodeSelect]
     );
 
-    // Handle edge deletion (when user presses Delete/Backspace on selected edge)
+    // Handle pane click → deselect
+    const onPaneClick = useCallback(() => {
+        onNodeSelect?.(null);
+    }, [onNodeSelect]);
+
+    // Handle edge deletion
     const onEdgesDelete = useCallback(
         (deletedEdges: Edge[]) => {
-            console.log("Deleting edges:", deletedEdges);
             const remainingEdges = edges.filter(
                 (e) => !deletedEdges.some((del) => del.id === e.id)
             );
             updateWorkflow(nodes as any, remainingEdges as any);
         },
         [edges, nodes, updateWorkflow]
+    );
+
+    // Drag-and-drop from palette
+    const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+    }, []);
+
+    const onDrop = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+
+            const rawData = event.dataTransfer.getData('application/reactflow');
+            if (!rawData) return;
+
+            let parsed: { nodeType: string; label: string; subType?: string };
+            try {
+                parsed = JSON.parse(rawData);
+            } catch {
+                return;
+            }
+
+            const reactFlowType = PALETTE_TO_NODE_TYPE[parsed.nodeType] || 'actionNode';
+
+            const position = screenToFlowPosition({
+                x: event.clientX,
+                y: event.clientY,
+            });
+
+            const newNode: any = {
+                id: crypto.randomUUID(),
+                type: reactFlowType,
+                position,
+                data: {
+                    label: parsed.label,
+                    isStart: parsed.nodeType === 'START',
+                    sla: parsed.nodeType === 'ACTION' ? 3 : undefined,
+                    actionSubType: parsed.subType || undefined,
+                },
+            };
+
+            const newNodes = [...nodes, newNode];
+            setNodes(newNodes as any);
+            updateWorkflow(newNodes as any, edges as any);
+            onNodeSelect?.(newNode.id);
+        },
+        [nodes, edges, setNodes, updateWorkflow, screenToFlowPosition, onNodeSelect]
     );
 
     const onLayout = useCallback(() => {
@@ -287,6 +204,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
 
     return (
         <motion.div
+            ref={reactFlowWrapper}
             style={{
                 height: 'calc(100vh - 250px)',
                 backgroundColor: 'white',
@@ -305,8 +223,11 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
                 nodeTypes={nodeTypes}
                 deleteKeyCode={['Backspace', 'Delete']}
                 fitView
@@ -341,7 +262,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     );
 }
 
-// Wrap in Provider to ensure internal hooks work if used
+// Wrap in Provider to ensure internal hooks work
 export function WorkflowTab(props: WorkflowTabProps) {
     return (
         <ReactFlowProvider>

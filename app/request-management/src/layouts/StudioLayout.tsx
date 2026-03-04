@@ -1,4 +1,4 @@
-import { ReactNode, useState, createContext, useContext } from 'react';
+import { useState, createContext, useContext, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import '../styles/studio.css';
@@ -15,8 +15,8 @@ export const useStudioLayoutContext = () => useContext(StudioLayoutContext);
 interface StudioLayoutProps {
   /** Header content - typically contains title and action buttons */
   header: ReactNode;
-  /** Left navigation panel render function - receives collapsed state */
-  leftPanel: (collapsed: boolean) => ReactNode;
+  /** Left navigation panel render function - receives collapsed state. If omitted, left panel is hidden. */
+  leftPanel?: (collapsed: boolean) => ReactNode;
   /** Tab bar content */
   tabs: ReactNode;
   /** Main content area - filled by active tab */
@@ -55,25 +55,27 @@ export function StudioLayout({
         {/* Body - Left panel + Main area */}
         <div className="studio-body">
           {/* Left Panel */}
-          <motion.aside
-            className="studio-left-v2"
-            animate={{ width: leftCollapsed ? 64 : 250 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-          >
-            {/* Collapse Toggle */}
-            <button
-              onClick={() => setLeftCollapsed(!leftCollapsed)}
-              className="studio-collapse-btn"
-              aria-label={leftCollapsed ? "Expand navigation" : "Collapse navigation"}
+          {leftPanel && (
+            <motion.aside
+              className="studio-left-v2"
+              animate={{ width: leftCollapsed ? 64 : 250 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
             >
-              {leftCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
+              {/* Collapse Toggle */}
+              <button
+                onClick={() => setLeftCollapsed(!leftCollapsed)}
+                className="studio-collapse-btn"
+                aria-label={leftCollapsed ? "Expand navigation" : "Collapse navigation"}
+              >
+                {leftCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
 
-            {/* Panel Content */}
-            <div className="studio-left-content">
-              {leftPanel(leftCollapsed)}
-            </div>
-          </motion.aside>
+              {/* Panel Content */}
+              <div className="studio-left-content">
+                {leftPanel(leftCollapsed)}
+              </div>
+            </motion.aside>
+          )}
 
           {/* Main Content Area */}
           <div className="studio-main-v2">

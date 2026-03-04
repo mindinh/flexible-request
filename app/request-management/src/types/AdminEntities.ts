@@ -3,6 +3,9 @@ export interface AdminRequestType {
     title: string;
     description?: string;
     isEnabled?: boolean;
+    icon?: string;
+    dataSchemaContent?: string; // Centralized data schema JSON
+    formSchemasContent?: string; // Named form layouts JSON
     steps?: AdminStepDefinition[];
     statusNetwork?: AdminStatusNetwork[];
     IsActiveEntity?: boolean;
@@ -16,6 +19,9 @@ export interface AdminStepDefinition {
     isStartStep: boolean;
     slaDays: number;
     requestType_ID?: string;
+    // Node type for workflow canvas
+    stepType?: string; // 'start' | 'end' | 'action' | 'condition'
+    actionSubType?: string; // 'form' | 'email' | 'approval'
     predecessors?: AdminStepDependency[];
     approverRules?: AdminApproverRule[];
     // Schema content stored directly on step

@@ -111,6 +111,12 @@ export interface UiTableField {
 
 export type UiCanvasItem = UiFormField | UiSection | UiTableField;
 
+// --- Forms ---
+export interface UiForm {
+    id: string;
+    name: string;
+    items: UiCanvasItem[];
+}
 
 // --- Workflow ---
 // We reuse basic node/edge structures but might need specific data
@@ -121,6 +127,9 @@ export interface UiWorkflowNodeData {
     isStart?: boolean;
     sla?: number;
     syncTrigger?: SyncTrigger; // When to sync data to external system
+    formId?: string;            // Reference to a UiForm for this step
+    actionSubType?: string;     // 'form' | 'email' | 'approval' (for action nodes)
+    triggerType?: string;       // 'FORM_SUB' | 'API_TRIGGER' (for start nodes)
     [key: string]: unknown;
 }
 
@@ -172,4 +181,18 @@ export interface UiRequestTypeDetails {
     description: string;
     isEnabled: boolean;
     icon: string;
+}
+
+// --- Data Schema ---
+export type SimpleDataType = 'String' | 'Number' | 'Boolean' | 'DateTime' | 'Object';
+
+export interface UiDataField {
+    id: string;
+    key: string;
+    label: string;
+    type: SimpleDataType;
+    required?: boolean;
+    isList?: boolean;
+    sampleValue?: string;
+    children?: UiDataField[];
 }

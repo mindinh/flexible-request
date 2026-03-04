@@ -1,32 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Eye, Sparkles, Loader2, ArrowLeft, ExternalLink, FormInput, Type, Copy, Settings2, ChevronDown, Trash2, List, FlaskConical, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, Type, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { StudioLayout } from '../../layouts/StudioLayout';
-import { StepDetailsPanel, StudioHeader, TabNavigation, LeftPanel, RightPanel, FormField, StudioToastProvider, useStudioToast, getTopologicalSortedNodes } from '../../components/studio';
+import { StudioHeader, TabNavigation, LeftPanel, RightPanel, FormField, StudioToastProvider, useStudioToast, getTopologicalSortedNodes } from '../../components/studio';
 import { WorkflowTab } from './WorkflowTab';
 import { SchemaTab } from './SchemaTab';
-import { ApprovalRulesTab } from './ApprovalRulesTab';
+import { DataSchemaTab } from './DataSchemaTab';
+import { DataFieldPropertiesContent } from './DataFieldPropertiesContent';
 import { StatusActionsTab } from './StatusActionsTab';
 import { useStudioStore } from './useStudioStore';
 import { motion } from 'framer-motion';
 import type { UiCanvasItem, UiSection, UiFormField } from './types';
 
-
-import { StepDetailsContent } from './StepDetailsContent';
 import { FieldPropertiesContent } from './FieldPropertiesContent';
-import { SimulationContent } from './SimulationContent';
-import { RuleDetailsContent } from './RuleDetailsContent';
 import { SchemaPalette } from './SchemaPalette';
+import { SchemaPreviewTab } from './SchemaPreviewTab';
+import { WorkflowPalette } from './WorkflowPalette';
+import { WorkflowNodeProperties } from './WorkflowNodeProperties';
+import { Settings2 } from 'lucide-react';
 
 
 
-
-// Tab definitions
-const TABS = [
-    { id: 'workflow', label: 'Workflow' },
+// Base tab definitions (preview tab added dynamically)
+const BASE_TABS = [
+    { id: 'data-schema', label: 'Data Schema' },
     { id: 'schema', label: 'Form Schema' },
-    { id: 'rules', label: 'Approval Rules' },
+    { id: 'workflow', label: 'Workflow' },
     { id: 'statuses', label: 'Statuses and Action' },
 ];
 
@@ -48,13 +48,6 @@ function StudioContent() {
         saveChanges,
         setActiveTab,
         loadRequestType,
-        isDryRunOpen,
-        setIsDryRunOpen,
-        selectedRuleId,
-        setSelectedRuleId,
-        rules,
-        updateRules,
-        schemas,
         updateMetadata,
         updateWorkflow,
         activeStepId,
@@ -64,12 +57,26 @@ function StudioContent() {
         updateSchema,
         selectedSchemaFieldId,
         setSelectedSchemaFieldId,
+        // Data Schema state
+        selectedDataFieldId,
+        setSelectedDataFieldId,
         // Draft conflict
         draftConflict,
         draftConflictMessage,
         resolveDraftConflict,
-        discardChanges
+        discardChanges,
+        // Form state
+        activeFormId,
     } = useStudioStore();
+
+    // Form Preview tab state
+    const [isFormPreviewOpen, setIsFormPreviewOpen] = useState(false);
+    const [previewFormId, setPreviewFormId] = useState<string | null>(null);
+
+    // Build dynamic tabs list
+    const tabs = isFormPreviewOpen
+        ? [...BASE_TABS, { id: 'form-preview', label: 'Form Preview', closeable: true }]
+        : BASE_TABS;
 
     // To track previous saving state for toast
     const prevIsSaving = useRef(isSaving);
@@ -104,41 +111,10 @@ function StudioContent() {
         }));
     })();
 
-    // Derived state for Right Panel (Step Details)
-    const selectedNode = workflow.nodes.find(n => n.id === activeStepId);
-
     const handleNodeSelect = (nodeId: string | null) => {
         setActiveStepId(nodeId);
     };
 
-    const handleNodeUpdate = (nodeId: string, data: any) => {
-        // Exclusivity logic for isStartStep
-        const newNodes = workflow.nodes.map(node => {
-            let newData = { ...node.data };
-
-            // If setting this node as start step, unmark others
-            if (data.isStart && node.id !== nodeId) {
-                newData.isStart = false;
-            }
-
-            // Update target node
-            if (node.id === nodeId) {
-                newData = { ...newData, ...data };
-            }
-
-            return { ...node, data: newData };
-        });
-
-        // Ensure at least one start step if we are unchecking? 
-        // For now, allow unchecking (user might want to switch). 
-        // Validation should happen on save.
-
-        updateWorkflow(newNodes, workflow.edges);
-    };
-
-    const handleGoToSchema = () => {
-        setActiveTab('schema');
-    };
 
     const handleAddStep = () => {
         // Use crypto.randomUUID() for compliance with backend CUID
@@ -151,11 +127,11 @@ function StudioContent() {
 
         const newNode: any = {
             id: newId,
-            type: 'stepNode', // Use custom node type 'stepNode' instead of 'step'
+            type: 'actionNode', // Use registered node type
             position: position,
             data: {
                 label: `Step ${workflow.nodes.length + 1}`,
-                isStart: workflow.nodes.length === 0, // First step is start
+                isStart: workflow.nodes.length === 0,
                 sla: 3
             }
         };
@@ -171,12 +147,18 @@ function StudioContent() {
     // Render tab content based on active tab
     const renderTabContent = () => {
         switch (activeTab) {
+            case 'data-schema':
+                return <DataSchemaTab />;
             case 'workflow':
                 return <WorkflowTab onNodeSelect={handleNodeSelect} />;
             case 'schema':
-                return <SchemaTab />;
-            case 'rules':
-                return <ApprovalRulesTab />;
+                return <SchemaTab onPreview={() => {
+                    setPreviewFormId(activeFormId);
+                    setIsFormPreviewOpen(true);
+                    setActiveTab('form-preview');
+                }} />;
+            case 'form-preview':
+                return <SchemaPreviewTab formId={previewFormId} />;
             case 'statuses':
                 return <StatusActionsTab />;
             default:
@@ -314,7 +296,29 @@ function StudioContent() {
                     }
                 />
             }
-            leftPanel={(collapsed) => (
+            leftPanel={activeTab === 'schema' ? (collapsed) => (
+                <LeftPanel
+                    steps={[]}
+                    activeStepId={null}
+                    onStepSelect={() => { }}
+                    onAddStep={() => { }}
+                    isCollapsed={collapsed}
+                    hideSteps
+                >
+                    <SchemaPalette isCollapsed={collapsed} />
+                </LeftPanel>
+            ) : activeTab === 'workflow' ? (collapsed) => (
+                <LeftPanel
+                    steps={[]}
+                    activeStepId={null}
+                    onStepSelect={() => { }}
+                    onAddStep={() => { }}
+                    isCollapsed={collapsed}
+                    hideSteps
+                >
+                    <WorkflowPalette isCollapsed={collapsed} />
+                </LeftPanel>
+            ) : activeTab === 'data-schema' ? undefined : (collapsed) => (
                 <LeftPanel
                     steps={stepsForPanel.map(s => ({
                         ...s,
@@ -324,14 +328,38 @@ function StudioContent() {
                     onStepSelect={setActiveStepId}
                     onAddStep={handleAddStep}
                     isCollapsed={collapsed}
-                >
-                    {activeTab === 'schema' && (
-                        <SchemaPalette isCollapsed={collapsed} />
-                    )}
-                </LeftPanel>
+                />
             )}
             rightPanel={
-                activeTab === 'schema' && selectedSchemaFieldId ? (
+                activeTab === 'workflow' && activeStepId ? (() => {
+                    const selectedNode = workflow.nodes.find(n => n.id === activeStepId);
+                    if (!selectedNode) return null;
+                    return (
+                        <RightPanel
+                            isOpen={!!activeStepId}
+                            onClose={() => setActiveStepId(null)}
+                            width={380}
+                            title="Step Details"
+                            icon={<Settings2 size={16} />}
+                        >
+                            <WorkflowNodeProperties
+                                node={selectedNode}
+                                allNodes={workflow.nodes}
+                                edges={workflow.edges}
+                            />
+                        </RightPanel>
+                    );
+                })() : activeTab === 'data-schema' && selectedDataFieldId ? (
+                    <RightPanel
+                        isOpen={!!selectedDataFieldId}
+                        onClose={() => setSelectedDataFieldId(null)}
+                        width={420}
+                        title="Field Details"
+                        icon={<Type size={16} />}
+                    >
+                        <DataFieldPropertiesContent />
+                    </RightPanel>
+                ) : activeTab === 'schema' && selectedSchemaFieldId ? (
                     <RightPanel
                         isOpen={!!selectedSchemaFieldId}
                         onClose={() => setSelectedSchemaFieldId(null)}
@@ -405,63 +433,19 @@ function StudioContent() {
                             }}
                         />
                     </RightPanel>
-                ) : activeTab === 'workflow' && activeStepId && selectedNode ? (
-                    <RightPanel
-                        isOpen={!!activeStepId}
-                        onClose={() => setActiveStepId(null)}
-                        width={500}
-                        title="Step Details"
-                    >
-                        <StepDetailsContent
-                            node={selectedNode}
-                            allNodes={workflow.nodes}
-                            edges={workflow.edges}
-                            onUpdate={(id, data) => handleNodeUpdate(id, data)}
-                            onUpdateEdges={(newEdges) => updateWorkflow(workflow.nodes, newEdges)}
-                            onEditSchema={handleGoToSchema}
-                            onManageRules={() => setActiveTab('rules')}
-                        />
-                    </RightPanel>
-                ) : activeTab === 'rules' && isDryRunOpen ? (
-                    <RightPanel
-                        isOpen={true}
-                        onClose={() => setIsDryRunOpen(false)}
-                        width={500}
-                        title="Approval Simulation"
-                        icon={<FlaskConical size={18} />}
-                    >
-                        <SimulationContent
-                            rules={rules}
-                            steps={getTopologicalSortedNodes(workflow.nodes, workflow.edges)}
-                            workflow={workflow}
-                            requestTypeMetadata={metadata}
-                        />
-                    </RightPanel>
-                ) : activeTab === 'rules' && selectedRuleId ? (
-                    <RightPanel
-                        isOpen={!!selectedRuleId}
-                        onClose={() => setSelectedRuleId(null)}
-                        width={500}
-                        title="Rule Details"
-                    >
-                        <RuleDetailsContent
-                            ruleId={selectedRuleId}
-                            rules={rules}
-                            schemas={schemas}
-                            onUpdateRule={(updatedRule) => updateRules(rules.map(r => r.id === updatedRule.id ? updatedRule : r))}
-                            onDeleteRule={(ruleId) => {
-                                updateRules(rules.filter(r => r.id !== ruleId));
-                                setSelectedRuleId(null);
-                            }}
-                        />
-                    </RightPanel>
                 ) : null
             }
             tabs={
                 <TabNavigation
-                    tabs={TABS}
+                    tabs={tabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
+                    onTabClose={(tabId) => {
+                        if (tabId === 'form-preview') {
+                            setIsFormPreviewOpen(false);
+                            setActiveTab('schema');
+                        }
+                    }}
                 />
             }
         >

@@ -108,6 +108,7 @@ export class RequestTypeHandler {
             description: source.description,
             isEnabled: source.isEnabled,
             icon: source.icon, // keep icon too if desired
+            dataSchemaContent: source.dataSchemaContent,
         });
 
         // 3) Clone Status Network
