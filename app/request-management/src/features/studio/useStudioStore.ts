@@ -528,7 +528,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Ignore errors (draft may already be gone)
             console.warn('Failed to discard draft (may already be deleted):', err);
         }
-
+      
         // Reset key identifiers so that re-entering the same Request Type
         // will pass the useEffect guard (id !== requestTypeId) and trigger
         // a fresh loadRequestType call. Without this, navigating back to the
