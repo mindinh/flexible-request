@@ -1,5 +1,6 @@
-import { Play, Flag, FileEdit, Mail, Shield, GitBranch } from 'lucide-react';
-import type { WorkflowNodeType } from './types';
+import { Play, Flag, ClipboardCheck, GitBranch } from 'lucide-react';
+
+type WorkflowNodeType = 'START' | 'END' | 'ACTION' | 'CONDITION';
 
 // Palette node definitions matching reference design
 const TRIGGER_TERMINAL_NODES = [
@@ -8,9 +9,7 @@ const TRIGGER_TERMINAL_NODES = [
 ];
 
 const ACTION_NODES = [
-    { id: 'action-form', label: 'Form', icon: FileEdit, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Form Step', subType: 'form' },
-    { id: 'action-email', label: 'Email', icon: Mail, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Send Email', subType: 'email' },
-    { id: 'action-approval', label: 'Approval', icon: Shield, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Approval Step', subType: 'approval' },
+    { id: 'action-user-task', label: 'User Task', icon: ClipboardCheck, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'User Task', subType: 'user_task' },
 ];
 
 const LOGIC_NODES = [

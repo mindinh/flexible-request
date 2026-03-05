@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Layers, ExternalLink, Clock } from 'lucide-react';
+import { Trash2, Play, Flag, FileEdit, GitBranch, Layers, ExternalLink, Clock } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -107,7 +107,7 @@ function PredecessorItem({
 }
 
 // ─── Node type icon + color mapping ───────────────────────────────────────
-function getNodeTypeInfo(nodeType?: string, subType?: string) {
+function getNodeTypeInfo(nodeType?: string) {
     switch (nodeType) {
         case 'startNode':
             return { icon: Play, color: 'var(--brand-red)', label: 'Start Node' };
@@ -116,16 +116,7 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
         case 'conditionNode':
             return { icon: GitBranch, color: '#7c3aed', label: 'Condition Node' };
         case 'actionNode':
-            switch (subType) {
-                case 'form':
-                    return { icon: FileEdit, color: 'var(--brand-red)', label: 'Form Step' };
-                case 'email':
-                    return { icon: Mail, color: 'var(--brand-red)', label: 'Email Step' };
-                case 'approval':
-                    return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
-                default:
-                    return { icon: FileEdit, color: 'var(--brand-red)', label: 'Action Step' };
-            }
+            return { icon: FileEdit, color: 'var(--brand-red)', label: 'User Task' };
         default:
             return { icon: FileEdit, color: '#64748b', label: 'Step' };
     }
@@ -156,8 +147,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     const nodeType = node.type || 'actionNode';
-    const subType = node.data?.actionSubType as string | undefined;
-    const info = getNodeTypeInfo(nodeType, subType);
+    const info = getNodeTypeInfo(nodeType);
     const Icon = info.icon;
 
     // ── Shared helpers ────────────────────────────────────────────────────
@@ -255,13 +245,13 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </div>
             </div>
 
-            {/* Step Label */}
+            {/* Task Name / Step Label */}
             <Card className="p-4 space-y-4">
-                <FormField label="Step Label" hint="Display name on the canvas">
+                <FormField label={nodeType === 'actionNode' ? 'Task Name' : 'Step Label'} hint="Display name on the canvas">
                     <Input
                         value={(node.data.label as string) || ''}
                         onChange={(e) => handleLabelChange(e.target.value)}
-                        placeholder="Enter step name..."
+                        placeholder={nodeType === 'actionNode' ? 'Enter task name...' : 'Enter step name...'}
                         className="border-0 focus-visible:ring-0 font-medium"
                     />
                 </FormField>
@@ -301,142 +291,33 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </>
             )}
 
-            {/* ── ACTION NODE ────────────────────────────────── */}
+            {/* ── ACTION NODE (User Task) ───────────────────── */}
             {nodeType === 'actionNode' && (
                 <>
-                    {/* ─── FORM SUB-TYPE ─────────────────────── */}
-                    {(subType === 'form' || !subType) && (
-                        <Card className="p-4 space-y-3">
-                            <Label variant="section">Form Configuration</Label>
-                            {currentForm ? (
-                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
-                            )}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleEditFormLayout}
-                                className="w-full gap-1.5"
-                            >
-                                <ExternalLink size={14} />
-                                {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
-                            </Button>
-                        </Card>
-                    )}
-
-                    {/* ─── EMAIL SUB-TYPE ─────────────────────── */}
-                    {subType === 'email' && (
-                        <Card className="p-4 space-y-4">
-                            <Label variant="section">Email Configuration</Label>
-                            <FormField label="Recipients" hint="Who receives this email">
-                                <Select
-                                    value={(node.data.emailRecipient as string) || 'requester'}
-                                    onValueChange={(val) => updateNodeData(node.id, { emailRecipient: val })}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="requester">Requester</SelectItem>
-                                        <SelectItem value="step_owner">Step Owner</SelectItem>
-                                        <SelectItem value="coordinator">Coordinator</SelectItem>
-                                        <SelectItem value="custom">Custom (specify below)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
-
-                            <FormField label="Subject Template" hint="Use {{fieldName}} for dynamic values">
-                                <Input
-                                    value={(node.data.emailSubject as string) || ''}
-                                    onChange={(e) => updateNodeData(node.id, { emailSubject: e.target.value })}
-                                    placeholder="Request {{displayId}} - Status Update"
-                                    className="border-0 focus-visible:ring-0"
-                                />
-                            </FormField>
-
-                            <FormField label="Body Template" hint="Email body content with placeholders">
-                                <textarea
-                                    value={(node.data.emailBody as string) || ''}
-                                    onChange={(e) => updateNodeData(node.id, { emailBody: e.target.value })}
-                                    placeholder="Dear {{requesterName}},&#10;&#10;Your request {{displayId}} has been processed..."
-                                    className="w-full min-h-[80px] rounded-lg border border-slate-200 bg-white p-3 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)]"
-                                />
-                            </FormField>
-                        </Card>
-                    )}
-
-                    {/* ─── APPROVAL SUB-TYPE ──────────────────── */}
-                    {subType === 'approval' && (
-                        <Card className="p-4 space-y-4">
-                            <Label variant="section">Approval Configuration</Label>
-                            <FormField label="Approval Policy" hint="How approvals are collected">
-                                <Select
-                                    value={(node.data.approvalPolicy as string) || 'any'}
-                                    onValueChange={(val) => updateNodeData(node.id, { approvalPolicy: val })}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="any">Any One Approver</SelectItem>
-                                        <SelectItem value="all">All Must Approve</SelectItem>
-                                        <SelectItem value="sequential">Sequential Chain</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
-
-                            <FormField label="Decision Options" hint="Available actions for the approver">
-                                <div className="flex flex-wrap gap-2">
-                                    {['Approve', 'Reject', 'Send Back'].map((action) => {
-                                        const decisions = ((node.data.decisions as string[]) || ['Approve', 'Reject']);
-                                        const isEnabled = decisions.includes(action);
-                                        return (
-                                            <button
-                                                key={action}
-                                                onClick={() => {
-                                                    const newDecisions = isEnabled
-                                                        ? decisions.filter(d => d !== action)
-                                                        : [...decisions, action];
-                                                    updateNodeData(node.id, { decisions: newDecisions });
-                                                }}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${isEnabled
-                                                    ? action === 'Approve' ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                                        : action === 'Reject' ? 'bg-red-50 border-red-300 text-red-700'
-                                                            : 'bg-amber-50 border-amber-300 text-amber-700'
-                                                    : 'bg-slate-50 border-slate-200 text-slate-400'
-                                                    }`}
-                                            >
-                                                {action}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </FormField>
-
-                            <Label variant="section">Form for Review</Label>
-                            {currentForm ? (
-                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-slate-400 italic">No form assigned yet. Click below to create one.</p>
-                            )}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleEditFormLayout}
-                                className="w-full gap-1.5"
-                            >
-                                <ExternalLink size={14} />
-                                {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
-                            </Button>
-                        </Card>
-                    )}
+                    {/* ─── Task Form Configuration ──────────── */}
+                    <Card className="p-4 space-y-3">
+                        <Label variant="section">Task Form</Label>
+                        {currentForm ? (
+                            <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleEditFormLayout}
+                            className="w-full gap-1.5"
+                        >
+                            <ExternalLink size={14} />
+                            {currentForm ? 'Open Task Editor' : 'Create & Edit Task Form'}
+                        </Button>
+                        <p className="text-[11px] text-slate-400 italic">
+                            Configure approval actions and email notifications in the Task Editor
+                        </p>
+                    </Card>
 
                     {/* ─── Shared: SLA + Owner ────────────────── */}
                     <Card className="p-4 space-y-4">
@@ -447,7 +328,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             />
                         </FormField>
 
-                        <FormField label="Default Owner" hint="Who is responsible for this step">
+                        <FormField label="Default Owner" hint="Who is responsible for this task">
                             <PrincipalSelect
                                 value={stepOwner}
                                 onChange={handleOwnerChange}
