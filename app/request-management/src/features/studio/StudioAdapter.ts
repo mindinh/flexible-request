@@ -134,6 +134,7 @@ export const StudioAdapter = {
                     isStart: step.isStartStep,
                     syncTrigger: step.syncTrigger || 'NONE',
                     actionSubType: step.actionSubType || undefined,
+                    formId: (step as any).formId || undefined,
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,

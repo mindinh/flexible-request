@@ -6,6 +6,7 @@ interface Tab {
     label: string;
     icon?: React.ReactNode;
     closeable?: boolean;
+    indent?: boolean;
 }
 
 interface TabNavigationProps {
@@ -22,7 +23,7 @@ export function TabNavigation({ tabs, activeTab, onTabChange, onTabClose }: TabN
                 <motion.button
                     key={tab.id}
                     onClick={() => onTabChange(tab.id)}
-                    className={`studio-tab ${activeTab === tab.id ? 'studio-tab--active' : ''} group relative`}
+                    className={`studio-tab ${activeTab === tab.id ? 'studio-tab--active' : ''} group relative ${tab.indent ? 'ml-4 before:content-[""] before:absolute before:-left-3 before:top-1/2 before:-translate-y-1/2 before:w-2 before:h-[1px] before:bg-slate-300 pointer-events-auto' : ''}`}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                 >

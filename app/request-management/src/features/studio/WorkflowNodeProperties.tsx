@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Plus, ExternalLink, Clock } from 'lucide-react';
+import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Layers, ExternalLink, Clock } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -150,11 +150,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         addForm,
         selectForm,
         setActiveTab,
+        setIsFormEditorOpen,
     } = useStudioStore();
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [showNewFormPrompt, setShowNewFormPrompt] = useState(false);
-    const [newFormName, setNewFormName] = useState('');
 
     const nodeType = node.type || 'actionNode';
     const subType = node.data?.actionSubType as string | undefined;
@@ -164,34 +163,37 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     // ── Shared helpers ────────────────────────────────────────────────────
     const handleLabelChange = (val: string) => updateNodeData(node.id, { label: val });
 
-    const handleFormSelect = (formId: string) => {
-        if (formId === '__new__') {
-            setShowNewFormPrompt(true);
-            return;
+    // Auto-create a skeleton form for this step if one doesn't exist
+    const ensureFormForNode = (): string => {
+        const existingFormId = node.data?.formId as string | undefined;
+        if (existingFormId) {
+            const existingForm = forms.find(f => f.id === existingFormId);
+            if (existingForm) return existingFormId;
         }
-        updateNodeData(node.id, { formId });
-    };
-
-    const handleCreateForm = () => {
-        if (!newFormName.trim()) return;
-        addForm(newFormName.trim());
-        // The newly created form becomes activeFormId in the store
+        // Create a skeleton form named after the step
+        const stepLabel = (node.data.label as string) || 'Untitled Step';
+        addForm(`${stepLabel} Form`);
         const latestForms = useStudioStore.getState().forms;
         const newForm = latestForms[latestForms.length - 1];
         if (newForm) {
             updateNodeData(node.id, { formId: newForm.id });
+            return newForm.id;
         }
-        setNewFormName('');
-        setShowNewFormPrompt(false);
+        return '';
     };
 
     const handleEditFormLayout = () => {
-        const formId = node.data?.formId as string | undefined;
+        const formId = ensureFormForNode();
         if (formId) {
             selectForm(formId);
         }
+        setIsFormEditorOpen(true);
         setActiveTab('schema');
     };
+
+    // Get the current form name for display
+    const currentFormId = node.data?.formId as string | undefined;
+    const currentForm = currentFormId ? forms.find(f => f.id === currentFormId) : null;
 
     // Predecessor management
     const handlePredecessorToggle = (targetNodeId: string, isSelected: boolean) => {
@@ -276,31 +278,16 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                         />
                     </Card>
 
-                    <Card className="p-4 space-y-4">
+                    <Card className="p-4 space-y-3">
                         <Label variant="section">Trigger Settings</Label>
-                        <FormField label="Selected Form" hint="Form shown to the requester">
-                            <Select
-                                value={(node.data.formId as string) || ''}
-                                onValueChange={handleFormSelect}
-                            >
-                                <SelectTrigger className="w-full bg-white">
-                                    <SelectValue placeholder="Select a form..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {forms.map((form) => (
-                                        <SelectItem key={form.id} value={form.id}>
-                                            {form.name}
-                                        </SelectItem>
-                                    ))}
-                                    <SelectItem value="__new__">
-                                        <span className="flex items-center gap-1.5 text-[var(--brand-red)]">
-                                            <Plus size={14} /> Create New Form
-                                        </span>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </FormField>
-
+                        {currentForm ? (
+                            <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"
@@ -308,7 +295,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             className="w-full gap-1.5"
                         >
                             <ExternalLink size={14} />
-                            Edit Form Layout
+                            {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
                         </Button>
                     </Card>
                 </>
@@ -321,40 +308,23 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     {(subType === 'form' || !subType) && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Form Configuration</Label>
-                            <FormField label="Selected Form" hint="Form used for data entry in this step">
-                                <Select
-                                    value={(node.data.formId as string) || ''}
-                                    onValueChange={handleFormSelect}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue placeholder="No form assigned" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {forms.map((form) => (
-                                            <SelectItem key={form.id} value={form.id}>
-                                                {form.name}
-                                            </SelectItem>
-                                        ))}
-                                        <SelectItem value="__new__">
-                                            <span className="flex items-center gap-1.5 text-[var(--brand-red)]">
-                                                <Plus size={14} /> Create New Form
-                                            </span>
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
-
-                            {(node.data.formId as string) && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleEditFormLayout}
-                                    className="w-full gap-1.5"
-                                >
-                                    <ExternalLink size={14} />
-                                    Edit Form Layout
-                                </Button>
+                            {currentForm ? (
+                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
                             )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleEditFormLayout}
+                                className="w-full gap-1.5"
+                            >
+                                <ExternalLink size={14} />
+                                {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
+                            </Button>
                         </Card>
                     )}
 
@@ -434,10 +404,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                                     updateNodeData(node.id, { decisions: newDecisions });
                                                 }}
                                                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${isEnabled
-                                                        ? action === 'Approve' ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                                            : action === 'Reject' ? 'bg-red-50 border-red-300 text-red-700'
-                                                                : 'bg-amber-50 border-amber-300 text-amber-700'
-                                                        : 'bg-slate-50 border-slate-200 text-slate-400'
+                                                    ? action === 'Approve' ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                                        : action === 'Reject' ? 'bg-red-50 border-red-300 text-red-700'
+                                                            : 'bg-amber-50 border-amber-300 text-amber-700'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-400'
                                                     }`}
                                             >
                                                 {action}
@@ -447,23 +417,24 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 </div>
                             </FormField>
 
-                            <FormField label="Form for Review" hint="Form displayed to the approver">
-                                <Select
-                                    value={(node.data.formId as string) || ''}
-                                    onValueChange={handleFormSelect}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue placeholder="Select form..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {forms.map((form) => (
-                                            <SelectItem key={form.id} value={form.id}>
-                                                {form.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
+                            <Label variant="section">Form for Review</Label>
+                            {currentForm ? (
+                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">No form assigned yet. Click below to create one.</p>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleEditFormLayout}
+                                className="w-full gap-1.5"
+                            >
+                                <ExternalLink size={14} />
+                                {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
+                            </Button>
                         </Card>
                     )}
 
@@ -570,32 +541,6 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </div>
             )}
 
-            {/* ── New Form Prompt Dialog ──────────────────────── */}
-            {showNewFormPrompt && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-                    <Card className="p-6 w-[360px] space-y-4 shadow-xl">
-                        <h3 className="text-sm font-semibold text-slate-900">Create New Form</h3>
-                        <Input
-                            value={newFormName}
-                            onChange={(e) => setNewFormName(e.target.value)}
-                            placeholder="Enter form name..."
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleCreateForm();
-                                if (e.key === 'Escape') setShowNewFormPrompt(false);
-                            }}
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" size="sm" onClick={() => setShowNewFormPrompt(false)}>
-                                Cancel
-                            </Button>
-                            <Button size="sm" onClick={handleCreateForm} disabled={!newFormName.trim()}>
-                                Create
-                            </Button>
-                        </div>
-                    </Card>
-                </div>
-            )}
 
             <ConfirmDialog
                 isOpen={showDeleteConfirm}

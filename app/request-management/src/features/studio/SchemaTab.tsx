@@ -8,9 +8,9 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, FilePlus, Pencil
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil
 } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
 
 // ─── Drag context: shared drag state for swap logic ───
@@ -628,9 +628,6 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         setSelectedSchemaFieldId,
         forms,
         activeFormId,
-        addForm,
-        deleteForm,
-        selectForm,
         updateFormName,
     } = useStudioStore();
 
@@ -651,11 +648,8 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
     // Form creation/editing state
-    const [isCreatingForm, setIsCreatingForm] = useState(false);
-    const [newFormName, setNewFormName] = useState('');
     const [isEditingName, setIsEditingName] = useState(false);
     const [editingName, setEditingName] = useState('');
-    const newFormInputRef = useRef<HTMLInputElement>(null);
 
     const activeForm = forms.find(f => f.id === activeFormId);
 
@@ -860,37 +854,17 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         setDragOverItemId(null);
     };
 
-    // If no form exists, show empty state with create button
-    if (forms.length === 0) {
+    // If no form exists, show helpful empty state
+    if (forms.length === 0 || !activeForm) {
         return (
             <div className="flex h-full w-full bg-slate-100 items-center justify-center">
-                <div className="text-center">
+                <div className="text-center max-w-sm">
                     <Layers size={48} className="mx-auto text-slate-300 mb-4" />
-                    <h3 className="text-lg font-semibold text-slate-700 mb-2">No Forms Yet</h3>
-                    <p className="text-sm text-slate-500 mb-6">Create your first form layout to get started</p>
-                    {isCreatingForm ? (
-                        <div className="flex items-center gap-2 justify-center">
-                            <Input
-                                ref={newFormInputRef}
-                                value={newFormName}
-                                onChange={(e) => setNewFormName(e.target.value)}
-                                placeholder="Form name..."
-                                className="w-48"
-                                autoFocus
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') { const name = newFormName.trim(); if (name) { addForm(name); setNewFormName(''); setIsCreatingForm(false); } }
-                                    if (e.key === 'Escape') { setIsCreatingForm(false); setNewFormName(''); }
-                                }}
-                            />
-                            <Button size="sm" onClick={() => { const name = newFormName.trim(); if (name) { addForm(name); setNewFormName(''); setIsCreatingForm(false); } }}>Create</Button>
-                            <Button size="sm" variant="ghost" onClick={() => { setIsCreatingForm(false); setNewFormName(''); }}>Cancel</Button>
-                        </div>
-                    ) : (
-                        <Button onClick={() => setIsCreatingForm(true)} className="gap-2">
-                            <FilePlus size={16} />
-                            Create First Form
-                        </Button>
-                    )}
+                    <h3 className="text-lg font-semibold text-slate-700 mb-2">No Form Selected</h3>
+                    <p className="text-sm text-slate-500">
+                        Go to the <strong>Workflow</strong> tab, select a step, and click
+                        <strong> Create & Edit Form</strong> to start building a form layout.
+                    </p>
                 </div>
             </div>
         );
@@ -900,98 +874,33 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         <div className="flex h-full w-full bg-slate-100 overflow-hidden">
             {/* Canvas Area - Full Width (palette moved to sidebar) */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Top Toolbar: Form Management + View Toggle + Preview */}
+                {/* Top Toolbar: Form Name + View Toggle + Preview */}
                 <div className="flex items-center gap-2 px-6 pt-4 pb-2">
-                    {/* Left: Form Selector with inline rename */}
+                    {/* Left: Form name with inline rename */}
                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        {/* Form select dropdown */}
-                        <Select value={activeFormId || ''} onValueChange={(val) => selectForm(val)}>
-                            <SelectTrigger className="w-48 bg-white h-8 text-sm border-slate-200 shadow-sm">
-                                <SelectValue placeholder="Select a form" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {forms.map(f => (
-                                    <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-
-                        {/* Rename (inline) */}
-                        {activeForm && (
-                            isEditingName ? (
-                                <Input
-                                    value={editingName}
-                                    onChange={(e) => setEditingName(e.target.value)}
-                                    className="w-40 h-8 text-sm shadow-sm"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }
-                                        if (e.key === 'Escape') setIsEditingName(false);
-                                    }}
-                                    onBlur={() => { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }}
-                                />
-                            ) : (
+                        {isEditingName ? (
+                            <Input
+                                value={editingName}
+                                onChange={(e) => setEditingName(e.target.value)}
+                                className="w-56 h-8 text-sm shadow-sm"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }
+                                    if (e.key === 'Escape') setIsEditingName(false);
+                                }}
+                                onBlur={() => { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }}
+                            />
+                        ) : (
+                            <>
+                                <span className="text-sm font-semibold text-slate-800 truncate">{activeForm.name}</span>
                                 <button
                                     onClick={() => { setEditingName(activeForm.name); setIsEditingName(true); }}
-                                    className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
+                                    className="h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
                                     title="Rename form"
                                 >
                                     <Pencil size={13} />
                                 </button>
-                            )
-                        )}
-
-                        {/* Separator */}
-                        <div className="w-px h-5 bg-slate-200 mx-0.5" />
-
-                        {/* New Form */}
-                        {isCreatingForm ? (
-                            <div className="flex items-center gap-1">
-                                <Input
-                                    ref={newFormInputRef}
-                                    value={newFormName}
-                                    onChange={(e) => setNewFormName(e.target.value)}
-                                    placeholder="Form name..."
-                                    className="w-32 h-8 text-sm shadow-sm"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { const n = newFormName.trim(); if (n) { addForm(n); setNewFormName(''); setIsCreatingForm(false); } }
-                                        if (e.key === 'Escape') { setIsCreatingForm(false); setNewFormName(''); }
-                                    }}
-                                />
-                                <button
-                                    onClick={() => { const n = newFormName.trim(); if (n) { addForm(n); setNewFormName(''); setIsCreatingForm(false); } }}
-                                    className="h-8 w-8 flex items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors"
-                                >
-                                    <Plus size={14} />
-                                </button>
-                                <button
-                                    onClick={() => { setIsCreatingForm(false); setNewFormName(''); }}
-                                    className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 transition-colors"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={() => setIsCreatingForm(true)}
-                                className="h-8 px-2.5 flex items-center gap-1.5 rounded-md text-xs font-medium text-slate-600 hover:bg-slate-200/60 transition-colors"
-                                title="Create new form"
-                            >
-                                <FilePlus size={13} />
-                                <span className="hidden sm:inline">New</span>
-                            </button>
-                        )}
-
-                        {/* Delete Form */}
-                        {activeFormId && (
-                            <button
-                                onClick={() => { if (window.confirm(`Delete form "${activeForm?.name}"?`)) deleteForm(activeFormId); }}
-                                className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                title="Delete form"
-                            >
-                                <Trash2 size={13} />
-                            </button>
+                            </>
                         )}
                     </div>
 

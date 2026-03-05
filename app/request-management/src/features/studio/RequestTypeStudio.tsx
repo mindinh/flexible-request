@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Save, Loader2, Type, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { StudioLayout } from '../../layouts/StudioLayout';
-import { StudioHeader, TabNavigation, LeftPanel, RightPanel, FormField, StudioToastProvider, useStudioToast, getTopologicalSortedNodes } from '../../components/studio';
+import { StudioHeader, TabNavigation, LeftPanel, RightPanel, StudioToastProvider, useStudioToast } from '../../components/studio';
 import { WorkflowTab } from './WorkflowTab';
 import { SchemaTab } from './SchemaTab';
 import { DataSchemaTab } from './DataSchemaTab';
@@ -11,7 +11,7 @@ import { DataFieldPropertiesContent } from './DataFieldPropertiesContent';
 import { StatusActionsTab } from './StatusActionsTab';
 import { useStudioStore } from './useStudioStore';
 import { motion } from 'framer-motion';
-import type { UiCanvasItem, UiSection, UiFormField } from './types';
+import type { UiCanvasItem, UiFormField } from './types';
 
 import { FieldPropertiesContent } from './FieldPropertiesContent';
 import { SchemaPalette } from './SchemaPalette';
@@ -22,12 +22,12 @@ import { Settings2 } from 'lucide-react';
 
 
 
-// Base tab definitions (preview tab added dynamically)
-const BASE_TABS = [
+// Base tab definitions (dynamic tabs added at runtime)
+interface TabDef { id: string; label: string; closeable?: boolean; indent?: boolean }
+const BASE_TABS: TabDef[] = [
     { id: 'data-schema', label: 'Data Schema' },
-    { id: 'schema', label: 'Form Schema' },
     { id: 'workflow', label: 'Workflow' },
-    { id: 'statuses', label: 'Statuses and Action' },
+    { id: 'statuses', label: 'Statuses' },
 ];
 
 function StudioContent() {
@@ -49,7 +49,6 @@ function StudioContent() {
         setActiveTab,
         loadRequestType,
         updateMetadata,
-        updateWorkflow,
         activeStepId,
         setActiveStepId,
         // Schema state
@@ -67,16 +66,25 @@ function StudioContent() {
         discardChanges,
         // Form state
         activeFormId,
+        forms,
+        // Form Editor sub-tab
+        isFormEditorOpen,
+        setIsFormEditorOpen,
     } = useStudioStore();
 
     // Form Preview tab state
     const [isFormPreviewOpen, setIsFormPreviewOpen] = useState(false);
     const [previewFormId, setPreviewFormId] = useState<string | null>(null);
 
-    // Build dynamic tabs list
-    const tabs = isFormPreviewOpen
-        ? [...BASE_TABS, { id: 'form-preview', label: 'Form Preview', closeable: true }]
-        : BASE_TABS;
+    // Build sub-tabs list (Form Editor, Form Preview) — rendered in a second row
+    const subTabs: TabDef[] = [];
+    if (isFormEditorOpen) {
+        const activeFormName = forms.find(f => f.id === activeFormId)?.name || 'Form Editor';
+        subTabs.push({ id: 'schema', label: activeFormName, closeable: true });
+    }
+    if (isFormPreviewOpen) {
+        subTabs.push({ id: 'form-preview', label: 'Form Preview', closeable: true });
+    }
 
     // To track previous saving state for toast
     const prevIsSaving = useRef(isSaving);
@@ -98,50 +106,8 @@ function StudioContent() {
         prevIsSaving.current = isSaving;
     }, [isSaving, error, showToast]);
 
-    // Derived state for Left Panel
-    const stepsForPanel = (() => {
-        const sorted = getTopologicalSortedNodes(workflow.nodes, workflow.edges);
-        // Fallback if sorting fails or nodes is empty (though helper handles it)
-        const nodesToUse = sorted.length === workflow.nodes.length ? sorted : workflow.nodes;
-
-        return nodesToUse.map((node, index) => ({
-            id: node.id,
-            name: (node.data.label as string) || 'Unnamed Step',
-            order: index + 1
-        }));
-    })();
-
     const handleNodeSelect = (nodeId: string | null) => {
         setActiveStepId(nodeId);
-    };
-
-
-    const handleAddStep = () => {
-        // Use crypto.randomUUID() for compliance with backend CUID
-        const newId = crypto.randomUUID();
-
-        // Calculate smart position offset for new nodes
-        // If we have nodes, place next to the last one, otherwise start at 100,100
-        const xOffset = workflow.nodes.length * 250;
-        const position = { x: 100 + xOffset, y: 100 };
-
-        const newNode: any = {
-            id: newId,
-            type: 'actionNode', // Use registered node type
-            position: position,
-            data: {
-                label: `Step ${workflow.nodes.length + 1}`,
-                isStart: workflow.nodes.length === 0,
-                sla: 3
-            }
-        };
-
-        // Add to workflow
-        const newNodes = [...workflow.nodes, newNode];
-        updateWorkflow(newNodes, workflow.edges);
-
-        // Select the new step
-        setActiveStepId(newId);
     };
 
     // Render tab content based on active tab
@@ -318,18 +284,7 @@ function StudioContent() {
                 >
                     <WorkflowPalette isCollapsed={collapsed} />
                 </LeftPanel>
-            ) : activeTab === 'data-schema' ? undefined : (collapsed) => (
-                <LeftPanel
-                    steps={stepsForPanel.map(s => ({
-                        ...s,
-                        role: workflow.nodes.find(n => n.id === s.id)?.data?.role as string | undefined
-                    }))}
-                    activeStepId={activeStepId}
-                    onStepSelect={setActiveStepId}
-                    onAddStep={handleAddStep}
-                    isCollapsed={collapsed}
-                />
-            )}
+            ) : (activeTab === 'data-schema' || activeTab === 'statuses') ? undefined : undefined}
             rightPanel={
                 activeTab === 'workflow' && activeStepId ? (() => {
                     const selectedNode = workflow.nodes.find(n => n.id === activeStepId);
@@ -436,17 +391,33 @@ function StudioContent() {
                 ) : null
             }
             tabs={
-                <TabNavigation
-                    tabs={tabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    onTabClose={(tabId) => {
-                        if (tabId === 'form-preview') {
-                            setIsFormPreviewOpen(false);
-                            setActiveTab('schema');
-                        }
-                    }}
-                />
+                <>
+                    <TabNavigation
+                        tabs={BASE_TABS}
+                        activeTab={activeTab}
+                        onTabChange={setActiveTab}
+                    />
+                    {subTabs.length > 0 && (
+                        <div className="w-full basis-full flex items-center gap-1 pl-6 py-1 border-t border-slate-100 bg-slate-50/50">
+                            <span className="text-[10px] text-slate-400 mr-1 select-none">└</span>
+                            <TabNavigation
+                                tabs={subTabs}
+                                activeTab={activeTab}
+                                onTabChange={setActiveTab}
+                                onTabClose={(tabId) => {
+                                    if (tabId === 'form-preview') {
+                                        setIsFormPreviewOpen(false);
+                                        setActiveTab('schema');
+                                    }
+                                    if (tabId === 'schema') {
+                                        setIsFormEditorOpen(false);
+                                        setActiveTab('workflow');
+                                    }
+                                }}
+                            />
+                        </div>
+                    )}
+                </>
             }
         >
             {renderTabContent()}

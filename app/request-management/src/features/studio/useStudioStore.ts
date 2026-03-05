@@ -43,6 +43,9 @@ interface StudioState {
     selectedDataFieldId: string | null;
 
     // Draft Conflict State
+    // Form Editor sub-tab
+    isFormEditorOpen: boolean;
+
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
 
@@ -77,6 +80,7 @@ interface StudioState {
     updateDataSchema: (fields: UiDataField[]) => void;
     setSelectedDataFieldId: (id: string | null) => void;
     updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+    setIsFormEditorOpen: (open: boolean) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -107,6 +111,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     dataSchema: [],
     selectedDataFieldId: null,
 
+    // Form Editor sub-tab
+    isFormEditorOpen: false,
+
     // Draft Conflict
     draftConflict: false,
     draftConflictMessage: null,
@@ -123,6 +130,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Data Schema actions
     updateDataSchema: (fields) => set({ dataSchema: fields, isDirty: true }),
     setSelectedDataFieldId: (id) => set({ selectedDataFieldId: id }),
+    setIsFormEditorOpen: (open) => set({ isFormEditorOpen: open }),
 
     loadRequestType: async (id: string) => {
         // Guard: Skip if already loading the same request type
@@ -337,6 +345,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     slaDays: node.data.sla,
                     stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
                     actionSubType: node.data.actionSubType || null,
+                    formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
