@@ -18,6 +18,7 @@ import { SchemaPalette } from './SchemaPalette';
 import { SchemaPreviewTab } from './SchemaPreviewTab';
 import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
+import { TaskEditorRightPanel } from './TaskEditorRightPanel';
 import { Settings2 } from 'lucide-react';
 
 
@@ -314,78 +315,88 @@ function StudioContent() {
                     >
                         <DataFieldPropertiesContent />
                     </RightPanel>
-                ) : activeTab === 'schema' && selectedSchemaFieldId ? (
+                ) : activeTab === 'schema' ? (
                     <RightPanel
-                        isOpen={!!selectedSchemaFieldId}
+                        isOpen={true}
                         onClose={() => setSelectedSchemaFieldId(null)}
                         width={500}
-                        title="Field Properties"
+                        title="Task Configuration"
                         icon={<Type size={16} />}
                     >
-                        <FieldPropertiesContent
-                            schema={schema}
-                            selectedFieldId={selectedSchemaFieldId}
-                            onUpdate={(id, updates) => {
-                                const newSchema = schema.map(item => {
-                                    if (item.id === id) return { ...item, ...updates };
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        return {
-                                            ...item,
-                                            fields: item.fields.map(f => f.id === id ? { ...f, ...updates } : f)
-                                        };
-                                    }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        return {
-                                            ...item,
-                                            columns: (item as any).columns.map((c: any) => c.id === id ? { ...c, ...updates } : c)
-                                        };
-                                    }
-                                    return item;
-                                });
-                                updateSchema(newSchema);
-                            }}
-                            onDuplicate={(id) => {
-                                let itemToDuplicate: UiCanvasItem | UiFormField | null = null;
-                                for (const item of schema) {
-                                    if (item.id === id) { itemToDuplicate = item; break; }
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        const field = item.fields.find(f => f.id === id);
-                                        if (field) { itemToDuplicate = field; break; }
-                                    }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        const column = (item as any).columns.find((c: any) => c.id === id);
-                                        if (column) { itemToDuplicate = column; break; }
-                                    }
-                                }
-                                if (itemToDuplicate) {
-                                    const newItem = {
-                                        ...itemToDuplicate,
-                                        id: `${itemToDuplicate.type}-${Date.now()}`,
-                                        label: `${itemToDuplicate.label} (Copy)`
-                                    };
-                                    updateSchema([...schema, newItem]);
-                                    setSelectedSchemaFieldId(newItem.id);
-                                }
-                            }}
-                            onDelete={(id) => {
-                                const newSchema = schema.filter(item => item.id !== id).map(item => {
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        return {
-                                            ...item,
-                                            fields: item.fields.filter(f => f.id !== id)
-                                        };
-                                    }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        return {
-                                            ...item,
-                                            columns: (item as any).columns.filter((c: any) => c.id !== id)
-                                        };
-                                    }
-                                    return item;
-                                });
-                                updateSchema(newSchema);
-                                setSelectedSchemaFieldId(null);
-                            }}
+                        <TaskEditorRightPanel
+                            fieldPropertiesContent={
+                                selectedSchemaFieldId ? (
+                                    <FieldPropertiesContent
+                                        schema={schema}
+                                        selectedFieldId={selectedSchemaFieldId}
+                                        onUpdate={(id, updates) => {
+                                            const newSchema = schema.map(item => {
+                                                if (item.id === id) return { ...item, ...updates };
+                                                if (item.type === 'section' && 'fields' in item) {
+                                                    return {
+                                                        ...item,
+                                                        fields: item.fields.map(f => f.id === id ? { ...f, ...updates } : f)
+                                                    };
+                                                }
+                                                if (item.type === 'table' && 'columns' in item) {
+                                                    return {
+                                                        ...item,
+                                                        columns: (item as any).columns.map((c: any) => c.id === id ? { ...c, ...updates } : c)
+                                                    };
+                                                }
+                                                return item;
+                                            });
+                                            updateSchema(newSchema);
+                                        }}
+                                        onDuplicate={(id) => {
+                                            let itemToDuplicate: UiCanvasItem | UiFormField | null = null;
+                                            for (const item of schema) {
+                                                if (item.id === id) { itemToDuplicate = item; break; }
+                                                if (item.type === 'section' && 'fields' in item) {
+                                                    const field = item.fields.find(f => f.id === id);
+                                                    if (field) { itemToDuplicate = field; break; }
+                                                }
+                                                if (item.type === 'table' && 'columns' in item) {
+                                                    const column = (item as any).columns.find((c: any) => c.id === id);
+                                                    if (column) { itemToDuplicate = column; break; }
+                                                }
+                                            }
+                                            if (itemToDuplicate) {
+                                                const newItem = {
+                                                    ...itemToDuplicate,
+                                                    id: `${itemToDuplicate.type}-${Date.now()}`,
+                                                    label: `${itemToDuplicate.label} (Copy)`
+                                                };
+                                                updateSchema([...schema, newItem]);
+                                                setSelectedSchemaFieldId(newItem.id);
+                                            }
+                                        }}
+                                        onDelete={(id) => {
+                                            const newSchema = schema.filter(item => item.id !== id).map(item => {
+                                                if (item.type === 'section' && 'fields' in item) {
+                                                    return {
+                                                        ...item,
+                                                        fields: item.fields.filter(f => f.id !== id)
+                                                    };
+                                                }
+                                                if (item.type === 'table' && 'columns' in item) {
+                                                    return {
+                                                        ...item,
+                                                        columns: (item as any).columns.filter((c: any) => c.id !== id)
+                                                    };
+                                                }
+                                                return item;
+                                            });
+                                            updateSchema(newSchema);
+                                            setSelectedSchemaFieldId(null);
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center py-12 text-sm text-slate-400 italic">
+                                        Select a field to edit its properties
+                                    </div>
+                                )
+                            }
                         />
                     </RightPanel>
                 ) : null

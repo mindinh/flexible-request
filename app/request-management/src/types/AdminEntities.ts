@@ -22,6 +22,9 @@ export interface AdminStepDefinition {
     // Node type for workflow canvas
     stepType?: string; // 'start' | 'end' | 'action' | 'condition'
     actionSubType?: string; // 'form' | 'email' | 'approval'
+    // Canvas position for workflow visualization
+    positionX?: number;
+    positionY?: number;
     predecessors?: AdminStepDependency[];
     approverRules?: AdminApproverRule[];
     // Schema content stored directly on step

@@ -51,6 +51,8 @@ entity StepDefinitions : cuid, managedWithUser {
     stepType      : String(20) default 'action'; // start, end, action, condition
     actionSubType : String(20); // form, email, approval (only for stepType=action)
     formId        : String(36); // UUID reference to a form in RequestTypes.formSchemasContent
+    positionX     : Integer default 0; // Canvas X coordinate for workflow visualization
+    positionY     : Integer default 0; // Canvas Y coordinate for workflow visualization
     slaDays       : Integer default 3; // Number of days to complete this step (SLA)
     schemaContent : LargeString; // Form schema JSON (each step has its own schema)
     // Sync Trigger: When to sync data to S/4HANA or external system

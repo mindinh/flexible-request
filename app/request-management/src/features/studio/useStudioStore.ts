@@ -347,6 +347,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     actionSubType: node.data.actionSubType || null,
                     formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
+                    // Canvas position
+                    positionX: Math.round(node.position.x),
+                    positionY: Math.round(node.position.y),
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
                     ownerId: node.data.owner_ID || null,
@@ -528,7 +531,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Ignore errors (draft may already be gone)
             console.warn('Failed to discard draft (may already be deleted):', err);
         }
-      
+
         // Reset key identifiers so that re-entering the same Request Type
         // will pass the useEffect guard (id !== requestTypeId) and trigger
         // a fresh loadRequestType call. Without this, navigating back to the

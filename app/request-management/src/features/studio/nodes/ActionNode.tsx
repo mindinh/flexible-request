@@ -3,11 +3,13 @@ import { ClipboardCheck, FileEdit, Mail, Shield, Clock } from 'lucide-react';
 
 // Sub-type config: icon + accent color
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
+    user_task: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
+    // Legacy subtypes kept for backward compatibility
     form: { icon: FileEdit, color: '#e74c3c', bg: '#fef2f2', label: 'Form' },
     email: { icon: Mail, color: '#3b82f6', bg: '#eff6ff', label: 'Email' },
     approval: { icon: Shield, color: '#f59e0b', bg: '#fffbeb', label: 'Approval' },
 };
-const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'Action' };
+const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' };
 
 /**
  * ActionNode — n8n-inspired card with a colored left accent stripe,

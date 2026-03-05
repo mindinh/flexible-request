@@ -127,7 +127,7 @@ export const StudioAdapter = {
             nodes.push({
                 id: step.ID,
                 type: nodeType,
-                position: { x: 0, y: 0 },
+                position: { x: step.positionX ?? 0, y: step.positionY ?? 0 },
                 data: {
                     label: step.stepName,
                     sla: step.slaDays,
