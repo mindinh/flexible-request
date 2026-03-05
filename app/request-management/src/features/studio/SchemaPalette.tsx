@@ -1,9 +1,10 @@
 import {
     Type, Hash, List, CheckSquare, LayoutGrid,
     Table, CircleDot, Mail, SlidersHorizontal,
-    DollarSign, Tag, Image, Clock, Paperclip, Rows3, ScrollText, TextCursorInput
+    DollarSign, Tag, Image, Clock, Paperclip, Rows3, ScrollText, TextCursorInput, Database
 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
+import type { SimpleDataType, UiDataField } from './types';
 
 // Form element definitions grouped by category (matching reference design)
 
@@ -44,6 +45,18 @@ const ELEMENT_GROUPS = [
     { key: 'advanced', label: 'ADVANCED / SYSTEM', items: ADVANCED_ELEMENTS },
 ];
 
+// Map data schema types to form control types
+function dataTypeToControlType(dataType: SimpleDataType): string {
+    switch (dataType) {
+        case 'String': return 'text';
+        case 'Number': return 'number';
+        case 'Boolean': return 'checkbox';
+        case 'DateTime': return 'date';
+        case 'Object': return 'section';
+        default: return 'text';
+    }
+}
+
 interface SchemaPaletteProps {
     isCollapsed?: boolean;
 }
@@ -53,16 +66,22 @@ function PaletteCard({
     label,
     type,
     isCollapsed,
-    onClick
+    onClick,
+    dataFieldKey,
+    subtitle,
 }: {
     icon: React.ElementType;
     label: string;
     type: string;
     isCollapsed?: boolean;
     onClick: () => void;
+    dataFieldKey?: string;
+    subtitle?: string;
 }) {
     const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-        e.dataTransfer.setData('application/json', JSON.stringify({ type, label }));
+        const payload: Record<string, string> = { type, label };
+        if (dataFieldKey) payload.dataFieldKey = dataFieldKey;
+        e.dataTransfer.setData('application/json', JSON.stringify(payload));
         e.dataTransfer.effectAllowed = 'copy';
     };
 
@@ -85,24 +104,79 @@ function PaletteCard({
             onClick={onClick}
             draggable
             onDragStart={handleDragStart}
-            className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border border-slate-200 bg-white hover:border-primary hover:bg-primary/5 transition-all cursor-grab active:cursor-grabbing min-h-[72px]"
+            className="flex flex-col items-center justify-center gap-1 p-3 rounded-lg border border-slate-200 bg-white hover:border-primary hover:bg-primary/5 transition-all cursor-grab active:cursor-grabbing min-h-[72px]"
         >
             <Icon size={20} className="text-slate-500" />
             <span className="text-[11px] font-medium text-slate-700 leading-tight text-center">{label}</span>
+            {subtitle && <span className="text-[9px] text-slate-400 leading-tight text-center truncate w-full">{subtitle}</span>}
         </button>
     );
 }
 
 export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
-    const { addSchemaItem, activeStepId } = useStudioStore();
+    const { addSchemaItem, dataSchema, activeStepId } = useStudioStore();
 
     const handleAdd = (type: string, label: string) => {
         if (!activeStepId) return;
         addSchemaItem(type, label);
     };
 
+    // Flatten data schema fields for the palette (including nested)
+    const flattenDataFields = (fields: UiDataField[], prefix = ''): { key: string; label: string; type: SimpleDataType }[] => {
+        const result: { key: string; label: string; type: SimpleDataType }[] = [];
+        for (const field of fields) {
+            const fullKey = prefix ? `${prefix}.${field.key}` : field.key;
+            if (field.type === 'Object' && field.children?.length) {
+                result.push(...flattenDataFields(field.children, fullKey));
+            } else {
+                result.push({ key: fullKey, label: field.label, type: field.type });
+            }
+        }
+        return result;
+    };
+
+    const dataFields = flattenDataFields(dataSchema);
+
     return (
         <div className="flex flex-col gap-4">
+            {/* Data Fields Section — shows fields from the Data Schema tab */}
+            {dataFields.length > 0 && (
+                <div className="flex flex-col gap-2">
+                    {!isCollapsed && (
+                        <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider px-1 flex items-center gap-1">
+                            <Database size={10} />
+                            DATA FIELDS
+                        </span>
+                    )}
+                    <div className={`grid gap-2 ${isCollapsed ? 'grid-cols-1 px-1' : 'grid-cols-2'}`}>
+                        {dataFields.map(field => {
+                            const controlType = dataTypeToControlType(field.type);
+                            const iconMap: Record<string, React.ElementType> = {
+                                text: TextCursorInput,
+                                number: Hash,
+                                checkbox: CheckSquare,
+                                date: Clock,
+                                section: LayoutGrid,
+                            };
+                            const FieldIcon = iconMap[controlType] || Database;
+                            return (
+                                <PaletteCard
+                                    key={field.key}
+                                    icon={FieldIcon}
+                                    label={field.label}
+                                    type={controlType}
+                                    isCollapsed={isCollapsed}
+                                    onClick={() => handleAdd(controlType, field.label)}
+                                    dataFieldKey={field.key}
+                                    subtitle={field.key}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Standard Element Groups */}
             {ELEMENT_GROUPS.map((group) => (
                 <div key={group.key} className="flex flex-col gap-2">
                     {!isCollapsed && (

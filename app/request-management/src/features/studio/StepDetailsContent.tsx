@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, FormInput, Settings2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -67,6 +67,8 @@ interface StepDetailsContentProps {
     edges: UiWorkflowEdge[];
     onUpdate: (id: string, data: any) => void;
     onUpdateEdges: (edges: UiWorkflowEdge[]) => void;
+    onEditSchema?: () => void;
+    onManageRules?: () => void;
 }
 
 export function StepDetailsContent({
@@ -74,7 +76,9 @@ export function StepDetailsContent({
     allNodes,
     edges,
     onUpdate,
-    onUpdateEdges
+    onUpdateEdges,
+    onEditSchema,
+    onManageRules
 }: StepDetailsContentProps) {
     const { deleteStep } = useStudioStore();
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -196,6 +200,37 @@ export function StepDetailsContent({
                     Select steps that must complete before this step can start.
                 </p>
             </div>
+
+            {/* Quick Actions */}
+            {(onEditSchema || onManageRules) && (
+                <Card className="p-4 space-y-2">
+                    <Label variant="section">Quick Actions</Label>
+                    <div className="flex gap-2">
+                        {onEditSchema && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={onEditSchema}
+                                className="flex-1 gap-1.5 text-xs"
+                            >
+                                <FormInput size={14} />
+                                Edit Form Layout
+                            </Button>
+                        )}
+                        {onManageRules && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={onManageRules}
+                                className="flex-1 gap-1.5 text-xs"
+                            >
+                                <Settings2 size={14} />
+                                Manage Rules
+                            </Button>
+                        )}
+                    </div>
+                </Card>
+            )}
 
             {/* Sync Trigger */}
             <Card className="p-4 space-y-2">

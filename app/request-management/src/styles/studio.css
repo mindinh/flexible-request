@@ -858,9 +858,10 @@
   min-width: 0;
 }
 
-/* Tab Bar v2 - Full width */
+/* Tab Bar v2 - Full width, wraps sub-tabs to new row */
 .studio-tabs-v2 {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   padding: 0 24px;

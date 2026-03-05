@@ -14,10 +14,10 @@ using {
 } from './schema/identity';
 
 // Import notifications schema
-using { sap.cre.Notifications } from './schema/notifications';
+using {sap.cre.Notifications} from './schema/notifications';
 
 // Import system settings schema (NumberRanges)
-using { sap.cre.NumberRanges } from './schema/settings';
+using {sap.cre.NumberRanges} from './schema/settings';
 
 // ----------------------------------------------------------------------------
 // Configuration Entities (Blueprints)
@@ -27,14 +27,16 @@ using { sap.cre.NumberRanges } from './schema/settings';
  * Defines a type of request (e.g. "Leave Request", "New Plant").
  */
 entity RequestTypes : cuid, managedWithUser {
-    title         : String @mandatory;
-    description   : String;
-    isEnabled     : Boolean default true;
-    icon          : String default 'workflow'; // Icon identifier (e.g., 'plane', 'cart', 'key')
-    steps         : Composition of many StepDefinitions
-                        on steps.requestType = $self;
-    statusNetwork : Composition of many StatusNetwork
-                        on statusNetwork.requestType = $self;
+    title              : String @mandatory;
+    description        : String;
+    isEnabled          : Boolean default true;
+    icon               : String default 'workflow'; // Icon identifier (e.g., 'plane', 'cart', 'key')
+    dataSchemaContent  : LargeString; // Centralized data schema JSON (field definitions)
+    formSchemasContent : LargeString; // Named form layouts JSON: [{ id, name, items }]
+    steps              : Composition of many StepDefinitions
+                             on steps.requestType = $self;
+    statusNetwork      : Composition of many StatusNetwork
+                             on statusNetwork.requestType = $self;
 }
 
 /**
@@ -45,6 +47,10 @@ entity StepDefinitions : cuid, managedWithUser {
     requestType   : Association to RequestTypes;
     stepName      : String @mandatory;
     isStartStep   : Boolean default false; // True if this step starts when request is submitted
+    // Node type for workflow canvas rendering
+    stepType      : String(20) default 'action'; // start, end, action, condition
+    actionSubType : String(20); // form, email, approval (only for stepType=action)
+    formId        : String(36); // UUID reference to a form in RequestTypes.formSchemasContent
     slaDays       : Integer default 3; // Number of days to complete this step (SLA)
     schemaContent : LargeString; // Form schema JSON (each step has its own schema)
     // Sync Trigger: When to sync data to S/4HANA or external system
@@ -138,7 +144,7 @@ entity ApproverRules : cuid, managedWithUser {
  * An instance of a Request.
  */
 entity Requests : cuid, managedWithUser {
-    displayId       : String(50);  // Human-readable ID (e.g., LVE-001023), generated on creation
+    displayId       : String(50); // Human-readable ID (e.g., LVE-001023), generated on creation
     title           : String;
     description     : LargeString; // Justification for the request
     requestType     : Association to RequestTypes;

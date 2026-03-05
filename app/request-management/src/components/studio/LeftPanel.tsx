@@ -16,6 +16,8 @@ interface LeftPanelProps {
     onStepSelect: (stepId: string) => void;
     onAddStep: () => void;
     isCollapsed?: boolean;
+    /** When true, hides the steps list entirely (only renders children) */
+    hideSteps?: boolean;
     /** Optional extra content rendered below the steps list (e.g. SchemaPalette) */
     children?: ReactNode;
 }
@@ -39,8 +41,22 @@ export function LeftPanel({
     onStepSelect,
     onAddStep,
     isCollapsed = false,
+    hideSteps = false,
     children
 }: LeftPanelProps) {
+    // When hideSteps is true, only render children (palette-only mode)
+    if (hideSteps) {
+        return (
+            <div className="flex flex-col h-full">
+                {children && (
+                    <div className="flex-1 overflow-y-auto px-3 py-3">
+                        {children}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-full ">
             {/* Description - Hidden when collapsed */}

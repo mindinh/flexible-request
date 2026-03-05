@@ -4,9 +4,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
 import { useState, useEffect } from 'react';
-import { Copy, Trash2, Type, Settings2, Plus, GripVertical } from 'lucide-react';
-import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
+import { Copy, Trash2, Type, Settings2, Plus, GripVertical, Database } from 'lucide-react';
+import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiDataField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
 import { useIntegrationsStore } from '../integrations/useIntegrationsStore';
+import { useStudioStore } from './useStudioStore';
 
 // Type guards
 function isUiSection(item: UiCanvasItem): item is UiSection {
@@ -49,6 +50,69 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-2">
             {children}
         </span>
+    );
+}
+
+// ─── Data Binding Section ───
+function DataBindingSection({ fieldItem, onUpdate }: {
+    fieldItem: UiFormField;
+    onUpdate: (updates: FieldUpdatePayload) => void;
+}) {
+    const { dataSchema } = useStudioStore();
+
+    // Flatten data fields for the dropdown (including nested)
+    const flattenFields = (fields: UiDataField[], prefix = ''): { key: string; label: string }[] => {
+        const result: { key: string; label: string }[] = [];
+        for (const field of fields) {
+            const fullKey = prefix ? `${prefix}.${field.key}` : field.key;
+            if (field.type === 'Object' && field.children?.length) {
+                result.push(...flattenFields(field.children, fullKey));
+            } else {
+                result.push({ key: fullKey, label: `${field.label} (${fullKey})` });
+            }
+        }
+        return result;
+    };
+    const availableFields = flattenFields(dataSchema);
+
+    if (availableFields.length === 0) return null;
+
+    return (
+        <div className="space-y-1.5">
+            <SectionLabel>
+                <span className="flex items-center gap-1">
+                    <Database size={10} className="text-emerald-500" />
+                    Data Binding
+                </span>
+            </SectionLabel>
+            <Select
+                value={fieldItem.key || '__none__'}
+                onValueChange={(val) => {
+                    if (val === '__none__') {
+                        onUpdate({ key: undefined });
+                    } else {
+                        onUpdate({ key: val });
+                    }
+                }}
+            >
+                <SelectTrigger className="w-full h-9 text-sm">
+                    <SelectValue placeholder="Not bound" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="__none__">
+                        <span className="text-slate-400 italic">Not bound</span>
+                    </SelectItem>
+                    {availableFields.map(f => (
+                        <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            {fieldItem.key && (
+                <p className="text-[11px] text-emerald-600 italic">
+                    Bound to: <code className="font-mono bg-emerald-50 px-1 py-0.5 rounded">{fieldItem.key}</code>
+                </p>
+            )}
+        </div>
     );
 }
 
@@ -342,6 +406,14 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
                     />
                 </div>
+
+                {/* ── DATA BINDING ── */}
+                {isField && (
+                    <DataBindingSection
+                        fieldItem={fieldItem!}
+                        onUpdate={(updates) => onUpdate(selectedItem!.id, updates)}
+                    />
+                )}
 
                 {/* ── PLACEHOLDER ── */}
                 {isField && (

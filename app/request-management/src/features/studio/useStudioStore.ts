@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type {
     UiRule,
     UiCanvasItem,
+    UiForm,
+    UiDataField,
     UiWorkflowNode,
     UiWorkflowEdge,
     UiRequestTypeDetails,
@@ -19,8 +21,9 @@ interface StudioState {
     originalNodes: UiWorkflowNode[]; // Track original nodes for diffing
     originalEdges: UiWorkflowEdge[]; // Track edges from backend for diffing
     originalRules: UiRule[]; // Track original rules for diffing
-    schemas: Record<string, UiCanvasItem[]>; // Schema per step (stepId -> items)
-    schema: UiCanvasItem[]; // Current active step's schema (derived from schemas[activeStepId])
+    forms: UiForm[]; // Named form layouts
+    activeFormId: string | null; // Currently selected form
+    schema: UiCanvasItem[]; // Current active form's items (derived)
     rules: UiRule[];
     statusNetwork: { nodes: UiStatusNode[], edges: UiStatusEdge[] };
 
@@ -35,7 +38,14 @@ interface StudioState {
     selectedRuleId: string | null;
     isDryRunOpen: boolean;
 
+    // Data Schema
+    dataSchema: UiDataField[];
+    selectedDataFieldId: string | null;
+
     // Draft Conflict State
+    // Form Editor sub-tab
+    isFormEditorOpen: boolean;
+
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
 
@@ -55,12 +65,22 @@ interface StudioState {
     updateWorkflow: (nodes: UiWorkflowNode[], edges: UiWorkflowEdge[]) => void;
     updateSchema: (items: UiCanvasItem[]) => void;
     addSchemaItem: (type: string, label: string) => void;
+    // Form CRUD
+    addForm: (name: string) => void;
+    deleteForm: (formId: string) => void;
+    selectForm: (formId: string | null) => void;
+    updateFormName: (formId: string, name: string) => void;
     updateRules: (rules: UiRule[]) => void;
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     setActiveStepId: (id: string | null) => void;
     setSelectedSchemaFieldId: (id: string | null) => void;
     setSelectedRuleId: (id: string | null) => void;
     setIsDryRunOpen: (open: boolean) => void;
+    // Data Schema actions
+    updateDataSchema: (fields: UiDataField[]) => void;
+    setSelectedDataFieldId: (id: string | null) => void;
+    updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+    setIsFormEditorOpen: (open: boolean) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -71,8 +91,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     originalNodes: [],
     originalEdges: [],
     originalRules: [],
-    schemas: {}, // Schema per step
-    schema: [], // Active step's schema
+    forms: [], // Named form layouts
+    activeFormId: null,
+    schema: [], // Active form's items
     rules: [],
     statusNetwork: { nodes: [], edges: [] },
 
@@ -86,6 +107,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     selectedRuleId: null,
     isDryRunOpen: false,
 
+    // Data Schema
+    dataSchema: [],
+    selectedDataFieldId: null,
+
+    // Form Editor sub-tab
+    isFormEditorOpen: false,
+
     // Draft Conflict
     draftConflict: false,
     draftConflictMessage: null,
@@ -93,14 +121,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     setActiveTab: (tab) => set({ activeTab: tab }),
     setDirty: (dirty) => set({ isDirty: dirty }),
     setActiveStepId: (id) => {
-        const schemas = get().schemas;
-        const schema = id ? (schemas[id] || []) : [];
         // Clear selected rule when changing steps (rules are step-specific)
-        set({ activeStepId: id, schema, selectedSchemaFieldId: null, selectedRuleId: null });
+        set({ activeStepId: id, selectedSchemaFieldId: null, selectedRuleId: null });
     },
     setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id }),
     setSelectedRuleId: (id) => set({ selectedRuleId: id, isDryRunOpen: id ? false : get().isDryRunOpen }),
     setIsDryRunOpen: (open) => set({ isDryRunOpen: open, selectedRuleId: open ? null : get().selectedRuleId }),
+    // Data Schema actions
+    updateDataSchema: (fields) => set({ dataSchema: fields, isDirty: true }),
+    setSelectedDataFieldId: (id) => set({ selectedDataFieldId: id }),
+    setIsFormEditorOpen: (open) => set({ isFormEditorOpen: open }),
 
     loadRequestType: async (id: string) => {
         // Guard: Skip if already loading the same request type
@@ -163,33 +193,63 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
             const workflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
 
-            // Build schemas map for all steps
-            const schemas: Record<string, UiCanvasItem[]> = {};
-            fullDraft.steps?.forEach(step => {
-                schemas[step.ID] = step.schemaContent
-                    ? StudioAdapter.toUiSchemaFromContent(step.schemaContent)
-                    : [];
-            });
+            // Load forms from formSchemasContent
+            let forms: UiForm[] = [];
+            try {
+                if (fullDraft.formSchemasContent) {
+                    forms = JSON.parse(fullDraft.formSchemasContent);
+                }
+            } catch (e) {
+                console.warn('Failed to parse formSchemasContent:', e);
+            }
+            // Backward compat: migrate step-level schemas to forms if no forms exist
+            if (forms.length === 0 && fullDraft.steps?.some((s: any) => s.schemaContent)) {
+                fullDraft.steps?.forEach((step: any) => {
+                    if (step.schemaContent) {
+                        const items = StudioAdapter.toUiSchemaFromContent(step.schemaContent);
+                        if (items.length > 0) {
+                            forms.push({
+                                id: crypto.randomUUID(),
+                                name: step.stepName || 'Migrated Form',
+                                items,
+                            });
+                        }
+                    }
+                });
+            }
+            const activeFormId = forms.length > 0 ? forms[0].id : null;
+            const schema = activeFormId ? (forms.find(f => f.id === activeFormId)?.items || []) : [];
 
             // Set active step to the start step
             const startStep = fullDraft.steps?.find(s => s.isStartStep) || fullDraft.steps?.[0];
             const activeStepId = startStep?.ID || null;
-            const schema = activeStepId ? (schemas[activeStepId] || []) : [];
 
             // Status Network
             const statusNetwork = StudioAdapter.toUiStatusNetwork(fullDraft.statusNetwork);
 
+            // Data Schema
+            let dataSchema: UiDataField[] = [];
+            try {
+                if (fullDraft.dataSchemaContent) {
+                    dataSchema = JSON.parse(fullDraft.dataSchemaContent);
+                }
+            } catch (e) {
+                console.warn('Failed to parse dataSchemaContent:', e);
+            }
+
             set({
                 metadata,
                 rules,
-                originalRules: rules, // Store original rules for diffing
+                originalRules: rules,
                 workflow,
-                originalNodes: workflow.nodes, // Store original nodes for diffing
-                originalEdges: workflow.edges, // Store original edges for diffing
-                schemas,
+                originalNodes: workflow.nodes,
+                originalEdges: workflow.edges,
+                forms,
+                activeFormId,
                 schema,
                 activeStepId,
                 statusNetwork,
+                dataSchema,
                 isDirty: false,
                 isLoading: false
             });
@@ -204,7 +264,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     },
 
     saveChanges: async () => {
-        const { requestTypeId, metadata, rules, workflow, schemas, statusNetwork, isDirty } = get();
+        const { requestTypeId, metadata, rules, workflow, forms, statusNetwork, isDirty } = get();
         console.log("saveChanges called. Dirty:", isDirty, "ID:", requestTypeId);
 
         if (!requestTypeId || !metadata || !isDirty) {
@@ -214,9 +274,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
         set({ isSaving: true, error: null });
         try {
-            // 0. Validate schemas – reject empty option labels in select-type fields
+            // 0. Validate form schemas – reject empty option labels in select-type fields
             const SELECT_TYPES = ['select', 'radio', 'checkbox', 'dropdown'];
-            for (const [_stepId, schemaItems] of Object.entries(schemas)) {
+            for (const form of forms) {
                 const checkFields = (fields: UiCanvasItem[]) => {
                     for (const item of fields) {
                         // Check sections
@@ -237,14 +297,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                                 const emptyOpts = items.filter((opt: any) => !opt.label?.trim());
                                 if (emptyOpts.length > 0) {
                                     throw new Error(
-                                        `Field "${field.label}" has ${emptyOpts.length} option(s) with empty labels. Please fill in or remove them before saving.`
+                                        `Field "${field.label}" in form "${form.name}" has ${emptyOpts.length} option(s) with empty labels. Please fill in or remove them before saving.`
                                     );
                                 }
                             }
                         }
                     }
                 };
-                checkFields(schemaItems);
+                checkFields(form.items);
             }
 
             // 1. Update Request Type metadata
@@ -258,9 +318,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             console.log("Saving metadata...", metadataPayload);
             await AdminService.updateRequestType(requestTypeId, metadataPayload);
 
+            // 1.1 Save Data Schema at request type level
+            const { dataSchema } = get();
+            const dataSchemaContent = dataSchema.length > 0 ? JSON.stringify(dataSchema) : undefined;
+            console.log("Saving data schema...", dataSchemaContent?.substring(0, 50));
+            await AdminService.updateRequestType(requestTypeId, { dataSchemaContent });
+
             // 2. Create/Update Steps - diff against original nodes
             const { originalNodes } = get();
             const originalNodeIds = new Set(originalNodes.map(n => n.id));
+
+            // Map React Flow node type to backend stepType
+            const NODE_TO_STEP_TYPE: Record<string, string> = {
+                startNode: 'start',
+                endNode: 'end',
+                actionNode: 'action',
+                conditionNode: 'condition',
+            };
 
             console.log("Processing steps...", workflow.nodes.length);
             for (const node of workflow.nodes) {
@@ -269,6 +343,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     stepName: node.data.label,
                     isStartStep: node.data.isStart,
                     slaDays: node.data.sla,
+                    stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
+                    actionSubType: node.data.actionSubType || null,
+                    formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
@@ -330,15 +407,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 await AdminService.createStepDependency(edge.target, edge.source);
             }
 
-            // 3. Save Schema Content for all steps
-            console.log("Saving schemas for all steps...");
-            for (const [stepId, schemaItems] of Object.entries(schemas)) {
-                const schemaContent = schemaItems.length > 0
-                    ? JSON.stringify(StudioAdapter.fromUiSchema(schemaItems))
-                    : null;
-                console.log(`  Step ${stepId}:`, schemaContent?.substring(0, 50) + "...");
-                await AdminService.updateStep(stepId, { schemaContent });
-            }
+            // 3. Save Form Schemas at Request Type level
+            console.log("Saving form schemas...", forms.length, "forms");
+            const formSchemasContent = forms.length > 0 ? JSON.stringify(forms) : undefined;
+            await AdminService.updateRequestType(requestTypeId, { formSchemasContent });
 
             // 4. Save Approval Rules - diff originalRules vs current rules
             const { originalRules } = get();
@@ -446,9 +518,6 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         if (!requestTypeId) return;
 
         // Show loading spinner while the API call runs.
-        // Do NOT reset the full store here — the caller will navigate away,
-        // which unmounts the component. Resetting store before navigation
-        // causes a re-render with null metadata → blank screen crash.
         set({ isLoading: true, error: null });
 
         try {
@@ -459,10 +528,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Ignore errors (draft may already be gone)
             console.warn('Failed to discard draft (may already be deleted):', err);
         }
-
-        // Reset requestTypeId so the load guard doesn't block re-entry
-        // to the same request type. Leave isLoading true to prevent layout flash.
-        set({ requestTypeId: null });
+      
+        // Reset key identifiers so that re-entering the same Request Type
+        // will pass the useEffect guard (id !== requestTypeId) and trigger
+        // a fresh loadRequestType call. Without this, navigating back to the
+        // same RT would get stuck on the loading screen.
+        set({ requestTypeId: null, metadata: null, isLoading: false });
     },
 
     deleteRequestType: async () => {
@@ -486,13 +557,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         // Remove connected edges
         const newEdges = state.workflow.edges.filter(e => e.source !== stepId && e.target !== stepId);
 
-        // Remove schema
-        const newSchemas = { ...state.schemas };
-        delete newSchemas[stepId];
-
         return {
             workflow: { nodes: newNodes, edges: newEdges },
-            schemas: newSchemas,
             activeStepId: state.activeStepId === stepId ? null : state.activeStepId,
             isDirty: true
         };
@@ -512,18 +578,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }),
 
     updateSchema: (items) => set(state => {
-        const activeStepId = state.activeStepId;
-        if (!activeStepId) return { schema: items, isDirty: true };
+        const { activeFormId, forms } = state;
+        if (!activeFormId) return { schema: items, isDirty: true };
         return {
             schema: items,
-            schemas: { ...state.schemas, [activeStepId]: items },
+            forms: forms.map(f => f.id === activeFormId ? { ...f, items } : f),
             isDirty: true
         };
     }),
 
     addSchemaItem: (type, label) => set(state => {
-        const activeStepId = state.activeStepId;
-        if (!activeStepId) return {};
+        const { activeFormId, forms } = state;
+        if (!activeFormId) return {};
 
         const newItem: UiCanvasItem = {
             id: `${type}-${Date.now()}`,
@@ -534,16 +600,62 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             ...(type === 'table' ? { columns: [] } : {}),
         } as UiCanvasItem;
 
-        const currentSchema = state.schemas[activeStepId] || [];
-        const newSchema = [...currentSchema, newItem];
+        const currentForm = forms.find(f => f.id === activeFormId);
+        const currentItems = currentForm?.items || [];
+        const newItems = [...currentItems, newItem];
 
         return {
-            schema: newSchema,
-            schemas: { ...state.schemas, [activeStepId]: newSchema },
+            schema: newItems,
+            forms: forms.map(f => f.id === activeFormId ? { ...f, items: newItems } : f),
             selectedSchemaFieldId: newItem.id,
             isDirty: true
         };
     }),
+
+    // Form CRUD
+    addForm: (name) => set(state => {
+        const newForm: UiForm = {
+            id: crypto.randomUUID(),
+            name,
+            items: [],
+        };
+        return {
+            forms: [...state.forms, newForm],
+            activeFormId: newForm.id,
+            schema: [],
+            selectedSchemaFieldId: null,
+            isDirty: true,
+        };
+    }),
+
+    deleteForm: (formId) => set(state => {
+        const newForms = state.forms.filter(f => f.id !== formId);
+        const wasActive = state.activeFormId === formId;
+        const newActiveId = wasActive ? (newForms[0]?.id || null) : state.activeFormId;
+        const newSchema = newActiveId ? (newForms.find(f => f.id === newActiveId)?.items || []) : [];
+        return {
+            forms: newForms,
+            activeFormId: newActiveId,
+            schema: newSchema,
+            selectedSchemaFieldId: null,
+            isDirty: true,
+        };
+    }),
+
+    selectForm: (formId) => set(state => {
+        if (!formId) return { activeFormId: null, schema: [], selectedSchemaFieldId: null };
+        const form = state.forms.find(f => f.id === formId);
+        return {
+            activeFormId: formId,
+            schema: form?.items || [],
+            selectedSchemaFieldId: null,
+        };
+    }),
+
+    updateFormName: (formId, name) => set(state => ({
+        forms: state.forms.map(f => f.id === formId ? { ...f, name } : f),
+        isDirty: true,
+    })),
 
     updateRules: (rules) => set({
         rules,
@@ -553,5 +665,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     updateStatusNetwork: (nodes, edges) => set({
         statusNetwork: { nodes, edges },
         isDirty: true
-    })
+    }),
+
+    updateNodeData: (nodeId, data) => set(state => ({
+        workflow: {
+            ...state.workflow,
+            nodes: state.workflow.nodes.map(n =>
+                n.id === nodeId
+                    ? { ...n, data: { ...n.data, ...data } }
+                    : n
+            ),
+        },
+        isDirty: true,
+    })),
 }));
