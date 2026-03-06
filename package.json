@@ -38,6 +38,8 @@
     "start": "cds-serve",
     "watch": "cds watch",
     "watch:srv": "cds watch srv",
+    "deploy": "cds deploy",
+    "reset:db": "del db.sqlite 2>nul & cds deploy",
     "dev": "cds serve",
     "dev:all": "concurrently -n backend,frontend -c blue,green \"cds serve\" \"npm run dev --prefix app/request-management\"",
     "watch:types": "cds-typer \"*\" --outputDirectory @cds-models",
@@ -52,7 +54,8 @@
           "kind": "sqlite",
           "credentials": {
             "url": "db.sqlite"
-          }
+          },
+          "deploy-format": "copy"
         },
         "[production]": {
           "kind": "hana"

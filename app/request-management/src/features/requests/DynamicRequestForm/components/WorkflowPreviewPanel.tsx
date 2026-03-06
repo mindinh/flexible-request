@@ -1,4 +1,4 @@
-import { AlertCircle, MousePointerClick } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { WorkflowTimeline } from '../../../../components/shared';
 import type { WorkflowStepStatus } from '../../../../components/shared';
 import type { StepDefinition, ResolvedApproversMap } from '../../../../types';
@@ -10,16 +10,20 @@ export interface StepOwnerAssignment {
     ownerName: string;
 }
 
+/** Parsed form action from formSchemasContent */
+interface FormAction {
+    id: string;
+    label: string;
+    variant?: string;
+}
+
 interface WorkflowPreviewPanelProps {
     steps: StepDefinition[];
     resolvedApprovers: ResolvedApproversMap;
-    isEditMode: boolean;
-    /** Currently selected step ID (for step owner assignment) */
-    selectedStepId?: string;
-    /** Callback when a step is clicked */
-    onStepClick?: (stepId: string) => void;
     /** Map of step owners assigned by coordinator */
     stepOwners?: Record<string, StepOwnerAssignment>;
+    /** JSON string of form schemas — used to resolve decision actions per step */
+    formSchemasContent?: string;
 }
 
 /**
@@ -37,16 +41,33 @@ function resolveDisplayName(
 }
 
 /**
+ * Resolve form actions for a step from formSchemasContent.
+ * Returns an empty array if the step has no assigned form or no actions defined.
+ */
+function resolveFormActions(
+    formId: string | undefined,
+    formSchemasContent: string | undefined
+): FormAction[] {
+    if (!formId || !formSchemasContent) return [];
+    try {
+        const forms = JSON.parse(formSchemasContent);
+        const form = forms.find((f: any) => f.id === formId);
+        return form?.actions || [];
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Sidebar panel showing workflow preview with dynamically resolved approvers.
  * Uses variant="preview" for enriched step cards with always-visible details.
+ * Shows decision action badges when steps have form-defined branching actions.
  */
 export function WorkflowPreviewPanel({
     steps,
     resolvedApprovers,
-    isEditMode,
-    selectedStepId,
-    onStepClick,
-    stepOwners = {}
+    stepOwners = {},
+    formSchemasContent
 }: WorkflowPreviewPanelProps) {
     // Steps are now pre-sorted topologically by the data hooks.
     // Just filter out End nodes for a cleaner UI.
@@ -85,6 +106,12 @@ export function WorkflowPreviewPanel({
             ? resolveDisplayName(assignedOwner.ownerName, assignedOwner.ownerId, 'Request Coordinator')
             : resolveDisplayName(step.ownerDisplayName, step.ownerId, 'Request Coordinator');
 
+        // Resolve form actions for this step (decision branching badges)
+        const formActions = resolveFormActions(step.formId, formSchemasContent);
+        const branchLabel = formActions.length > 0
+            ? `Decisions: ${formActions.map(a => a.label).join(' / ')}`
+            : undefined;
+
         return {
             id: step.ID,
             title: step.stepName,
@@ -92,6 +119,7 @@ export function WorkflowPreviewPanel({
             slaDays: step.slaDays,
             ownerName: ownerDisplayName,
             approvalRules: approvalRules,
+            branchLabel: branchLabel,
         };
     });
 
@@ -101,11 +129,8 @@ export function WorkflowPreviewPanel({
             <WorkflowTimeline
                 steps={workflowSteps}
                 variant="preview"
-                onStepClick={onStepClick}
-                selectedStepId={selectedStepId}
             />
 
-            {/* Click to Configure Tip removed - View Only Mode */}
 
             {/* Help / Info Card */}
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-700">

@@ -42,7 +42,7 @@ export function StepAssignmentHeader({
                     </div>
 
                     {/* SLA Badge */}
-                    {step.slaDays && (
+                    {(step.slaDays ?? 0) > 0 && (
                         <div className="flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
                             <Clock className="w-4 h-4" />
                             <span>{step.slaDays} days SLA</span>
@@ -70,14 +70,14 @@ export function StepAssignmentHeader({
                     </div>
 
                     {/* Due Date (calculated from SLA - read only) */}
-                    {step.slaDays && (
+                    {(step.slaDays ?? 0) > 0 && (
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-2">
                                 <Clock className="w-4 h-4 text-slate-400" />
                                 Target Due Date
                             </label>
                             <div className="h-10 px-3 flex items-center bg-slate-50 border border-slate-200 rounded-md text-slate-600">
-                                {new Date(Date.now() + step.slaDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
+                                {new Date(Date.now() + step.slaDays! * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
                                     weekday: 'short',
                                     month: 'short',
                                     day: 'numeric',

@@ -9,10 +9,11 @@ import type {
     UiCanvasItem,
     UiWorkflowNode,
     UiWorkflowEdge,
-    UiSection,
-    UiFormField,
     UiStatusNode,
-    UiStatusEdge
+    UiStatusEdge,
+    UiNodeInput,
+    UiNodeOutput,
+    SyncTrigger
 } from './types';
 
 // Helper to parse/stringify JSON safely
@@ -127,25 +128,53 @@ export const StudioAdapter = {
             nodes.push({
                 id: step.ID,
                 type: nodeType,
-                position: { x: (step as any).posX || 0, y: (step as any).posY || 0 },
+                position: { x: step.positionX ?? 0, y: step.positionY ?? 0 },
                 data: {
                     label: step.stepName,
                     sla: step.slaDays,
                     isStart: step.isStartStep,
-                    syncTrigger: step.syncTrigger || 'NONE',
+                    syncTrigger: step.syncTrigger as SyncTrigger || 'NONE',
                     actionSubType: step.actionSubType || undefined,
-                    formId: (step as any).formId || undefined,
+                    formId: step.formId || undefined,
                     inputMapping: (step as any).inputMapping || '{}',
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
                     ownerName: (step as any).ownerDisplayName || '',
+                    // I/O mappings
+                    inputs: parseJson<UiNodeInput[]>(step.inputsContent, []),
+                    outputs: parseJson<UiNodeOutput[]>(step.outputsContent, []),
+                    // Approvers & Notifications
+                    approvers: parseJson<Array<{ id: string; type: string; displayName: string }>>(step.approversContent, []),
+                    // Parse notificationsContent: new object format or legacy string[]
+                    ...(() => {
+                        const raw = parseJson<any>(step.notificationsContent, null);
+                        if (!raw) return { notificationTypes: [], emailConfig: undefined };
+                        // Legacy: plain string[] like ["bell","email"]
+                        if (Array.isArray(raw)) return { notificationTypes: raw as string[], emailConfig: undefined };
+                        // New object contract: { channels, emailConfig? }
+                        return {
+                            notificationTypes: Array.isArray(raw.channels) ? raw.channels : [],
+                            emailConfig: raw.emailConfig ?? undefined,
+                        };
+                    })(),
+                    conditionExpr: step.conditionExpr ? parseJson<any>(step.conditionExpr, null) : null,
+                    // Legacy/Custom fields (from HEAD)
                     approver_ID: step.approverId,
                     approverType: step.approverType,
-                    approverName: (step as any).approverDisplayName || '',
-                    notifications: parseJson<string[]>((step as any).notifications, ['bell']),
-                    emailSubject: (step as any).emailSubject || '',
-                    emailBody: (step as any).emailBody || '',
+                    approverName: step.approverDisplayName || '',
+                    // Email & API Configuration
+                    emailSubject: step.emailSubject || '',
+                    emailBody: step.emailBody || '',
+                    apiMethod: step.apiMethod as "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | undefined,
+                    apiUrl: step.apiUrl,
+                    apiHeaders: step.apiHeaders ? parseJson<any[]>(step.apiHeaders, []) : [],
+                    apiBody: step.apiBody || '',
+                    apiAuthType: (step.apiAuthType || 'none') as "none" | "bearer" | "basic" | undefined,
+                    apiAuthToken: step.apiAuthToken || '',
+                    apiAuthUser: step.apiAuthUser || '',
+                    apiAuthPass: step.apiAuthPass || '',
+                    apiResponseMapping: step.apiResponseMapping ? parseJson<any[]>(step.apiResponseMapping, []) : [],
                 }
             });
 
@@ -153,12 +182,13 @@ export const StudioAdapter = {
             if (step.predecessors) {
                 step.predecessors.forEach(pred => {
                     if (pred.dependsOn_ID) {
+                        const action = (pred as any).action as string | undefined;
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
                             type: 'smoothstep',
-                            sourceHandle: (pred as any).action || undefined,
+                            ...(action ? { sourceHandle: action, label: action } : {}),
                         });
                     }
                 });

@@ -130,6 +130,16 @@ export class RLSHandler {
             }
         }
 
+        // 4. Requests where user (or their group) owns a step (data-entry tasks)
+        if (principalIds.length > 0) {
+            const ownedSteps = await SELECT.from(Steps)
+                .columns('request_ID')
+                .where({ ownerId: { in: principalIds } });
+            ownedSteps.forEach((s: { request_ID: string }) => {
+                if (s.request_ID) visibleIds.add(s.request_ID);
+            });
+        }
+
         this.log.debug(`[RLS] Resolved ${visibleIds.size} visible request(s) for ${ctx.userId}`);
         return [...visibleIds];
     }

@@ -29,9 +29,18 @@ export class ConditionEvaluator {
         try {
             const condition = JSON.parse(conditionExpr);
 
-            // Support for Studio-style format: { conditions: [...] }
+            // New group-based format from Condition Node: { logic: 'and'|'or', conditions: [...], negate? }
+            if (condition.logic && Array.isArray(condition.conditions)) {
+                return this.evaluateGroup(condition, data);
+            }
+
+            // Legacy: Studio-style format: { conditions: [...] } (implicit AND)
             if (condition.conditions && Array.isArray(condition.conditions)) {
-                return condition.conditions.every((c: any) => this.evaluateSingleCondition(c, data));
+                return condition.conditions.every((c: any) => {
+                    // Support nested groups inside legacy format
+                    if (c.logic || c.isGroup || c.conditions) return this.evaluateGroup(c, data);
+                    return this.evaluateSingleCondition(c, data);
+                });
             }
 
             // Support for array of conditions (AND logic)
@@ -44,6 +53,41 @@ export class ConditionEvaluator {
             console.error(`[ConditionEvaluator] Failed to parse condition: ${conditionExpr}`, e);
             return false;
         }
+    }
+
+    /**
+     * Evaluate a group condition with AND/OR logic and optional NOT negation.
+     * Supports nested groups recursively.
+     */
+    private evaluateGroup(
+        group: { logic?: string; conditions?: any[]; negate?: boolean; isGroup?: boolean; field?: string },
+        data: Record<string, any>
+    ): boolean {
+        // If it's a leaf condition (not a group), evaluate directly
+        if (group.field) {
+            return this.evaluateSingleCondition(group as any, data);
+        }
+
+        const logic = group.logic || 'and';
+        const conditions = group.conditions || [];
+
+        if (conditions.length === 0) return true;
+
+        let result: boolean;
+        if (logic === 'or') {
+            result = conditions.some((c: any) => {
+                if (c.logic || c.isGroup || c.conditions) return this.evaluateGroup(c, data);
+                return this.evaluateSingleCondition(c, data);
+            });
+        } else {
+            // Default: AND
+            result = conditions.every((c: any) => {
+                if (c.logic || c.isGroup || c.conditions) return this.evaluateGroup(c, data);
+                return this.evaluateSingleCondition(c, data);
+            });
+        }
+
+        return group.negate ? !result : result;
     }
 
     /**

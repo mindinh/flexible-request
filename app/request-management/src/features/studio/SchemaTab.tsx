@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStudioStore } from './useStudioStore';
-import type { UiCanvasItem, UiSection, UiFormField, UiTableField } from './types';
+import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiForm, UiFormAction } from './types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
+import { FooterActionsEditor } from './FooterActionsEditor';
 
 // ─── Drag context: shared drag state for swap logic ───
 const DRAG_TYPE_FIELD = 'schema-field';
@@ -631,9 +632,19 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         activeFormId,
         updateFormName,
         updateForms,
+        updateFormActions,
         selectedFooterActionId,
         setSelectedFooterActionId,
+        workflow,
     } = useStudioStore();
+
+    // Check if the active form belongs to a start node (form submission trigger)
+    const isStartNodeForm = Boolean(
+        activeFormId &&
+        workflow.nodes.some(
+            (n) => n.data.isStart && n.data.formId === activeFormId
+        )
+    );
 
     const currentSchema = schema;
     const updateCurrentSchema = updateSchema;
@@ -1113,6 +1124,32 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                         </div>
                                         <p className="text-sm text-slate-500">Drop here to add a new section</p>
                                     </div>
+
+                                    {/* Footer Actions Editor — Decision Branching */}
+                                    {activeForm && (
+                                        <div className="mt-6">
+                                            {isStartNodeForm ? (
+                                                <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                                                    <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                                                    <div>
+                                                        <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
+                                                        <p className="text-xs text-blue-600 mt-0.5">
+                                                            Start node forms use the default "Submit Request" action. Custom branching actions are only available on approval and user task steps.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <FooterActionsEditor
+                                                    actions={activeForm.actions || []}
+                                                    onChange={(actions) => {
+                                                        if (activeFormId) {
+                                                            updateFormActions(activeFormId, actions);
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1126,14 +1163,14 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                             className="h-8 text-primary hover:text-primary hover:bg-primary/5 gap-1.5 font-medium"
                                             onClick={() => {
                                                 if (!activeFormId) return;
-                                                const newActions = [...(activeForm?.footerActions || [])];
+                                                const newActions = [...(activeForm?.actions || [])];
                                                 const newId = `action-${Date.now()}`;
                                                 newActions.unshift({
                                                     id: newId,
                                                     label: 'New Action',
                                                     variant: 'primary'
                                                 });
-                                                updateForms(forms.map(f => f.id === activeFormId ? { ...f, footerActions: newActions } : f));
+                                                updateForms(forms.map(f => f.id === activeFormId ? { ...f, actions: newActions } : f));
                                                 // Automatically select the new button
                                                 setSelectedFooterActionId(newId);
                                             }}
@@ -1144,7 +1181,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        {activeForm?.footerActions?.map((action) => (
+                                        {activeForm?.actions?.map((action: UiFormAction) => (
                                             <div key={action.id} className="relative">
                                                 <Button
                                                     size="sm"
@@ -1170,7 +1207,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                             </div>
                                         ))}
 
-                                        {(!activeForm?.footerActions || activeForm.footerActions.length === 0) && (
+                                        {(!activeForm?.actions || activeForm.actions.length === 0) && (
                                             <div className="flex gap-2 opacity-40 grayscale pointer-events-none">
                                                 <Button size="sm" variant="outline" className="h-8 px-4 bg-green-50 text-green-600 border-green-200">Approve</Button>
                                                 <Button size="sm" variant="outline" className="h-8 px-4 bg-rose-50 text-rose-600 border-rose-200">Reject</Button>

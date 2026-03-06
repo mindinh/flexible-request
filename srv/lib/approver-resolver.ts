@@ -45,22 +45,55 @@ export class ApproverResolver {
         requestData: Record<string, unknown>
     ): Promise<ResolvedApprover[]> {
 
-        const { ApproverRules } = this.db.entities;
+        const { ApproverRules, StepDefinitions } = this.db.entities;
 
         this.log.info(`Resolving approvers for stepDefId=${stepDefinitionId}, requestTypeId=${requestTypeId}`);
 
-        // 1. Fetch Rules for this Step Definition
+        const resolved: ResolvedApprover[] = [];
+
+        // 1. Resolve STATIC approvers from StepDefinitions.approversContent
+        try {
+            const stepDef = await SELECT.one.from(StepDefinitions, stepDefinitionId)
+                .columns('approversContent');
+
+            if (stepDef?.approversContent) {
+                const staticApprovers = JSON.parse(stepDef.approversContent) as Array<{
+                    id: string;
+                    type: string;
+                    displayName: string;
+                }>;
+
+                this.log.info(`Found ${staticApprovers.length} static approver(s) in approversContent`);
+
+                for (const sa of staticApprovers) {
+                    if (!sa.id) continue;
+
+                    // Refresh display name from shadow tables for accuracy
+                    const displayName = await this.lookupDisplayName(sa.id, sa.type || 'USER');
+
+                    resolved.push({
+                        approverId: sa.id,
+                        approverDisplayName: displayName || sa.displayName,
+                        approverType: sa.type || 'USER',
+                        ruleName: `Static: ${sa.displayName}`,
+                        principalId: sa.id,
+                    });
+                }
+            }
+        } catch (err) {
+            this.log.warn(`Failed to read approversContent for stepDef ${stepDefinitionId}:`, err);
+        }
+
+        // 2. Resolve DYNAMIC approvers from ApproverRules
         const rules = await SELECT.from(ApproverRules)
             .where({ stepDefinition_ID: stepDefinitionId }) as ApproverRule[];
 
-        this.log.info(`Found ${rules.length} rules for stepDef ${stepDefinitionId}`);
-
-        const resolved: ResolvedApprover[] = [];
+        this.log.info(`Found ${rules.length} dynamic rule(s) for stepDef ${stepDefinitionId}`);
 
         for (const rule of rules) {
             let matches = false;
 
-            // 2. Evaluate Condition
+            // Evaluate Condition
             if (!rule.conditionExpr) {
                 matches = true; // No condition = Always applies
             } else {

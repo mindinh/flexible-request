@@ -6,7 +6,6 @@ import { ConfirmDialog } from '../../../components/studio';
 
 // Local imports
 import { useRequestFormData } from './hooks';
-import { useAuth } from '../../../lib/auth-context';
 import {
     FormHeader,
     RequestInfoForm,
@@ -15,7 +14,7 @@ import {
     FormActions,
     WorkflowPreviewPanel
 } from './components';
-import { parseSchemaContent } from '../../../lib/schemaParser';
+
 import type { Principal } from '../../../components/shared/PrincipalSelect';
 
 /**
@@ -29,7 +28,6 @@ import type { Principal } from '../../../components/shared/PrincipalSelect';
 export function DynamicRequestForm() {
     const { typeId, id: requestId } = useParams<{ typeId?: string; id?: string }>();
     const navigate = useNavigate();
-    const { isAdmin, currentUserId } = useAuth();
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
     // Use custom hook for all data management
@@ -59,17 +57,8 @@ export function DynamicRequestForm() {
         return requestType?.steps || [];
     }, [requestType?.steps]);
 
-    const isCoordinator = useMemo(() => {
-        if (!existingRequest) return true;
-        return existingRequest.coordinatorId === currentUserId;
-    }, [existingRequest, currentUserId]);
-
-    // Fixed to start step for view-only mode
+    // Always locked to start step — users cannot navigate to future steps
     const effectiveSelectedStepId = startStep?.ID || steps[0]?.ID;
-    const isStartStep = true; // Always show start step form in this view
-
-    // Future steps data map - stores pre-filled data for non-start steps
-    const [futureStepsData, setFutureStepsData] = useState<Record<string, Record<string, any>>>({});
 
     // Get the currently selected step definition
     const selectedStep = useMemo(() => {
@@ -77,40 +66,15 @@ export function DynamicRequestForm() {
         return (steps as any[]).find(s => s.ID === effectiveSelectedStepId) || null;
     }, [steps, effectiveSelectedStepId]);
 
-    // Resolve schema items for the selected step
-    const currentSchemaItems = useMemo(() => {
-        if (isStartStep) return startStepSchemaItems;
+    // Schema items always come from start step
+    const currentSchemaItems = startStepSchemaItems;
 
-        // Decoupled form support for future/non-start steps
-        if (selectedStep?.formId) {
-            try {
-                const forms = requestType?.formSchemasContent ? JSON.parse(requestType.formSchemasContent) : [];
-                const form = forms.find((f: any) => f.id === selectedStep.formId);
-                if (form) return form.items || [];
-            } catch (e) {
-                console.warn('Failed to parse formSchemasContent for step form resolution', e);
-            }
-        }
+    // Form data always from start step
+    const currentFormData = formData;
 
-        return parseSchemaContent(selectedStep?.schemaContent);
-    }, [isStartStep, startStepSchemaItems, selectedStep, requestType?.formSchemasContent]);
-
-    // Resolve form data for the selected step
-    const currentFormData = isStartStep ? formData : (futureStepsData[effectiveSelectedStepId] || {});
-
-    // Handle field changes for the selected step
+    // Handle field changes — always for start step
     const handleCurrentFieldChange = (fieldId: string, value: any) => {
-        if (isStartStep) {
-            handleFieldChange(fieldId, value);
-        } else {
-            setFutureStepsData(prev => ({
-                ...prev,
-                [effectiveSelectedStepId]: {
-                    ...prev[effectiveSelectedStepId],
-                    [fieldId]: value
-                }
-            }));
-        }
+        handleFieldChange(fieldId, value);
     };
 
     // Get the current step owner value for the selected step
@@ -146,7 +110,7 @@ export function DynamicRequestForm() {
         return null;
     }, [effectiveSelectedStepId, stepOwners, steps]);
 
-    // Handle step owner change for the selected step
+    // Handle step owner change for the start step
     const handleStepOwnerChange = (principal: Principal | null) => {
         if (!effectiveSelectedStepId) return;
 
@@ -157,25 +121,19 @@ export function DynamicRequestForm() {
                 ownerName: principal.displayName,
             });
 
-            // Also update formData for backward compatibility (start step)
-            if (isStartStep) {
-                handleFieldChange('stepOwnerId', principal.id);
-                handleFieldChange('stepOwnerType', principal.type);
-                handleFieldChange('stepOwnerName', principal.displayName);
-            }
+            // Also update formData for backward compatibility
+            handleFieldChange('stepOwnerId', principal.id);
+            handleFieldChange('stepOwnerType', principal.type);
+            handleFieldChange('stepOwnerName', principal.displayName);
         } else {
             handleAssignmentChange(effectiveSelectedStepId, null);
 
-            // Clear formData for start step
-            if (isStartStep) {
-                handleFieldChange('stepOwnerId', null);
-                handleFieldChange('stepOwnerType', null);
-                handleFieldChange('stepOwnerName', null);
-            }
+            // Clear formData
+            handleFieldChange('stepOwnerId', null);
+            handleFieldChange('stepOwnerType', null);
+            handleFieldChange('stepOwnerName', null);
         }
     };
-
-    // handleStepClick removed (view-only)
 
     // Loading state
     if (isPageLoading) {
@@ -244,17 +202,6 @@ export function DynamicRequestForm() {
                             </div>
                         )}
 
-                        {(!isAdmin && !isCoordinator) ? null : (!isStartStep && currentSchemaItems.length > 0 && (
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
-                                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                                <div>
-                                    <p className="text-sm font-medium text-blue-800">Pre-fill Information</p>
-                                    <p className="text-xs text-blue-600 mt-0.5">
-                                        You are viewing a future step. Information entered here will be pre-filled for the assigned step owner.
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
 
                         {/* Action Buttons */}
                         <FormActions
@@ -276,10 +223,8 @@ export function DynamicRequestForm() {
                     <WorkflowPreviewPanel
                         steps={steps}
                         resolvedApprovers={resolvedApprovers}
-                        isEditMode={isEditMode}
-                        selectedStepId={undefined}
-                        onStepClick={() => { }}
                         stepOwners={stepOwners}
+                        formSchemasContent={requestType?.formSchemasContent}
                     />
                 </div>
             </div>

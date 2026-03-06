@@ -100,7 +100,48 @@ export class InboxHandler {
             (a as any).claimedByUserId = info?.userId ?? null;
         }
 
-        return this.mapToInboxItems(merged, undefined, shadowUser.displayName);
+        const approvalItems = this.mapToInboxItems(merged, undefined, shadowUser.displayName);
+
+        // 5) Owner tasks: Steps where this user directly owns a STARTED/IN_CLARIFICATION step
+        const { Steps: SrvSteps } = this.srv.entities;
+        const ownerSteps = await SELECT.from(SrvSteps)
+            .columns(
+                'ID as stepId',
+                'status as stepStatus',
+                'dueDate',
+                'stepDefinition.stepName',
+                'request.ID as requestId',
+                'request.title as requestTitle',
+                'request.requestType.title as requestType',
+                'createdAt'
+            )
+            .where({
+                ownerType: 'USER',
+                ownerId: shadowUser.ID,
+                status: { in: ['STARTED', 'IN_CLARIFICATION'] }
+            });
+
+        // Dedup: skip owner tasks where an approval already covers the same step
+        const approvalStepKeys = new Set(approvalItems.map((i: any) => `${i.requestId}|${i.stepId}`));
+        const ownerItems = ownerSteps
+            .filter((s: any) => !approvalStepKeys.has(`${s.requestId}|${s.stepId}`))
+            .map((s: Record<string, unknown>) => ({
+                stepApprovalId: null,
+                stepId: s.stepId,
+                requestId: s.requestId,
+                requestTitle: s.requestTitle,
+                requestType: s.requestType,
+                stepName: s.stepName,
+                status: s.stepStatus,
+                assignedTo: shadowUser.displayName || 'You',
+                assignedType: 'STEP_OWNER',
+                claimedBy: null,
+                claimedByUserId: null,
+                createdAt: s.createdAt,
+                dueDate: s.dueDate
+            }));
+
+        return [...approvalItems, ...ownerItems];
     }
 
     /**
@@ -164,7 +205,49 @@ export class InboxHandler {
         const groupMap = new Map<string, string>();
         groups.forEach((g: any) => groupMap.set(g.ID, g.name));
 
-        return this.mapToInboxItems(filtered, undefined, undefined, groupMap);
+        const approvalItems = this.mapToInboxItems(filtered, undefined, undefined, groupMap);
+
+        // Owner tasks: Steps where one of the user's groups owns a STARTED/IN_CLARIFICATION step
+        const { Steps: SrvSteps } = this.srv.entities;
+        const groupOwnerSteps = await SELECT.from(SrvSteps)
+            .columns(
+                'ID as stepId',
+                'status as stepStatus',
+                'dueDate',
+                'ownerId',
+                'stepDefinition.stepName',
+                'request.ID as requestId',
+                'request.title as requestTitle',
+                'request.requestType.title as requestType',
+                'createdAt'
+            )
+            .where({
+                ownerType: { in: ['GROUP', 'TEAM', 'DEPARTMENT', 'ROLE'] },
+                ownerId: { in: groupIds },
+                status: { in: ['STARTED', 'IN_CLARIFICATION'] }
+            });
+
+        // Filter out steps claimed by current user (show in My Tasks via owner path)
+        const approvalStepKeys = new Set(approvalItems.map((i: any) => `${i.requestId}|${i.stepId}`));
+        const ownerItems = groupOwnerSteps
+            .filter((s: any) => !approvalStepKeys.has(`${s.requestId}|${s.stepId}`))
+            .map((s: Record<string, unknown>) => ({
+                stepApprovalId: null,
+                stepId: s.stepId,
+                requestId: s.requestId,
+                requestTitle: s.requestTitle,
+                requestType: s.requestType,
+                stepName: s.stepName,
+                status: s.stepStatus,
+                assignedTo: groupMap.get(s.ownerId as string) || 'Team',
+                assignedType: 'STEP_OWNER',
+                claimedBy: null,
+                claimedByUserId: null,
+                createdAt: s.createdAt,
+                dueDate: s.dueDate
+            }));
+
+        return [...approvalItems, ...ownerItems];
     }
 
     /**

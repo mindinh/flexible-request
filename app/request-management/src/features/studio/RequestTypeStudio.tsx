@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Loader2, Type, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, AlertTriangle, Settings2, Type } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { StudioLayout } from '../../layouts/StudioLayout';
 import { StudioHeader, TabNavigation, LeftPanel, RightPanel, StudioToastProvider, useStudioToast } from '../../components/studio';
@@ -19,7 +19,7 @@ import { SchemaPreviewTab } from './SchemaPreviewTab';
 import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
 import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
-import { Settings2 } from 'lucide-react';
+import { EmailEditorTab } from './EmailEditorTab';
 
 
 
@@ -73,6 +73,9 @@ function StudioContent() {
         // Form Editor sub-tab
         isFormEditorOpen,
         setIsFormEditorOpen,
+        // Email Editor sub-tab
+        isEmailEditorOpen,
+        setIsEmailEditorOpen,
     } = useStudioStore();
 
     // Form Preview tab state
@@ -87,6 +90,9 @@ function StudioContent() {
     }
     if (isFormPreviewOpen) {
         subTabs.push({ id: 'form-preview', label: 'Form Preview', closeable: true });
+    }
+    if (isEmailEditorOpen) {
+        subTabs.push({ id: 'email-editor', label: 'Email Editor', closeable: true });
     }
 
     // To track previous saving state for toast
@@ -128,6 +134,8 @@ function StudioContent() {
                 }} />;
             case 'form-preview':
                 return <SchemaPreviewTab formId={previewFormId} />;
+            case 'email-editor':
+                return <EmailEditorTab />;
             case 'statuses':
                 return <StatusActionsTab />;
             default:
@@ -319,77 +327,79 @@ function StudioContent() {
                     </RightPanel>
                 ) : activeTab === 'schema' && selectedSchemaFieldId ? (
                     <RightPanel
-                        isOpen={!!selectedSchemaFieldId}
+                        isOpen={true}
                         onClose={() => setSelectedSchemaFieldId(null)}
-                        width={500}
+                        width={380}
                         title="Field Properties"
-                        icon={<Type size={16} />}
+                        icon={<Settings2 size={16} />}
                     >
-                        <FieldPropertiesContent
-                            schema={schema}
-                            selectedFieldId={selectedSchemaFieldId}
-                            onUpdate={(id, updates) => {
-                                const newSchema = schema.map(item => {
-                                    if (item.id === id) return { ...item, ...updates };
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        return {
-                                            ...item,
-                                            fields: item.fields.map(f => f.id === id ? { ...f, ...updates } : f)
+                        <div className="p-4">
+                            <FieldPropertiesContent
+                                schema={schema}
+                                selectedFieldId={selectedSchemaFieldId}
+                                onUpdate={(id, updates) => {
+                                    const newSchema = schema.map(item => {
+                                        if (item.id === id) return { ...item, ...updates };
+                                        if (item.type === 'section' && 'fields' in item) {
+                                            return {
+                                                ...item,
+                                                fields: item.fields.map(f => f.id === id ? { ...f, ...updates } : f)
+                                            };
+                                        }
+                                        if (item.type === 'table' && 'columns' in item) {
+                                            return {
+                                                ...item,
+                                                columns: (item as any).columns.map((c: any) => c.id === id ? { ...c, ...updates } : c)
+                                            };
+                                        }
+                                        return item;
+                                    });
+                                    updateSchema(newSchema);
+                                }}
+                                onDuplicate={(id) => {
+                                    let itemToDuplicate: UiCanvasItem | UiFormField | null = null;
+                                    for (const item of schema) {
+                                        if (item.id === id) { itemToDuplicate = item; break; }
+                                        if (item.type === 'section' && 'fields' in item) {
+                                            const field = item.fields.find(f => f.id === id);
+                                            if (field) { itemToDuplicate = field; break; }
+                                        }
+                                        if (item.type === 'table' && 'columns' in item) {
+                                            const column = (item as any).columns.find((c: any) => c.id === id);
+                                            if (column) { itemToDuplicate = column; break; }
+                                        }
+                                    }
+                                    if (itemToDuplicate) {
+                                        const newItem = {
+                                            ...itemToDuplicate,
+                                            id: `${itemToDuplicate.type}-${Date.now()}`,
+                                            label: `${itemToDuplicate.label} (Copy)`
                                         };
+                                        updateSchema([...schema, newItem]);
+                                        setSelectedSchemaFieldId(newItem.id);
                                     }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        return {
-                                            ...item,
-                                            columns: (item as any).columns.map((c: any) => c.id === id ? { ...c, ...updates } : c)
-                                        };
-                                    }
-                                    return item;
-                                });
-                                updateSchema(newSchema);
-                            }}
-                            onDuplicate={(id) => {
-                                let itemToDuplicate: UiCanvasItem | UiFormField | null = null;
-                                for (const item of schema) {
-                                    if (item.id === id) { itemToDuplicate = item; break; }
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        const field = item.fields.find(f => f.id === id);
-                                        if (field) { itemToDuplicate = field; break; }
-                                    }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        const column = (item as any).columns.find((c: any) => c.id === id);
-                                        if (column) { itemToDuplicate = column; break; }
-                                    }
-                                }
-                                if (itemToDuplicate) {
-                                    const newItem = {
-                                        ...itemToDuplicate,
-                                        id: `${itemToDuplicate.type}-${Date.now()}`,
-                                        label: `${itemToDuplicate.label} (Copy)`
-                                    };
-                                    updateSchema([...schema, newItem]);
-                                    setSelectedSchemaFieldId(newItem.id);
-                                }
-                            }}
-                            onDelete={(id) => {
-                                const newSchema = schema.filter(item => item.id !== id).map(item => {
-                                    if (item.type === 'section' && 'fields' in item) {
-                                        return {
-                                            ...item,
-                                            fields: item.fields.filter(f => f.id !== id)
-                                        };
-                                    }
-                                    if (item.type === 'table' && 'columns' in item) {
-                                        return {
-                                            ...item,
-                                            columns: (item as any).columns.filter((c: any) => c.id !== id)
-                                        };
-                                    }
-                                    return item;
-                                });
-                                updateSchema(newSchema);
-                                setSelectedSchemaFieldId(null);
-                            }}
-                        />
+                                }}
+                                onDelete={(id) => {
+                                    const newSchema = schema.filter(item => item.id !== id).map(item => {
+                                        if (item.type === 'section' && 'fields' in item) {
+                                            return {
+                                                ...item,
+                                                fields: item.fields.filter(f => f.id !== id)
+                                            };
+                                        }
+                                        if (item.type === 'table' && 'columns' in item) {
+                                            return {
+                                                ...item,
+                                                columns: (item as any).columns.filter((c: any) => c.id !== id)
+                                            };
+                                        }
+                                        return item;
+                                    });
+                                    updateSchema(newSchema);
+                                    setSelectedSchemaFieldId(null);
+                                }}
+                            />
+                        </div>
                     </RightPanel>
                 ) : activeTab === 'schema' && selectedFooterActionId ? (
                     <RightPanel
@@ -424,6 +434,10 @@ function StudioContent() {
                                     }
                                     if (tabId === 'schema') {
                                         setIsFormEditorOpen(false);
+                                        setActiveTab('workflow');
+                                    }
+                                    if (tabId === 'email-editor') {
+                                        setIsEmailEditorOpen(false);
                                         setActiveTab('workflow');
                                     }
                                 }}

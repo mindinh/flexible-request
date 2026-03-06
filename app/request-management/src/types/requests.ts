@@ -42,6 +42,7 @@ export interface StepDefinition {
     stepName: string;
     isStartStep?: boolean;
     schemaContent?: string;
+    formId?: string;
     sequenceNum?: number;
     slaDays?: number;
     approverRules?: ApproverRule[];
@@ -105,6 +106,7 @@ export interface RequestTypeConfig {
     description?: string;
     icon?: string;
     steps?: StepDefinition[];
+    formSchemasContent?: string;
     IsActiveEntity?: boolean;
 }
 

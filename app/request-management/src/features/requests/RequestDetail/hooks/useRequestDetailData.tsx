@@ -276,6 +276,23 @@ export function useRequestDetailData(id: string | undefined) {
         return id;
     };
 
+    // Shared helper: resolve a step's schema items using schemaContent OR formId → formSchemasContent
+    const resolveStepSchema = (stepDef: any) => {
+        // 1. Direct schemaContent (legacy)
+        const direct = parseSchemaContent(stepDef?.schemaContent);
+        if (direct.length > 0) return direct;
+
+        // 2. Resolve via formId → formSchemasContent
+        if (stepDef?.formId && request?.requestType?.formSchemasContent) {
+            try {
+                const forms = JSON.parse(request.requestType.formSchemasContent);
+                const assignedForm = forms.find((f: any) => f.id === stepDef.formId);
+                if (assignedForm?.items) return parseSchemaContent(JSON.stringify(assignedForm.items));
+            } catch { /* ignore */ }
+        }
+        return [];
+    };
+
     // Prepare workflow timeline steps
     const workflowSteps: WorkflowTimelineStep[] = useMemo(() => {
         const allStepDefinitions = sortStepsTopologically(request?.requestType?.steps || [])
@@ -429,6 +446,40 @@ export function useRequestDetailData(id: string | undefined) {
                 }
             }
 
+            // Resolve branch label based on step type
+            let branchLabel: string | null = null;
+
+            // For condition nodes: show which path was taken
+            if ((stepDef as any).stepType === 'condition') {
+                const decision = (runtimeStep as any)?.decisionAction;
+                if (decision === 'true') {
+                    branchLabel = 'True Path Taken';
+                } else if (decision === 'false') {
+                    branchLabel = 'False Path Taken';
+                } else {
+                    branchLabel = 'Condition';
+                }
+            }
+            // For steps with form actions: show decision taken (completed) or available decisions (pending)
+            else if (stepDef.formId && request?.requestType?.formSchemasContent) {
+                try {
+                    const forms = JSON.parse(request.requestType.formSchemasContent);
+                    const form = forms.find((f: any) => f.id === stepDef.formId);
+                    const actions = form?.actions || [];
+                    if (actions.length > 0) {
+                        const decisionAction = (runtimeStep as any)?.decisionAction;
+                        if (decisionAction && status === 'COMPLETED') {
+                            // Show the decision that was actually taken
+                            const matchedAction = actions.find((a: any) => a.id === decisionAction);
+                            const label = matchedAction?.label || decisionAction;
+                            branchLabel = label.charAt(0).toUpperCase() + label.slice(1);
+                        } else {
+                            branchLabel = `Decisions: ${actions.map((a: any) => a.label).join(' / ')}`;
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+
             return {
                 id: stepDef.ID,
                 title: stepDef.stepName || 'Unknown Step',
@@ -439,6 +490,7 @@ export function useRequestDetailData(id: string | undefined) {
                 decisionDate,
                 decisionNote,
                 slaInfo,
+                branchLabel,
                 approvalRules: runtimeStep?.approvals && runtimeStep.approvals.length > 0
                     ? runtimeStep.approvals.map(approval => ({
                         ruleName: approval.ruleName || approval.approverDisplayName || approval.approver || 'Approval Rule',
@@ -487,7 +539,7 @@ export function useRequestDetailData(id: string | undefined) {
             if (['IN_PROGRESS', 'IN_CLARIFICATION'].includes(s.status)) return true;
             if (s.status === 'STARTED') {
                 const stepDef = request?.requestType?.steps?.find(d => d.ID === s.stepDefinition_ID);
-                const schema = parseSchemaContent(stepDef?.schemaContent);
+                const schema = resolveStepSchema(stepDef);
                 return schema.length === 0;
             }
             return false;
@@ -495,10 +547,12 @@ export function useRequestDetailData(id: string | undefined) {
     }, [selectedStepId, sortedSteps, request?.requestType?.steps]);
 
     // Check if current step is pure review (no schema)
+    // Exclude end-type steps — they should auto-complete, never prompt for review.
     const isPureReviewStep = useMemo(() => {
         if (currentStep?.status === 'STARTED') {
             const stepDef = request?.requestType?.steps?.find(d => d.ID === currentStep.stepDefinition_ID);
-            const schema = parseSchemaContent(stepDef?.schemaContent);
+            if ((stepDef as any)?.stepType === 'end') return false;
+            const schema = resolveStepSchema(stepDef);
             return schema.length === 0;
         }
         return false;

@@ -1,19 +1,27 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { ClipboardCheck, FileEdit, Mail, Shield, Clock } from 'lucide-react';
+import { ClipboardCheck, FileEdit, Mail, Shield, Clock, Globe } from 'lucide-react';
 import { useStudioStore } from '../useStudioStore';
+import type { UiFormAction } from '../types';
 
 // Sub-type config: icon + accent color
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
+    user_task: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
+    api_call: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'API Call' },
+    // Legacy subtypes kept for backward compatibility
     form: { icon: FileEdit, color: '#e74c3c', bg: '#fef2f2', label: 'Form' },
     email: { icon: Mail, color: '#3b82f6', bg: '#eff6ff', label: 'Email' },
     approval: { icon: Shield, color: '#f59e0b', bg: '#fffbeb', label: 'Approval' },
     userTask: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
+    apiCall: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'API Call' },
 };
-const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'Action' };
+const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' };
+
+
 
 /**
  * ActionNode — n8n-inspired card with a colored left accent stripe,
  * icon badge, and clean typography.
+ * Supports dynamic output handles based on form actions (decision branching).
  */
 export function ActionNode({ data, selected }: NodeProps) {
     const { forms } = useStudioStore();
@@ -23,7 +31,8 @@ export function ActionNode({ data, selected }: NodeProps) {
 
     // Dynamically resolve custom actions from the associated form
     const associatedForm = forms.find(f => f.id === data.formId);
-    const customActions = associatedForm?.footerActions || [];
+    const customActions = associatedForm?.actions || [];
+
 
     return (
         <div
@@ -104,7 +113,7 @@ export function ActionNode({ data, selected }: NodeProps) {
                 </div>
             </div>
 
-            {/* Handles */}
+            {/* Target Handle (Left — always single) */}
             <Handle
                 type="target"
                 position={Position.Top}
@@ -121,7 +130,7 @@ export function ActionNode({ data, selected }: NodeProps) {
             {/* Dynamic Output Handles */}
             {customActions.length > 0 ? (
                 <>
-                    {customActions.map((action, index) => {
+                    {customActions.map((action: UiFormAction, index: number) => {
                         // Map variant to color
                         const actionColor =
                             action.variant === 'success' ? '#22c55e' :

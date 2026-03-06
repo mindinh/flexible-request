@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info } from 'lucide-react';
+import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, Bell, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Search, Link2, Users, MessageSquare, RefreshCw } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -16,7 +16,8 @@ import { Textarea } from '@/components/ui/TextArea';
 import { MappingSelector } from './components/MappingSelector';
 import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
-import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection } from './types';
+import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeInput, UiNodeOutput } from './types';
+import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings } from './workflowIOHelpers';
 
 // System-level output fields available on every Start Node
 const SYSTEM_OUTPUT_FIELDS = [
@@ -136,14 +137,15 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
         case 'actionNode':
             switch (subType) {
                 case 'form':
-                    return { icon: FileEdit, color: 'var(--brand-red)', label: 'Form Step' };
+                case 'user_task':
+                case 'userTask':
+                    return { icon: ClipboardCheck, color: 'var(--brand-red)', label: 'User Task' };
                 case 'email':
                     return { icon: Mail, color: 'var(--brand-red)', label: 'Email Step' };
                 case 'approval':
                     return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
-                case 'userTask':
-                    return { icon: ClipboardCheck, color: 'var(--brand-red)', label: 'User Task' };
                 case 'apiCall':
+                case 'api_call':
                     return { icon: Globe, color: '#0ea5e9', label: 'API Call' };
                 default:
                     return { icon: FileEdit, color: 'var(--brand-red)', label: 'Action Step' };
@@ -151,6 +153,363 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
         default:
             return { icon: FileEdit, color: '#64748b', label: 'Step' };
     }
+}
+
+// ─── Node I/O Section ─────────────────────────────────────────────────────
+// Renders Input/Output configuration directly in the Workflow Properties Panel.
+// - Start Node (form submission): Output only (auto-synced from form)
+// - User Task: Input (from predecessor outputs) + Output (from form)
+// - Other: Input (from predecessors) + Output (manual)
+
+function IOFieldRow({
+    mapping,
+    onAliasChange,
+    onRemove,
+    isInvalid,
+    isReadOnly,
+}: {
+    mapping: { sourcePath: string; alias?: string; type?: string; derivedFrom?: string; bindTo?: string };
+    onAliasChange?: (alias: string) => void;
+    onRemove?: () => void;
+    isInvalid?: boolean;
+    isReadOnly?: boolean;
+}) {
+    return (
+        <div
+            className={`flex items-center gap-2 p-2 rounded-lg border transition-colors group ${isInvalid
+                ? 'border-red-300 bg-red-50/50'
+                : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+        >
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                    <Link2 size={12} className={isInvalid ? 'text-red-400' : 'text-slate-400'} />
+                    <code className="text-xs font-mono text-slate-700 truncate">
+                        {mapping.sourcePath}
+                    </code>
+                    {mapping.type && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium flex-shrink-0">
+                            {mapping.type}
+                        </span>
+                    )}
+                    {mapping.bindTo && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium flex-shrink-0">
+                            global
+                        </span>
+                    )}
+                    {mapping.derivedFrom === 'formLayout' && !mapping.bindTo && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-500 font-medium flex-shrink-0">
+                            form
+                        </span>
+                    )}
+                </div>
+                {isInvalid && (
+                    <p className="text-[10px] text-red-500 mt-0.5 flex items-center gap-1">
+                        <AlertTriangle size={10} />
+                        Source output not found
+                    </p>
+                )}
+            </div>
+            {!isReadOnly && onAliasChange && (
+                <Input
+                    value={mapping.alias || ''}
+                    onChange={(e) => onAliasChange(e.target.value)}
+                    placeholder="alias"
+                    className="w-24 h-7 text-xs border-slate-200"
+                />
+            )}
+            {!isReadOnly && onRemove && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={onRemove}
+                >
+                    <Trash2 size={12} />
+                </Button>
+            )}
+        </div>
+    );
+}
+
+function IOFieldPicker({
+    availableFields,
+    usedPaths,
+    onAdd,
+}: {
+    availableFields: { key: string; label: string; type: string }[];
+    usedPaths: Set<string>;
+    onAdd: (path: string, type: string) => void;
+}) {
+    const [search, setSearch] = useState('');
+
+    const filtered = useMemo(() => {
+        const q = search.toLowerCase();
+        return availableFields.filter(
+            (f) =>
+                !usedPaths.has(f.key) &&
+                (f.key.toLowerCase().includes(q) || f.label.toLowerCase().includes(q) || f.type.toLowerCase().includes(q))
+        );
+    }, [availableFields, usedPaths, search]);
+
+    if (availableFields.length === 0) {
+        return (
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                <p className="text-xs text-amber-600">
+                    No predecessor outputs available. Connect predecessor nodes first.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by field name, path, or type..."
+                    className="pl-8 h-8 text-xs"
+                />
+            </div>
+            <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                    <p className="text-xs text-slate-400 p-3 text-center italic">
+                        {search ? 'No matching fields' : 'All fields mapped'}
+                    </p>
+                ) : (
+                    filtered.map((f) => (
+                        <button
+                            key={f.key}
+                            onClick={() => onAdd(f.key, f.type)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors"
+                        >
+                            <code className="text-xs font-mono text-slate-700 flex-1 truncate">{f.key}</code>
+                            <span className="text-[10px] text-slate-400">{f.label}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">
+                                {f.type}
+                            </span>
+                        </button>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}
+
+function NodeIOSection({
+    node,
+    allNodes,
+    edges,
+}: {
+    node: UiWorkflowNode;
+    allNodes: UiWorkflowNode[];
+    edges: UiWorkflowEdge[];
+}) {
+    const { updateNodeInputs, updateNodeOutputs, syncUserTaskOutputs } = useStudioStore();
+    const [showInputPicker, setShowInputPicker] = useState(false);
+
+    const nodeType = node.type || 'actionNode';
+    const isStartNode = nodeType === 'startNode';
+    const isFormSubmission = isStartNode && (node.data.triggerType as string || 'FORM_SUB') === 'FORM_SUB';
+    const isUserTask = nodeType === 'actionNode' && node.data.actionSubType === 'form';
+
+    const inputs = (node.data.inputs as UiNodeInput[] | undefined) ?? [];
+    const outputs = (node.data.outputs as UiNodeOutput[] | undefined) ?? [];
+    const hasDerivedOutputs = outputs.some((o) => o.derivedFrom === 'formLayout');
+
+    // Compute predecessor outputs for Input picker
+    // NOTE: All hooks must be called unconditionally (React rules of hooks).
+    // Early returns are deferred until after all hooks.
+    const predecessorGroups = useMemo(
+        () => getPredecessorOutputs(node.id, allNodes, edges),
+        [node.id, allNodes, edges]
+    );
+    const pickableInputFields = useMemo(
+        () => flattenPredecessorOutputsForPicker(predecessorGroups),
+        [predecessorGroups]
+    );
+    const validInputKeys = useMemo(
+        () => new Set(pickableInputFields.map((f) => f.key)),
+        [pickableInputFields]
+    );
+
+    // Validate existing inputs
+    const { invalid: invalidInputs } = useMemo(
+        () => validateInputMappings(inputs, validInputKeys),
+        [inputs, validInputKeys]
+    );
+    const hasInvalidInputs = invalidInputs.length > 0;
+
+    // Show/hide input section (start node with form submission = no input)
+    const showInputs = !isStartNode;
+    // Show output section for start (form sub) and action nodes
+    const showOutputs = isFormSubmission || nodeType === 'actionNode';
+
+    // End nodes and condition nodes don't need I/O — guard AFTER all hooks
+    if (nodeType === 'endNode' || nodeType === 'conditionNode') return null;
+    if (!showInputs && !showOutputs) return null;
+
+    return (
+        <Card className="p-4 space-y-4">
+            <Label variant="section">Data Mapping</Label>
+
+            {/* Validation warning banner */}
+            {hasInvalidInputs && (
+                <div className="p-2.5 bg-red-50 rounded-lg border border-red-200 flex items-start gap-2">
+                    <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-red-600">
+                        Some input mappings reference outputs that no longer exist.
+                        Update or remove them before saving.
+                    </p>
+                </div>
+            )}
+
+            {/* ── Inputs Section ─────────────────────────────── */}
+            {showInputs && (
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                            <ArrowDownToLine size={14} className="text-blue-500" />
+                            Inputs
+                            <span className="text-slate-400 font-normal">({inputs.length})</span>
+                        </Label>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-blue-600 hover:text-blue-700"
+                            onClick={() => setShowInputPicker(!showInputPicker)}
+                        >
+                            <Plus size={12} className="mr-1" />
+                            Add
+                        </Button>
+                    </div>
+
+                    {showInputPicker && (
+                        <IOFieldPicker
+                            availableFields={pickableInputFields}
+                            usedPaths={new Set(inputs.map((i) => i.sourcePath))}
+                            onAdd={(path, type) => {
+                                updateNodeInputs(node.id, [...inputs, { sourcePath: path, type }]);
+                                setShowInputPicker(false);
+                            }}
+                        />
+                    )}
+
+                    {inputs.length === 0 && !showInputPicker && (
+                        predecessorGroups.length === 0 ? (
+                            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                                <p className="text-[11px] text-slate-400 italic text-center">
+                                    No predecessor nodes connected. Add edges to make outputs available as inputs.
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400 italic text-center py-2">No inputs configured</p>
+                        )
+                    )}
+
+                    <div className="space-y-1">
+                        {inputs.map((input, idx) => (
+                            <IOFieldRow
+                                key={input.sourcePath}
+                                mapping={input}
+                                isInvalid={!validInputKeys.has(input.sourcePath)}
+                                onAliasChange={(alias) => {
+                                    const updated = [...inputs];
+                                    updated[idx] = { ...updated[idx], alias: alias || undefined };
+                                    updateNodeInputs(node.id, updated);
+                                }}
+                                onRemove={() => updateNodeInputs(node.id, inputs.filter((_, i) => i !== idx))}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Divider between Input & Output */}
+            {showInputs && showOutputs && <div className="border-t border-slate-100" />}
+
+            {/* ── Outputs Section ────────────────────────────── */}
+            {showOutputs && (
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                            <ArrowUpFromLine size={14} className="text-emerald-500" />
+                            Outputs
+                            <span className="text-slate-400 font-normal">({outputs.length})</span>
+                        </Label>
+                        {(isUserTask || isFormSubmission) && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs text-emerald-600 hover:text-emerald-700"
+                                onClick={() => syncUserTaskOutputs(node.id)}
+                                title="Sync outputs from form layout"
+                            >
+                                <RefreshCw size={12} className="mr-1" />
+                                Sync
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* User Task / Start info banner */}
+                    {(isUserTask || isFormSubmission) && hasDerivedOutputs && (
+                        <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                            <p className="text-[11px] text-blue-600">
+                                Outputs are derived from all form fields.
+                                Fields bound to the Data Schema are tagged <strong className="text-emerald-600">global</strong>.
+                                Click <strong>Sync</strong> to refresh after editing the form.
+                            </p>
+                        </div>
+                    )}
+
+                    {(isUserTask || isFormSubmission) && !hasDerivedOutputs && outputs.length === 0 && (
+                        <div className="p-2 bg-amber-50 rounded-lg border border-amber-200">
+                            <p className="text-[11px] text-amber-600">
+                                Assign a form and click <strong>Sync</strong> to derive outputs from form fields.
+                            </p>
+                        </div>
+                    )}
+
+                    {outputs.length === 0 && !isUserTask && !isFormSubmission && (
+                        <p className="text-xs text-slate-400 italic text-center py-2">No outputs configured</p>
+                    )}
+
+                    <div className="space-y-1">
+                        {outputs.map((output, idx) => (
+                            <IOFieldRow
+                                key={output.sourcePath}
+                                mapping={output}
+                                isReadOnly={(isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'}
+                                onAliasChange={
+                                    (isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'
+                                        ? undefined
+                                        : (alias) => {
+                                            const updated = [...outputs];
+                                            updated[idx] = { ...updated[idx], alias: alias || undefined };
+                                            updateNodeOutputs(node.id, updated);
+                                        }
+                                }
+                                onRemove={
+                                    (isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'
+                                        ? undefined
+                                        : () => updateNodeOutputs(node.id, outputs.filter((_, i) => i !== idx))
+                                }
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Start node: explicitly hide inputs */}
+            {isStartNode && (
+                <p className="text-[11px] text-slate-400 italic">
+                    Start nodes do not receive inputs.
+                </p>
+            )}
+        </Card>
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -963,6 +1322,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         selectForm,
         setActiveTab,
         setIsFormEditorOpen,
+        setIsEmailEditorOpen,
     } = useStudioStore();
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1218,13 +1578,13 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </div>
             </div>
 
-            {/* Step Label */}
+            {/* Task Name / Step Label */}
             <Card className="p-4 space-y-4">
-                <FormField label="Step Label" hint="Display name on the canvas">
+                <FormField label={nodeType === 'actionNode' ? 'Task Name' : 'Step Label'} hint="Display name on the canvas">
                     <Input
                         value={(node.data.label as string) || ''}
                         onChange={(e) => handleLabelChange(e.target.value)}
-                        placeholder="Enter step name..."
+                        placeholder={nodeType === 'actionNode' ? 'Enter task name...' : 'Enter step name...'}
                         className="border-0 focus-visible:ring-0 font-medium"
                     />
                 </FormField>
@@ -1354,73 +1714,106 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </>
             )}
 
-            {/* ── ACTION NODE ────────────────────────────────── */}
+            {/* ── ACTION NODE (User Task) ───────────────────── */}
             {nodeType === 'actionNode' && (
                 <>
-                    {/* ─── FORM SUB-TYPE ─────────────────────── */}
-                    {(subType === 'form' || !subType) && (
-                        <Card className="p-4 space-y-3">
-                            <Label variant="section">Form Configuration</Label>
-                            {currentForm ? (
-                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                                </div>
-                            ) : (
-                                <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
-                            )}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleEditFormLayout}
-                                className="w-full gap-1.5"
-                            >
-                                <ExternalLink size={14} />
-                                {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
-                            </Button>
-                        </Card>
-                    )}
+                    {/* ─── Task Form Configuration ──────────── */}
+                    <Card className="p-4 space-y-3">
+                        <Label variant="section">Task Form</Label>
+                        {currentForm ? (
+                            <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleEditFormLayout}
+                            className="w-full gap-1.5"
+                        >
+                            <ExternalLink size={14} />
+                            {currentForm ? 'Open Task Editor' : 'Create & Edit Task Form'}
+                        </Button>
+                        <p className="text-[11px] text-slate-400 italic">
+                            Configure the task form layout in the Task Editor
+                        </p>
+                    </Card>
 
-                    {/* ─── EMAIL SUB-TYPE ─────────────────────── */}
-                    {subType === 'email' && (
-                        <Card className="p-4 space-y-4">
-                            <Label variant="section">Email Configuration</Label>
-                            <FormField label="Recipients" hint="Who receives this email">
-                                <Select
-                                    value={(node.data.emailRecipient as string) || 'requester'}
-                                    onValueChange={(val) => updateNodeData(node.id, { emailRecipient: val })}
-                                >
-                                    <SelectTrigger className="w-full bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="requester">Requester</SelectItem>
-                                        <SelectItem value="step_owner">Step Owner</SelectItem>
-                                        <SelectItem value="coordinator">Coordinator</SelectItem>
-                                        <SelectItem value="custom">Custom (specify below)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
+                    {/* ─── Approvers Card ────────────────────── */}
+                    <Card className="p-4 space-y-3">
+                        <Label variant="section">Approvers</Label>
+                        <p className="text-[11px] text-slate-400">
+                            Select individual users or groups who can approve this task.
+                        </p>
 
-                            <FormField label="Subject Template" hint="Use {{fieldName}} for dynamic values">
-                                <Input
-                                    value={(node.data.emailSubject as string) || ''}
-                                    onChange={(e) => updateNodeData(node.id, { emailSubject: e.target.value })}
-                                    placeholder="Request {{displayId}} - Status Update"
-                                    className="border-0 focus-visible:ring-0"
-                                />
-                            </FormField>
+                        {/* List of current approvers */}
+                        {(() => {
+                            const approvers = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
+                            return (
+                                <>
+                                    {approvers.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            {approvers.map((approver, idx) => {
+                                                const ApproverIcon = approver.type === 'USER' ? FileEdit : Users;
+                                                return (
+                                                    <div
+                                                        key={approver.id + '-' + idx}
+                                                        className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/80 group"
+                                                    >
+                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${approver.type === 'USER' ? 'bg-blue-100' : 'bg-violet-100'
+                                                            }`}>
+                                                            <ApproverIcon size={14} className={
+                                                                approver.type === 'USER' ? 'text-blue-600' : 'text-violet-600'
+                                                            } />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="text-sm font-medium text-slate-700 truncate block">
+                                                                {approver.displayName}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-400 uppercase">{approver.type}</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                const newApprovers = approvers.filter((_, i) => i !== idx);
+                                                                updateNodeData(node.id, { approvers: newApprovers });
+                                                            }}
+                                                            className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-50"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
 
-                            <FormField label="Body Template" hint="Email body content with placeholders">
-                                <textarea
-                                    value={(node.data.emailBody as string) || ''}
-                                    onChange={(e) => updateNodeData(node.id, { emailBody: e.target.value })}
-                                    placeholder="Dear {{requesterName}},&#10;&#10;Your request {{displayId}} has been processed..."
-                                    className="w-full min-h-[80px] rounded-lg border border-slate-200 bg-white p-3 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)]"
-                                />
-                            </FormField>
-                        </Card>
-                    )}
+                                    <PrincipalSelect
+                                        value={null}
+                                        onChange={(principal) => {
+                                            if (!principal) return;
+                                            const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
+                                            // Avoid duplicates
+                                            if (existing.some(a => a.id === principal.id && a.type === principal.type)) return;
+                                            updateNodeData(node.id, {
+                                                approvers: [...existing, {
+                                                    id: principal.id,
+                                                    type: principal.type,
+                                                    displayName: principal.displayName,
+                                                }],
+                                            });
+                                        }}
+                                        placeholder="Add approver..."
+                                        excludeIds={
+                                            ((node.data.approvers as Array<{ id: string }>) || []).map(a => a.id)
+                                        }
+                                    />
+                                </>
+                            );
+                        })()}
+                    </Card>
 
                     {/* ─── API CALL SUB-TYPE ───────────────────── */}
                     {subType === 'apiCall' && (
@@ -1775,6 +2168,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             </div>
                         </>
                     )}
+
                 </>
             )}
 
@@ -1810,6 +2204,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </Card>
             )}
 
+
             {/* ── END NODE ────────────────────────────────────── */}
             {nodeType === 'endNode' && (
                 <Card className="p-4">
@@ -1820,17 +2215,22 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </Card>
             )}
 
-            {/* Delete Node Button */}
-            <div className="pt-4 mt-4 border-t border-slate-100">
-                <Button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    variant="outline-destructive"
-                    className="w-full"
-                >
-                    <Trash2 size={16} />
-                    Delete Node
-                </Button>
-            </div>
+            {/* ── DATA MAPPING (I/O) ──────────────────────────── */}
+            <NodeIOSection node={node} allNodes={allNodes} edges={edges} />
+
+            {/* Delete Node Button (not for start) */}
+            {nodeType !== 'startNode' && (
+                <div className="pt-4 mt-4 border-t border-slate-100">
+                    <Button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        variant="outline-destructive"
+                        className="w-full"
+                    >
+                        <Trash2 size={16} />
+                        Delete Node
+                    </Button>
+                </div>
+            )}
 
 
             <ConfirmDialog

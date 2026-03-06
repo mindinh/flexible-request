@@ -43,8 +43,6 @@ export function RequestDetail() {
         formData,
         stepFormData,
         setStepFormData,
-        selectedStepId,
-        setSelectedStepId,
         sortedSteps,
         workflowSteps,
         currentStep,
@@ -175,9 +173,79 @@ export function RequestDetail() {
         }));
     };
 
+    // ─── Global Context Helper ───
+    // Builds a merged form data object with globally-bound field values injected.
+    // Used by both the render path (pre-fill bound fields) and submit path (persist them).
+    const buildFormDataWithGlobalContext = (
+        currentRuntimeStep: any,
+        rawFormData: Record<string, any>
+    ): Record<string, any> => {
+        if (!request?.requestType?.formSchemasContent) return rawFormData;
+
+        const currentStepDef = request.requestType?.steps?.find(
+            (s: any) => s.ID === currentRuntimeStep.stepDefinition_ID
+        );
+        if (!currentStepDef?.formId) return rawFormData;
+
+        try {
+            const allForms = JSON.parse(request.requestType.formSchemasContent);
+
+            // 1. Build global context from OTHER steps' data + form schemas
+            const globalContext: Record<string, any> = {};
+            for (const otherStep of sortedSteps) {
+                if (otherStep.ID === currentRuntimeStep.ID) continue;
+                if (!otherStep.data?.payload) continue;
+                const otherStepDef = request.requestType?.steps?.find(
+                    (s: any) => s.ID === otherStep.stepDefinition_ID
+                );
+                if (!otherStepDef?.formId) continue;
+                const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
+                if (!otherForm?.items) continue;
+                let otherPayload: Record<string, any> = {};
+                try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
+                const extractBound = (items: any[]) => {
+                    for (const item of items) {
+                        if (item.type === 'section' && item.fields) extractBound(item.fields);
+                        else if (item.type === 'table' && item.columns) extractBound(item.columns);
+                        else if (item.bindTo) {
+                            const value = otherPayload[item.id];
+                            if (value !== undefined && value !== null) {
+                                globalContext[item.bindTo] = value;
+                            }
+                        }
+                    }
+                };
+                extractBound(otherForm.items);
+            }
+
+            if (Object.keys(globalContext).length === 0) return rawFormData;
+
+            // 2. Inject bound values into the current step's form data
+            const merged = { ...rawFormData };
+            const currentForm = allForms.find((f: any) => f.id === currentStepDef.formId);
+            if (currentForm?.items) {
+                const injectBound = (items: any[]) => {
+                    for (const item of items) {
+                        if (item.type === 'section' && item.fields) injectBound(item.fields);
+                        else if (item.type === 'table' && item.columns) injectBound(item.columns);
+                        else if (item.bindTo && globalContext[item.bindTo] !== undefined) {
+                            if (merged[item.id] === undefined || merged[item.id] === null) {
+                                merged[item.id] = globalContext[item.bindTo];
+                            }
+                        }
+                    }
+                };
+                injectBound(currentForm.items);
+            }
+            return merged;
+        } catch {
+            return rawFormData;
+        }
+    };
+
     // Handle step form submission
     const handleStepSubmit = (step: any, _stepDef: any) => {
-        const formData = stepFormData[step.ID] || (() => {
+        const rawFormData = stepFormData[step.ID] || (() => {
             try {
                 return step.data?.payload ? JSON.parse(step.data.payload) : {};
             } catch {
@@ -185,10 +253,13 @@ export function RequestDetail() {
             }
         })();
 
+        // Merge bound global values so they persist in the step payload
+        const mergedPayload = buildFormDataWithGlobalContext(step, rawFormData);
+
         saveStepData({
             stepId: step.ID,
             dataId: step.data?.ID,
-            payload: formData
+            payload: mergedPayload
         });
     };
 
@@ -256,7 +327,6 @@ export function RequestDetail() {
                         if (stepSchemaItems.length === 0 && stepDef.schemaContent) {
                             stepSchemaItems = parseSchemaContent(stepDef.schemaContent);
                         }
-
                         if (stepSchemaItems.length === 0) return null;
 
                         const stepIsGroupAssigned = isGroupLikeType((step as any).ownerType) ||
@@ -267,17 +337,20 @@ export function RequestDetail() {
                         const stepClaimedByOther = stepClaimedBy && !stepClaimedByMe;
 
                         const canEditStep = !stepClaimRequired && !stepClaimedByOther;
+                        const isApprover = !!(currentUserApproval && step.ID === currentStep?.ID);
                         const isEditable = (step.status === 'STARTED' ||
-                            (step.status === 'IN_PROGRESS' && !!currentUserApproval) ||
+                            step.status === 'IN_PROGRESS' && isApprover ||
                             (step.status === 'IN_CLARIFICATION' && (isRequester || isStepOwner))) && canEditStep;
 
-                        const currentStepFormData = stepFormData[step.ID] || (() => {
+                        // Build form data with globally-bound values pre-filled
+                        const rawStepFormData = stepFormData[step.ID] || (() => {
                             try {
                                 return step.data?.payload ? JSON.parse(step.data.payload) : {};
                             } catch {
                                 return {};
                             }
                         })();
+                        const currentStepFormData = buildFormDataWithGlobalContext(step, rawStepFormData);
 
                         return (
                             <StepFormSection
@@ -292,6 +365,7 @@ export function RequestDetail() {
                                 }
                                 onSubmit={() => handleStepSubmit(step, stepDef)}
                                 isSubmitting={isSaving}
+                                resolvedSchemaItems={stepSchemaItems}
                                 claimRequired={stepClaimRequired}
                                 claimedByOther={stepClaimedByOther}
                                 claimedByName={stepClaimedBy?.displayName}

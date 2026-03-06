@@ -1,5 +1,6 @@
 import { cds, SELECT, INSERT, UPDATE } from './db';
 import { ApproverResolver, ResolvedApprover } from './approver-resolver';
+import { ConditionEvaluator } from './condition-evaluator';
 import { Request, Step, StepApproval, RequestData, StepDefinition, StepDependency, ApproverRule } from '../../@cds-models/RequestService';
 
 
@@ -8,6 +9,7 @@ interface RuntimeStep {
     ID: string;
     stepDefinition_ID: string;
     status: string;
+    decisionAction?: string | null; // The action taken to complete this step
 }
 
 // Extended type for StepDefinition with owner fields (not in RequestService projection types)
@@ -18,8 +20,8 @@ type StepDefinitionWithOwner = StepDefinition & {
     approverId?: string | null;
     inputMapping?: string | null;
     conditionLogic?: string | null;
-    stepType?: string | null;
     actionSubType?: string | null;
+    stepType?: string | null;
 };
 
 /**
@@ -37,10 +39,12 @@ export class WorkflowEngine {
     private db: cds.Service;
     private log = cds.log('workflow');
     private approverResolver: ApproverResolver;
+    private conditionEvaluator: ConditionEvaluator;
 
     constructor(db: cds.Service) {
         this.db = db;
         this.approverResolver = new ApproverResolver(db);
+        this.conditionEvaluator = new ConditionEvaluator();
     }
 
     /**
@@ -68,10 +72,10 @@ export class WorkflowEngine {
             .columns('*', 'ownerType', 'ownerId', 'approverType', 'approverId') as StepDefinitionWithOwner[];
         const validDefinitions = definitions.filter(d => d.ID);
 
-        // 3. Fetch Existing Steps
+        // 3. Fetch Existing Steps (include decisionAction for conditional branching)
         const existingSteps = await SELECT.from(Steps)
             .where({ request_ID: requestId })
-            .columns('ID', 'stepDefinition_ID', 'status') as RuntimeStep[];
+            .columns('ID', 'stepDefinition_ID', 'status', 'decisionAction') as RuntimeStep[];
 
         const createdDefIds = new Set(existingSteps.map(s => s.stepDefinition_ID));
         const completedDefIds = new Set(existingSteps
@@ -112,65 +116,28 @@ export class WorkflowEngine {
 
             const predecessors = await SELECT.from(StepDependencies)
                 .where({ step_ID: defId })
-                .columns('dependsOn_ID', 'action') as (StepDependency & { action?: string })[];
+                .columns('dependsOn_ID', 'action') as (StepDependency & { action?: string | null })[];
 
             if (predecessors.length > 0) {
-                // Determine if this step (defId) should be activated.
-                // A step activates if ALL its predecessors are complete, 
-                // AND for those predecessors that have specific "action" branches defined, 
-                // the branch matches the action taken.
-
-                const allPredecessorsComplete = await Promise.all(predecessors.map(async (p) => {
-                    if (!p.dependsOn_ID || !completedDefIds.has(p.dependsOn_ID)) return false;
-
-                    // If a specific action branch is required, verify it
-                    if (p.action) {
-                        const lastStepInstance = existingSteps.find(s => s.stepDefinition_ID === p.dependsOn_ID);
-                        if (!lastStepInstance) return false;
-
-                        const lastAction = await SELECT.one.from(this.db.entities.StepHistory)
-                            .where({ step_ID: lastStepInstance.ID })
-                            .and('action IN', ['APPROVE', 'CONDITION_EVAL'])
-                            .orderBy('timestamp desc')
-                            .columns('action', 'comment');
-
-                        // Branching mechanism depends on the predecessor step type
-                        const predDef = definitions.find(d => d.ID === p.dependsOn_ID);
-
-                        if (predDef?.stepType === 'condition') {
-                            // Condition nodes emit 'CONDITION_EVAL' with comment 'true' or 'false'
-                            return lastAction?.comment === p.action;
+                // Explicit dependencies — use ANY (some) logic for merge nodes.
+                // A node activates if AT LEAST ONE incoming edge has a completed
+                // predecessor whose decisionAction matches the edge's action constraint.
+                // This is critical for branching: untaken branches will never complete,
+                // so requiring ALL predecessors would deadlock merge nodes.
+                const anyPredecessorComplete = predecessors.some(
+                    (p) => {
+                        if (!p.dependsOn_ID || !completedDefIds.has(p.dependsOn_ID)) return false;
+                        // If edge has an action constraint, verify the runtime step's decisionAction matches
+                        if (p.action) {
+                            const runtimeStep = existingSteps.find(s => s.stepDefinition_ID === p.dependsOn_ID);
+                            const matches = runtimeStep?.decisionAction === p.action;
+                            this.log.info(`  Edge ${p.dependsOn_ID} -> ${defId} [action=${p.action}]: runtimeAction=${runtimeStep?.decisionAction}, match=${matches}`);
+                            return matches;
                         }
-
-                        // Approval nodes emit 'APPROVE' with 'Action: [Label]'
-                        // We need to find the Action with this ID in the Form to get the Label.
-                        if (predDef?.formId && lastAction?.action === 'APPROVE') {
-                            try {
-                                const requestType = await SELECT.one.from(this.db.entities.RequestTypes)
-                                    .where({ ID: request.requestType_ID })
-                                    .columns('formSchemasContent');
-
-                                const forms = requestType?.formSchemasContent ? JSON.parse(requestType.formSchemasContent) : [];
-                                const form = forms.find((f: any) => f.id === predDef.formId);
-                                const action = form?.footerActions?.find((a: any) => a.id === p.action);
-
-                                if (action) {
-                                    const expectedComment = `Action: ${action.label}`;
-                                    return lastAction?.comment === expectedComment;
-                                }
-                            } catch (e) {
-                                this.log.error('Failed to resolve action label for branching', e);
-                            }
-                        }
-
-                        // Fallback: If no action found in form, maybe it's a default?
-                        return true;
+                        return true; // No action constraint = any completion activates
                     }
-
-                    return true;
-                }));
-
-                if (allPredecessorsComplete.every(v => v)) stepsToActivate.push(def);
+                );
+                if (anyPredecessorComplete) stepsToActivate.push(def);
             } else {
                 // Sequential fallback
                 const currentDefIndex = defIndexMap.get(defId) ?? 999;
@@ -225,9 +192,11 @@ export class WorkflowEngine {
 
             if (def.isStartStep) {
                 initialStatus = request.status === Request.status.DRAFT ? Step.status.STARTED : Step.status.IN_PROGRESS;
-            } else if (isApprovalStep) {
-                // Approval steps skip the "Data entry required" (STARTED) phase
-                // if they rely on mapped data and go straight to approvers.
+            } else if (isApprovalStep || def.actionSubType === 'user_task') {
+                // Approval and User Task steps skip STARTED and go directly to
+                // IN_PROGRESS so approvals are resolved immediately.
+                // For user_task: the Approver (not Requestor) fills in the form
+                // and takes a decision, so the task must appear in their inbox.
                 initialStatus = Step.status.IN_PROGRESS;
             } else if (isEndStep || isConditionStep) {
                 // Condition nodes also complete instantly upon activation
@@ -375,7 +344,76 @@ export class WorkflowEngine {
                 await this.advance(requestId, userUUID, sourceRequestId);
             }
 
-            // Create Approvals if needed
+            // Handle End Nodes: auto-complete and check workflow completion
+            if (def.stepType === 'end') {
+                this.log.info(`[WorkflowEngine] End node "${def.stepName}" (${defId}) — auto-completing`);
+
+                await UPDATE(Steps, newStepId).with({
+                    status: Step.status.COMPLETED,
+                    modifiedBy_ID: auditActor
+                });
+
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'AUTO_COMPLETE',
+                    fromValue: initialStatus,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null, // System action
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: `End node "${def.stepName}" auto-completed`
+                });
+
+                // Check if workflow should be marked as completed
+                // Recurse to handle workflow completion check
+                await this.advance(requestId, userUUID, sourceRequestId);
+                continue; // Skip normal approval flow
+            }
+
+            // Handle Condition Nodes: auto-evaluate and self-complete
+            if (def.stepType === 'condition') {
+                this.log.info(`[Condition] Node "${def.stepName}" (${defId}) — evaluating conditionExpr`);
+
+                // Read conditionExpr from StepDefinition
+                const { StepDefinitions: StepDefs } = this.db.entities;
+                const condDef = await SELECT.one.from(StepDefs)
+                    .where({ ID: defId })
+                    .columns('conditionExpr') as { conditionExpr?: string | null };
+
+                const condExpr = condDef?.conditionExpr || null;
+                this.log.info(`[Condition] conditionExpr: ${condExpr}`);
+                this.log.info(`[Condition] requestData keys: ${Object.keys(requestData).join(', ')}`);
+                const result = this.conditionEvaluator.evaluate(condExpr, requestData);
+                const decisionAction = result ? 'true' : 'false';
+
+                this.log.info(`[Condition] Node "${def.stepName}" evaluated to: ${decisionAction} (raw=${result})`);
+
+                // Self-complete with the evaluation result
+                await UPDATE(Steps, newStepId).with({
+                    status: Step.status.COMPLETED,
+                    decisionAction,
+                    modifiedBy_ID: auditActor
+                });
+
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'AUTO_COMPLETE',
+                    fromValue: initialStatus,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null, // System action
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: `Condition "${def.stepName}" evaluated to ${decisionAction}`
+                });
+
+                // Recurse to advance to the next matching branch
+                await this.advance(requestId, userUUID, sourceRequestId);
+                continue; // Skip normal approval flow
+            }
+
+            // Create Approvals if step is in IN_PROGRESS (start step after submit, or approval step)
             if (initialStatus === Step.status.IN_PROGRESS && request.requestType_ID) {
                 let approvers = await this.approverResolver.resolveApprovers(
                     defId,
@@ -396,9 +434,28 @@ export class WorkflowEngine {
 
                 if (approvers.length > 0) {
                     await this.createApprovals(requestId, newStepId, approvers, auditActor);
+                } else if (def.actionSubType === 'approval' || def.actionSubType === 'user_task') {
+                    // CRITICAL FIX: Do NOT auto-complete approval/user_task steps.
+                    // These steps require human interaction.
+                    // Fallback: assign to step owner or coordinator.
+                    const fallbackApprover = stepOwnerId || request.coordinatorId;
+                    if (fallbackApprover) {
+                        this.log.warn(`[WorkflowEngine] No dynamic approvers for ${def.actionSubType} step "${def.stepName}". Falling back to owner/coordinator: ${fallbackApprover}`);
+                        await this.createApprovals(requestId, newStepId, [{
+                            approverId: fallbackApprover,
+                            approverDisplayName: 'Fallback Approver',
+                            approverType: stepOwnerType,
+                            ruleName: 'Fallback (no dynamic approvers)',
+                            principalId: fallbackApprover
+                        }], auditActor);
+                    } else {
+                        // No fallback — leave step as IN_PROGRESS (Unassigned)
+                        this.log.error(`[WorkflowEngine] No approvers AND no fallback owner for ${def.actionSubType} step "${def.stepName}". Step left IN_PROGRESS (unassigned).`);
+                        // Do NOT auto-complete. Step stays IN_PROGRESS waiting for manual assignment.
+                    }
                 } else {
-                    // Auto-complete (no approvers defined)
-                    this.log.info(`No approvers for step ${def.stepName} - auto-completing`);
+                    // Non-approval/user_task steps (e.g., data_input, system) — auto-complete is safe
+                    this.log.info(`No approvers for step ${def.stepName} (type=${def.actionSubType}) - auto-completing`);
                     await UPDATE(Steps, newStepId).with({
                         status: Step.status.COMPLETED,
                         modifiedBy_ID: auditActor
@@ -456,25 +513,33 @@ export class WorkflowEngine {
     ) {
         const { Requests, RequestHistory } = this.db.entities;
 
-        // Re-fetch steps to be safe? Or trust existingSteps? 
-        // existingSteps might be stale if we just auto-completed something recursively...
-        // But this method is called only if NO new steps were activated in this pass.
-        // However, auto-complete calls advance() recursively, so we should be fine.
+        // Re-fetch steps to get the latest state (important after recursive advance calls)
+        const { Steps: StepsEntity } = this.db.entities;
+        const freshSteps = await SELECT.from(StepsEntity)
+            .where({ request_ID: requestId })
+            .columns('ID', 'stepDefinition_ID', 'status', 'decisionAction') as RuntimeStep[];
 
-        const terminalStatuses = [Step.status.COMPLETED, Step.status.SKIPPED, Step.status.REJECTED];
-        const allStepsTerminal = existingSteps.every((s) => terminalStatuses.includes(s.status as any));
+        // BRANCHING FIX: Do NOT require all definitions to be created.
+        // In a branching workflow, untaken branches are never instantiated,
+        // so existingSteps.length will be less than totalStepDefinitions.
+        // Instead, check: no steps in progress AND no new steps to activate
+        // (the latter is guaranteed since this method is called only when
+        // stepsToActivate.length === 0).
 
-        const anyStepsInProgress = existingSteps.some((s) =>
+        const allStepsTerminal = freshSteps.every((s) =>
+            s.status === Step.status.COMPLETED || s.status === Step.status.SKIPPED || s.status === Step.status.REJECTED
+        );
+
+        const anyStepsInProgress = freshSteps.some((s) =>
             s.status === Step.status.IN_PROGRESS ||
             s.status === Step.status.STARTED ||
             s.status === Step.status.IN_CLARIFICATION
         );
 
-        this.log.info(`Workflow status check: ${existingSteps.length} steps created, allTerminal=${allStepsTerminal}`);
+        this.log.info(`Workflow status check: ${freshSteps.length}/${totalStepDefinitions} created steps, allTerminal=${allStepsTerminal}, anyInProgress=${anyStepsInProgress}`);
 
-        // WORKFLOW COMPLETE: If all existing steps are terminal AND no active work remains
-        if (allStepsTerminal && !anyStepsInProgress && existingSteps.length > 0) {
-            this.log.info(`Workflow terminal state reached for Request ${requestId}.`);
+        if (allStepsTerminal && !anyStepsInProgress && freshSteps.length > 0) {
+            this.log.info(`All steps completed for Request ${requestId}.`);
 
             // Check if any step was COMPLETED via a "Reject" action
             const { StepHistory } = this.db.entities;
@@ -516,18 +581,19 @@ export class WorkflowEngine {
     /**
      * Helper to get consolidated request data for rule evaluation.
      * RESOLVED N+1 ISSUE: Performs a single bulk query for all steps.
+     * 
+     * IMPORTANT: Payload data is stored keyed by field IDs (e.g., "text-1772758341638").
+     * Conditions and approver rules reference bindTo names (e.g., "department").
+     * This method applies the outputsContent mapping from StepDefinitions to create
+     * aliased keys so both field-ID keys and bindTo keys are available.
      */
     public async getRequestDataPayload(requestId: string): Promise<Record<string, unknown>> {
-        const { Steps, RequestData, Requests } = this.db.entities;
+        const { Steps, RequestData, Requests, StepDefinitions: StepDefs } = this.db.entities;
 
-        // 1. Get Master Data (Flat) - Assuming 1:1 with Request
-        // Not implemented fully yet but placeholder
-        // const masterData = ...
-
-        // 2. Get All Steps for Request
+        // 1. Get All Steps for Request (with their stepDefinition_ID for output mapping)
         const steps = await SELECT.from(Steps)
             .where({ request_ID: requestId })
-            .columns('ID');
+            .columns('ID', 'stepDefinition_ID');
 
         let combinedData: Record<string, unknown> = {};
 
@@ -536,7 +602,7 @@ export class WorkflowEngine {
             const stepIds = steps.map((s: { ID: string }) => s.ID);
             const allRequestData = await SELECT.from(RequestData)
                 .where({ step_ID: { in: stepIds } })
-                .columns('payload');
+                .columns('step_ID', 'payload');
 
             for (const data of allRequestData) {
                 if (data.payload) {
@@ -545,6 +611,37 @@ export class WorkflowEngine {
                         combinedData = { ...combinedData, ...parsed };
                     } catch (e) {
                         this.log.warn(`Failed to parse RequestData payload`, e);
+                    }
+                }
+            }
+
+            // 2. Apply outputsContent bindTo mappings from step definitions.
+            //    This translates field-ID keys (e.g., "text-1772758341638") to
+            //    their bindTo names (e.g., "department") so conditions can reference them.
+            const stepDefIds = [...new Set(steps.map((s: { stepDefinition_ID: string }) => s.stepDefinition_ID).filter(Boolean))];
+            if (stepDefIds.length > 0) {
+                const defs = await SELECT.from(StepDefs)
+                    .where({ ID: { in: stepDefIds } })
+                    .columns('ID', 'outputsContent') as { ID: string; outputsContent?: string | null }[];
+
+                for (const def of defs) {
+                    if (!def.outputsContent) continue;
+                    try {
+                        const outputs = JSON.parse(def.outputsContent) as Array<{
+                            sourcePath?: string;
+                            bindTo?: string;
+                        }>;
+                        for (const output of outputs) {
+                            if (output.sourcePath && output.bindTo && output.sourcePath !== output.bindTo) {
+                                const rawValue = combinedData[output.sourcePath];
+                                if (rawValue !== undefined) {
+                                    combinedData[output.bindTo] = rawValue;
+                                    this.log.info(`[DataMapping] ${output.sourcePath} -> ${output.bindTo} = ${rawValue}`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        this.log.warn(`Failed to parse outputsContent for stepDef ${def.ID}`, e);
                     }
                 }
             }
@@ -564,6 +661,7 @@ export class WorkflowEngine {
             }
         }
 
+        this.log.info(`[getRequestDataPayload] Final keys: ${Object.keys(combinedData).join(', ')}`);
         return combinedData;
     }
 
@@ -665,10 +763,21 @@ export class WorkflowEngine {
             });
 
             // Emit notification event (async, non-blocking)
+            // IMPORTANT: Pass the full approval data in the event payload to avoid
+            // a race condition where the handler queries the DB before this transaction commits.
             (cds as any).emit('sap.cre.StepApprovalCreated', {
                 stepApprovalId: approvalId,
                 stepId,
-                requestId
+                requestId,
+                approval: {
+                    ID: approvalId,
+                    step_ID: stepId,
+                    approver: approver.approverId,
+                    approverDisplayName: approver.approverDisplayName,
+                    status: i === 0 ? StepApproval.status.PENDING : StepApproval.status.WAITING,
+                    ruleName: approver.ruleName,
+                    approverType: approver.approverType
+                }
             });
         }
         this.log.info(`Created ${approvers.length} approval(s) for step ${stepId}`);

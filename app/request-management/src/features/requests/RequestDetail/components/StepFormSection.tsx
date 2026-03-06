@@ -3,7 +3,7 @@ import { Hand, Lock } from 'lucide-react';
 import { Card, Button } from '../../../../components/ui';
 import { DynamicField } from '../../../../components/shared/DynamicField';
 import { DynamicTableField } from '../../../../components/shared/DynamicTableField';
-import { parseSchemaContent, type SchemaField, type SchemaSection, type SchemaTable } from '../../../../lib/schemaParser';
+import { parseSchemaContent, type SchemaItem, type SchemaField, type SchemaSection, type SchemaTable } from '../../../../lib/schemaParser';
 import { DisplayField } from './DisplayField';
 import { DisplayTableField } from './DisplayTableField';
 import type { Step, RequestTypeStep } from '../types';
@@ -17,6 +17,8 @@ interface StepFormSectionProps {
     onFieldChange: (fieldId: string, value: FieldValue) => void;
     onSubmit: () => void;
     isSubmitting: boolean;
+    /** Pre-resolved schema items (from formId → formSchemasContent). Bypasses internal schemaContent parsing. */
+    resolvedSchemaItems?: SchemaItem[];
     /** If true, step is group-assigned but not yet claimed */
     claimRequired?: boolean;
     /** If true, step is claimed by someone else */
@@ -25,6 +27,10 @@ interface StepFormSectionProps {
     claimedByName?: string;
     /** Injected schema items (optional, used for decoupled forms) */
     schemaItems?: (SchemaField | SchemaSection | SchemaTable)[];
+    /** Footer action buttons for decision branching (e.g. Approve, Reject, custom) */
+    formActions?: Array<{ id: string; label: string; variant: string }>;
+    /** Called when a footer action button is clicked (decision branching) */
+    onActionClick?: (actionId: string) => void;
 }
 
 /**
@@ -38,12 +44,18 @@ export function StepFormSection({
     onFieldChange,
     onSubmit,
     isSubmitting,
+    resolvedSchemaItems,
     claimRequired = false,
     claimedByOther = false,
     claimedByName,
-    schemaItems: injectedSchemaItems
+    schemaItems: injectedSchemaItems,
+    formActions,
+    onActionClick
 }: StepFormSectionProps) {
-    const schemaItems = injectedSchemaItems || parseSchemaContent(stepDefinition.schemaContent);
+    // Use pre-resolved schema items if provided, otherwise fall back to parsing schemaContent
+    const schemaItems = injectedSchemaItems || (resolvedSchemaItems && resolvedSchemaItems.length > 0
+        ? resolvedSchemaItems
+        : parseSchemaContent(stepDefinition.schemaContent));
 
     if (schemaItems.length === 0) {
         return null;
@@ -187,12 +199,35 @@ export function StepFormSection({
                 {/* Action Buttons for Editable Steps */}
                 {isEditable && step.status !== 'IN_CLARIFICATION' && (
                     <div className="mt-8 pt-4 border-t border-slate-100 flex justify-end gap-3">
-                        <Button
-                            onClick={onSubmit}
-                            disabled={isSubmitting}
-                        >
-                            {isSubmitting ? 'Submitting...' : 'Submit Step'}
-                        </Button>
+                        {formActions && formActions.length > 0 && onActionClick ? (
+                            // Decision branching: render custom footer action buttons
+                            formActions.map(action => {
+                                const variantClass = action.variant === 'destructive'
+                                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                                    : action.variant === 'primary'
+                                        ? ''
+                                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300';
+                                return (
+                                    <Button
+                                        key={action.id}
+                                        onClick={() => onActionClick(action.id)}
+                                        disabled={isSubmitting}
+                                        variant={action.variant === 'destructive' ? 'destructive' : action.variant === 'secondary' ? 'outline' : 'default'}
+                                        className={variantClass}
+                                    >
+                                        {isSubmitting ? 'Processing...' : action.label}
+                                    </Button>
+                                );
+                            })
+                        ) : (
+                            // Default: single Submit Step button
+                            <Button
+                                onClick={onSubmit}
+                                disabled={isSubmitting}
+                            >
+                                {isSubmitting ? 'Submitting...' : 'Submit Step'}
+                            </Button>
+                        )}
                     </div>
                 )}
             </Card>

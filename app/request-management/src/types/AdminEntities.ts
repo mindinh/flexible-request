@@ -19,17 +19,22 @@ export interface AdminStepDefinition {
     isStartStep: boolean;
     slaDays: number;
     requestType_ID?: string;
-    // Node type for workflow canvas
     stepType?: string; // 'start' | 'end' | 'action' | 'condition'
-    posX?: number;
-    posY?: number;
     actionSubType?: string; // 'form' | 'email' | 'approval'
     formId?: string;
-    inputMapping?: string;
+    // Canvas position for workflow visualization
+    positionX?: number;
+    positionY?: number;
     predecessors?: AdminStepDependency[];
     approverRules?: AdminApproverRule[];
     // Schema content stored directly on step
     schemaContent?: string;
+    // Input/Output mapping content (JSON)
+    inputsContent?: string;
+    outputsContent?: string;
+    approversContent?: string;
+    notificationsContent?: string;
+    conditionExpr?: string; // JSON condition expression for condition nodes
     // Sync trigger
     syncTrigger?: string;
     // Default Step Owner (design-time configuration)
@@ -39,6 +44,19 @@ export interface AdminStepDefinition {
     approverType?: string;
     approverId?: string;
     approverDisplayName?: string;
+    // Email Template (Custom fields from HEAD)
+    emailSubject?: string;
+    emailBody?: string;
+    // API Call (Custom fields from HEAD)
+    apiMethod?: string;
+    apiUrl?: string;
+    apiHeaders?: string;
+    apiBody?: string;
+    apiAuthType?: string;
+    apiAuthToken?: string;
+    apiAuthUser?: string;
+    apiAuthPass?: string;
+    apiResponseMapping?: string;
 }
 
 // ApprovalConfig removed
@@ -47,7 +65,7 @@ export interface AdminStepDependency {
     ID: string;
     step_ID?: string;
     dependsOn_ID?: string;
-    // We might expand this to include the step name if needed
+    action?: string; // If set, only activates when predecessor completes with this action
 }
 
 export interface AdminStatusNetwork {
