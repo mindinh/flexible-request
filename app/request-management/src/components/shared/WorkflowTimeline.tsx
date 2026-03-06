@@ -1,4 +1,4 @@
-import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users } from 'lucide-react';
+import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users, GitBranch } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from '../ui';
 
@@ -32,6 +32,8 @@ export interface WorkflowTimelineStep {
     slaInfo?: string | null;
     /** Decision note / comment */
     decisionNote?: string | null;
+    /** Branch condition label (e.g. "On: Approve") — shown when a step is reached via a specific decision */
+    branchLabel?: string | null;
     /** @deprecated Use approvalRules instead for grouped display */
     approvers?: { name: string; type?: string }[];
     /** Grouped approval rules with rule name and approvers */
@@ -310,6 +312,47 @@ export function WorkflowTimeline({
                                     </div>
                                 </div>
                                 <div className="pt-0.5 flex-1 pl-1 min-w-0">
+                                    {/* Branch indicator — shows which decision path leads here */}
+                                    {step.branchLabel && (() => {
+                                        const label = step.branchLabel;
+                                        const isConditionTrue = label === 'True Path Taken';
+                                        const isConditionFalse = label === 'False Path Taken';
+                                        const isCondition = isConditionTrue || isConditionFalse || label === 'Condition';
+                                        const isApproved = /^approve/i.test(label);
+                                        const isRejected = /^reject/i.test(label);
+
+                                        const badgeClass = isApproved
+                                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                            : isRejected
+                                                ? 'text-red-700 bg-red-50 border-red-200'
+                                                : isConditionTrue
+                                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                                    : isConditionFalse
+                                                        ? 'text-slate-500 bg-slate-50 border-slate-200'
+                                                        : isCondition
+                                                            ? 'text-amber-600 bg-amber-50 border-amber-200'
+                                                            : 'text-violet-600 bg-violet-50 border-violet-200';
+
+                                        const iconClass = isApproved ? 'text-emerald-500'
+                                            : isRejected ? 'text-red-500'
+                                                : isConditionTrue ? 'text-emerald-500'
+                                                    : isConditionFalse ? 'text-slate-400'
+                                                        : isCondition ? 'text-amber-500'
+                                                            : 'text-violet-500';
+
+                                        return (
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                {isRejected ? (
+                                                    <X className={`w-3 h-3 ${iconClass}`} />
+                                                ) : (
+                                                    <GitBranch className={`w-3 h-3 ${iconClass}`} />
+                                                )}
+                                                <span className={`text-[10px] font-semibold ${badgeClass} border px-1.5 py-0.5 rounded-full uppercase tracking-wider`}>
+                                                    {label}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="flex items-start justify-between">
                                         <div className="min-w-0 flex-1">
                                             <p className={`
@@ -392,7 +435,7 @@ export function WorkflowTimeline({
                                                     <div className="text-xs text-slate-500 mt-1">
                                                         {step.subtitle}
                                                     </div>
-                                                    {step.slaDays && (
+                                                    {(step.slaDays ?? 0) > 0 && (
                                                         <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                                             <Clock className="w-3 h-3" />
                                                             <span>SLA: {step.slaDays} days</span>

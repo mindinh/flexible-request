@@ -82,7 +82,7 @@ service RequestService @(
             virtual null as decidedByDisplayName : String // Resolved from decidedBy association
         }
         actions {
-            action approve(comment: String);
+            action approve(comment: String, decisionAction: String);
             action rejectApproval(comment: String);
             action sendBack(comment: String, targetStepId: UUID);
         };
@@ -124,8 +124,8 @@ service RequestService @(
             action markAsRead();
         };
 
-    action markAllAsRead();
-    action deleteAll();
+    action   markAllAsRead();
+    action   deleteAll();
 
     // Organization Data (ReadOnly for Lookup)
     @readonly

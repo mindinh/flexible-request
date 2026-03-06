@@ -71,6 +71,7 @@ export interface UiFormField {
     dataType?: DataType; // The underlying data type (defaults based on controlType)
     label: string;
     key?: string; // Field key for data binding
+    bindTo?: string; // Optional global Data Schema field key (e.g., 'costCenter')
     required?: boolean;
     readOnly?: boolean;
     placeholder?: string;
@@ -111,11 +112,53 @@ export interface UiTableField {
 
 export type UiCanvasItem = UiFormField | UiSection | UiTableField;
 
+// --- Form Footer Actions (Decision Branching) ---
+export interface UiFormAction {
+    id: string;        // e.g. 'approve', 'reject', 'sendToLegal'
+    label: string;     // Button text: 'Approve', 'Reject', 'Send to Legal'
+    variant: 'primary' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'success' | 'warning';
+}
+
 // --- Forms ---
 export interface UiForm {
     id: string;
     name: string;
     items: UiCanvasItem[];
+    actions?: UiFormAction[];  // Footer action buttons for decision branching
+}
+
+// --- Node Input / Output Mappings ---
+export interface UiNodeInput {
+    sourcePath: string;   // Data Schema field path (e.g. "address.city")
+    alias?: string;       // Optional rename for this step's context
+    type?: string;        // Mirrored data type for display
+}
+
+export interface UiNodeOutput {
+    sourcePath: string;
+    alias?: string;
+    type?: string;
+    derivedFrom?: 'formLayout' | 'manual';  // How the output was created
+    bindTo?: string; // If set, this output maps to a global Data Schema field
+}
+
+// --- Notifications Contract ---
+export interface EmailConfig {
+    recipientMode: 'requester' | 'step_owner' | 'coordinator' | 'approvers' | 'custom';
+    customRecipients?: string;   // Comma-separated emails (only when recipientMode = 'custom')
+    subjectTemplate?: string;    // e.g. "Request {{displayId}} – Action Required"
+    bodyTemplate?: string;       // HTML or plain text with {{placeholder}} vars
+}
+
+/**
+ * Canonical shape stored in StepDefinitions.notificationsContent (JSON).
+ *
+ * Legacy format was a plain string[] (e.g. ["email","bell"]).
+ * The runtime parser MUST handle both shapes.
+ */
+export interface NotificationsContent {
+    channels: string[];          // e.g. ['bell', 'email']
+    emailConfig?: EmailConfig;
 }
 
 // --- Workflow ---
@@ -130,6 +173,8 @@ export interface UiWorkflowNodeData {
     formId?: string;            // Reference to a UiForm for this step
     actionSubType?: string;     // 'form' | 'email' | 'approval' (for action nodes)
     triggerType?: string;       // 'FORM_SUB' | 'API_TRIGGER' (for start nodes)
+    inputs?: UiNodeInput[];     // Data Schema fields consumed by this step
+    outputs?: UiNodeOutput[];   // Data Schema fields produced by this step
     [key: string]: unknown;
 }
 
@@ -146,6 +191,8 @@ export interface UiWorkflowEdge {
     source: string;
     target: string;
     type?: string;
+    sourceHandle?: string;  // Maps to UiFormAction.id for conditional branching
+    label?: string;         // Edge label (e.g. 'Approve')
     [key: string]: unknown;
 }
 

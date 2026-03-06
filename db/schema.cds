@@ -44,19 +44,24 @@ entity RequestTypes : cuid, managedWithUser {
  * Steps are connected via dependencies (predecessors) instead of a simple sequence.
  */
 entity StepDefinitions : cuid, managedWithUser {
-    requestType   : Association to RequestTypes;
-    stepName      : String @mandatory;
-    isStartStep   : Boolean default false; // True if this step starts when request is submitted
+    requestType          : Association to RequestTypes;
+    stepName             : String @mandatory;
+    isStartStep          : Boolean default false; // True if this step starts when request is submitted
     // Node type for workflow canvas rendering
-    stepType      : String(20) default 'action'; // start, end, action, condition
-    actionSubType : String(20); // form, email, approval (only for stepType=action)
-    formId        : String(36); // UUID reference to a form in RequestTypes.formSchemasContent
-    positionX     : Integer default 0; // Canvas X coordinate for workflow visualization
-    positionY     : Integer default 0; // Canvas Y coordinate for workflow visualization
-    slaDays       : Integer default 3; // Number of days to complete this step (SLA)
-    schemaContent : LargeString; // Form schema JSON (each step has its own schema)
+    stepType             : String(20) default 'action'; // start, end, action, condition
+    actionSubType        : String(20); // form, email, approval (only for stepType=action)
+    formId               : String(36); // UUID reference to a form in RequestTypes.formSchemasContent
+    positionX            : Integer default 0; // Canvas X coordinate for workflow visualization
+    positionY            : Integer default 0; // Canvas Y coordinate for workflow visualization
+    slaDays              : Integer default 3; // Number of days to complete this step (SLA)
+    schemaContent        : LargeString; // Form schema JSON (each step has its own schema)
+    inputsContent        : LargeString; // JSON: Array<{ sourcePath, alias?, type? }>
+    outputsContent       : LargeString; // JSON: Array<{ sourcePath, alias?, type?, derivedFrom? }>
+    approversContent     : LargeString; // JSON: Array<{ id, type, displayName }>
+    notificationsContent : LargeString; // JSON: { types: string[], emailConfig?: {...} }
+    conditionExpr        : LargeString; // JSON condition expression for condition nodes (AND/OR/NOT groups)
     // Sync Trigger: When to sync data to S/4HANA or external system
-    syncTrigger   : String enum {
+    syncTrigger          : String enum {
         NONE; // Do not sync after this step
         IMMEDIATE; // Sync immediately after approval
         WITH_NEXT; // Wait and sync with next step
@@ -64,15 +69,15 @@ entity StepDefinitions : cuid, managedWithUser {
     } default 'NONE';
 
     // Default Step Owner (set at design time) - JOIN with ShadowUsers/Groups for display
-    ownerType     : String(20); // Principal type (USER/GROUP/TEAM/etc.)
-    ownerId       : UUID; // ShadowUser or ShadowGroup ID
+    ownerType            : String(20); // Principal type (USER/GROUP/TEAM/etc.)
+    ownerId              : UUID; // ShadowUser or ShadowGroup ID
 
     // Dependencies: What must complete before this step can start
-    predecessors  : Composition of many StepDependencies
-                        on predecessors.step = $self;
+    predecessors         : Composition of many StepDependencies
+                               on predecessors.step = $self;
     // Dynamic Approver Rules for this step
-    approverRules : Composition of many ApproverRules
-                        on approverRules.stepDefinition = $self;
+    approverRules        : Composition of many ApproverRules
+                               on approverRules.stepDefinition = $self;
 }
 
 /**
@@ -82,6 +87,7 @@ entity StepDefinitions : cuid, managedWithUser {
 entity StepDependencies : cuid {
     step      : Association to StepDefinitions; // This step...
     dependsOn : Association to StepDefinitions; // ...waits for this step to complete
+    action    : String; // If set, only activates when predecessor completes with this action (e.g. 'approve', 'reject')
 }
 
 /**
@@ -201,6 +207,9 @@ entity Steps : cuid, managedWithUser {
     // Step Owner Assignment - JOIN with ShadowUsers/Groups for display
     ownerType      : String(20); // Principal type (USER/GROUP)
     ownerId        : UUID; // ShadowUser or ShadowGroup ID
+
+    // Decision Branching
+    decisionAction : String; // The action taken to complete this step (e.g. 'approve', 'reject', 'sendToLegal')
 
     // Step Claim/Release
     claimedBy      : Association to ShadowUsers; // Who claimed this step

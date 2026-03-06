@@ -11,14 +11,35 @@ const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg
 };
 const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' };
 
+interface FormAction {
+    id: string;
+    label: string;
+    variant: 'primary' | 'secondary' | 'destructive';
+}
+
+const VARIANT_COLORS: Record<string, string> = {
+    primary: '#22c55e',
+    secondary: '#3b82f6',
+    destructive: '#ef4444',
+    success: '#10b981',
+    warning: '#f59e0b',
+    outline: '#64748b',
+    ghost: '#94a3b8',
+};
+
 /**
  * ActionNode — n8n-inspired card with a colored left accent stripe,
  * icon badge, and clean typography.
+ * Supports dynamic output handles based on form actions (decision branching).
  */
 export function ActionNode({ data, selected }: NodeProps) {
     const subType = data.actionSubType as string | undefined;
     const config = (subType && ACTION_CONFIG[subType]) || DEFAULT_CONFIG;
     const Icon = config.icon;
+
+    // Dynamic source handles from form actions
+    const formActions = (data.formActions as FormAction[] | undefined) || [];
+    const hasMultipleHandles = formActions.length > 0;
 
     return (
         <div
@@ -99,7 +120,7 @@ export function ActionNode({ data, selected }: NodeProps) {
                 </div>
             </div>
 
-            {/* Handles */}
+            {/* Target Handle (Left — always single) */}
             <Handle
                 type="target"
                 position={Position.Left}
@@ -111,17 +132,61 @@ export function ActionNode({ data, selected }: NodeProps) {
                     left: '-4px',
                 }}
             />
-            <Handle
-                type="source"
-                position={Position.Right}
-                style={{
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: config.color,
-                    border: '2px solid #fff',
-                    right: '-4px',
-                }}
-            />
+
+            {/* Source Handles (Right — dynamic or single) */}
+            {hasMultipleHandles ? (
+                formActions.map((action, idx) => {
+                    const total = formActions.length;
+                    // Distribute handles evenly along the right edge
+                    const topPercent = total === 1 ? 50 : 20 + (idx * 60) / (total - 1);
+                    const handleColor = VARIANT_COLORS[action.variant] || config.color;
+                    return (
+                        <div key={action.id}>
+                            <Handle
+                                type="source"
+                                position={Position.Right}
+                                id={action.id}
+                                style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    backgroundColor: handleColor,
+                                    border: '2px solid #fff',
+                                    right: '-4px',
+                                    top: `${topPercent}%`,
+                                }}
+                            />
+                            {/* Label next to handle */}
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    right: '-70px',
+                                    top: `${topPercent}%`,
+                                    transform: 'translateY(-50%)',
+                                    fontSize: '9px',
+                                    color: '#64748b',
+                                    whiteSpace: 'nowrap',
+                                    pointerEvents: 'none',
+                                    fontWeight: 500,
+                                }}
+                            >
+                                {action.label}
+                            </div>
+                        </div>
+                    );
+                })
+            ) : (
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    style={{
+                        width: '8px',
+                        height: '8px',
+                        backgroundColor: config.color,
+                        border: '2px solid #fff',
+                        right: '-4px',
+                    }}
+                />
+            )}
         </div>
     );
 }

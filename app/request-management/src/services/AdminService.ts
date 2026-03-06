@@ -96,8 +96,11 @@ export const AdminService = {
     /**
      * Create a Step Dependency (predecessor relationship)
      */
-    async createStepDependency(stepId: string, dependsOnId: string): Promise<any> {
-        const payload = { dependsOn_ID: dependsOnId };
+    async createStepDependency(stepId: string, dependsOnId: string, action?: string): Promise<any> {
+        const payload: Record<string, string> = { dependsOn_ID: dependsOnId };
+        if (action) {
+            payload.action = action;
+        }
         const response = await api.post(
             `${API_BASE}/StepDefinitions(ID='${stepId}',IsActiveEntity=false)/predecessors`,
             payload

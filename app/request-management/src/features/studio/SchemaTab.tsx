@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, Info
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
+import { FooterActionsEditor } from './FooterActionsEditor';
 
 // ─── Drag context: shared drag state for swap logic ───
 const DRAG_TYPE_FIELD = 'schema-field';
@@ -629,7 +630,17 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         forms,
         activeFormId,
         updateFormName,
+        updateFormActions,
+        workflow,
     } = useStudioStore();
+
+    // Check if the active form belongs to a start node (form submission trigger)
+    const isStartNodeForm = Boolean(
+        activeFormId &&
+        workflow.nodes.some(
+            (n) => n.data.isStart && n.data.formId === activeFormId
+        )
+    );
 
     const currentSchema = schema;
     const updateCurrentSchema = updateSchema;
@@ -1106,6 +1117,32 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                         </div>
                                         <p className="text-sm text-slate-500">Drop here to add a new section</p>
                                     </div>
+
+                                    {/* Footer Actions Editor — Decision Branching */}
+                                    {activeForm && (
+                                        <div className="mt-6">
+                                            {isStartNodeForm ? (
+                                                <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                                                    <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                                                    <div>
+                                                        <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
+                                                        <p className="text-xs text-blue-600 mt-0.5">
+                                                            Start node forms use the default "Submit Request" action. Custom branching actions are only available on approval and user task steps.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <FooterActionsEditor
+                                                    actions={activeForm.actions || []}
+                                                    onChange={(actions) => {
+                                                        if (activeFormId) {
+                                                            updateFormActions(activeFormId, actions);
+                                                        }
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -87,7 +87,7 @@ export class ApprovalHandler {
         const { StepApprovals, Steps, StepHistory } = this.srv.entities;
         const param = req.params[0] as { ID: string };
         const approvalId = param.ID;
-        const { comment } = req.data as { comment?: string };
+        const { comment, decisionAction } = req.data as { comment?: string; decisionAction?: string };
 
         this.log.info(`Approve action triggered for StepApproval: ${approvalId}, User: ${req.user.id}`);
 
@@ -157,8 +157,8 @@ export class ApprovalHandler {
             comment: comment
         });
 
-        // 4. Check Step Completion
-        await this.checkStepCompletion(stepId, requestID, actorId);
+        // 4. Check Step Completion (pass decisionAction for conditional branching)
+        await this.checkStepCompletion(stepId, requestID, actorId, decisionAction);
         return SELECT.from(this.srv.entities.Requests, requestID);
     }
 
@@ -367,7 +367,7 @@ export class ApprovalHandler {
      * Check if a step is complete after an approval action.
      * Handles Sequential Approvals logic.
      */
-    private async checkStepCompletion(stepId: string, requestId: string, actorId?: string | null) {
+    private async checkStepCompletion(stepId: string, requestId: string, actorId?: string | null, decisionAction?: string) {
         const { Steps, StepApprovals, StepHistory } = this.srv.entities;
 
         // 1. Check for any explicit REJECTIONS (already handled in onReject, but safe check)
@@ -390,11 +390,17 @@ export class ApprovalHandler {
 
         if (pending.length === 0 && waiting.length === 0) {
             // ALL approvals provided -> Step Complete
-            this.log.info(`Step ${stepId} completed.`);
-            await UPDATE(Steps, stepId).with({
+            this.log.info(`Step ${stepId} completed${decisionAction ? ` with action: ${decisionAction}` : ''}.`);
+
+            // Write decisionAction to the step for workflow branching
+            const stepUpdate: Record<string, unknown> = {
                 status: Step.status.COMPLETED,
                 modifiedBy_ID: actorId
-            });
+            };
+            if (decisionAction) {
+                stepUpdate.decisionAction = decisionAction;
+            }
+            await UPDATE(Steps, stepId).with(stepUpdate);
 
             // Log completion
             await INSERT.into(StepHistory).entries({

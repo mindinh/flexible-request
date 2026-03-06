@@ -66,6 +66,7 @@ export interface RequestTypeStep {
     stepName: string;
     isStartStep?: boolean;
     schemaContent?: string;
+    formId?: string;
     sequenceNum?: number;
     slaDays?: number;
     ownerId?: string;
@@ -94,6 +95,7 @@ export interface RequestType {
     description?: string;
     icon?: string;
     steps?: RequestTypeStep[];
+    formSchemasContent?: string;
 }
 
 /**
