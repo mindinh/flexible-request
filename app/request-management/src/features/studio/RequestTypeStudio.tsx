@@ -18,6 +18,7 @@ import { SchemaPalette } from './SchemaPalette';
 import { SchemaPreviewTab } from './SchemaPreviewTab';
 import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
+import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
 import { Settings2 } from 'lucide-react';
 
 
@@ -56,6 +57,8 @@ function StudioContent() {
         updateSchema,
         selectedSchemaFieldId,
         setSelectedSchemaFieldId,
+        selectedFooterActionId,
+        setSelectedFooterActionId,
         // Data Schema state
         selectedDataFieldId,
         setSelectedDataFieldId,
@@ -387,6 +390,16 @@ function StudioContent() {
                                 setSelectedSchemaFieldId(null);
                             }}
                         />
+                    </RightPanel>
+                ) : activeTab === 'schema' && selectedFooterActionId ? (
+                    <RightPanel
+                        isOpen={!!selectedFooterActionId}
+                        onClose={() => setSelectedFooterActionId(null)}
+                        width={350}
+                        title="Action Properties"
+                        icon={<Settings2 size={16} />}
+                    >
+                        <FooterActionPropertiesContent />
                     </RightPanel>
                 ) : null
             }

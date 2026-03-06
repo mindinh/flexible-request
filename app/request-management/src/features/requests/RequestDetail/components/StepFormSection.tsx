@@ -23,6 +23,8 @@ interface StepFormSectionProps {
     claimedByOther?: boolean;
     /** Name of the user who claimed the step */
     claimedByName?: string;
+    /** Injected schema items (optional, used for decoupled forms) */
+    schemaItems?: (SchemaField | SchemaSection | SchemaTable)[];
 }
 
 /**
@@ -38,9 +40,10 @@ export function StepFormSection({
     isSubmitting,
     claimRequired = false,
     claimedByOther = false,
-    claimedByName
+    claimedByName,
+    schemaItems: injectedSchemaItems
 }: StepFormSectionProps) {
-    const schemaItems = parseSchemaContent(stepDefinition.schemaContent);
+    const schemaItems = injectedSchemaItems || parseSchemaContent(stepDefinition.schemaContent);
 
     if (schemaItems.length === 0) {
         return null;

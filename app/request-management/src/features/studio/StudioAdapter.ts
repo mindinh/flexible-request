@@ -127,7 +127,7 @@ export const StudioAdapter = {
             nodes.push({
                 id: step.ID,
                 type: nodeType,
-                position: { x: 0, y: 0 },
+                position: { x: (step as any).posX || 0, y: (step as any).posY || 0 },
                 data: {
                     label: step.stepName,
                     sla: step.slaDays,
@@ -135,10 +135,17 @@ export const StudioAdapter = {
                     syncTrigger: step.syncTrigger || 'NONE',
                     actionSubType: step.actionSubType || undefined,
                     formId: (step as any).formId || undefined,
+                    inputMapping: (step as any).inputMapping || '{}',
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
                     ownerName: (step as any).ownerDisplayName || '',
+                    approver_ID: step.approverId,
+                    approverType: step.approverType,
+                    approverName: (step as any).approverDisplayName || '',
+                    notifications: parseJson<string[]>((step as any).notifications, ['bell']),
+                    emailSubject: (step as any).emailSubject || '',
+                    emailBody: (step as any).emailBody || '',
                 }
             });
 
@@ -150,7 +157,8 @@ export const StudioAdapter = {
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
-                            type: 'smoothstep'
+                            type: 'smoothstep',
+                            sourceHandle: (pred as any).action || undefined,
                         });
                     }
                 });

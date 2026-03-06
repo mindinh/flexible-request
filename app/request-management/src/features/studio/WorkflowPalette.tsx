@@ -1,20 +1,17 @@
-import { Play, Flag, FileEdit, Mail, Shield, GitBranch } from 'lucide-react';
-import type { WorkflowNodeType } from './types';
-
+import { Play, Flag, GitBranch, ClipboardCheck, Globe } from 'lucide-react';
 // Palette node definitions matching reference design
 const TRIGGER_TERMINAL_NODES = [
-    { id: 'start', label: 'Start', icon: Play, nodeType: 'START' as WorkflowNodeType, defaultLabel: 'Workflow Start' },
-    { id: 'end', label: 'End', icon: Flag, nodeType: 'END' as WorkflowNodeType, defaultLabel: 'Workflow End' },
+    { id: 'start', label: 'Start', icon: Play, nodeType: 'START' as any, defaultLabel: 'Start' },
+    { id: 'end', label: 'End', icon: Flag, nodeType: 'END' as any, defaultLabel: 'End' },
 ];
 
 const ACTION_NODES = [
-    { id: 'action-form', label: 'Form', icon: FileEdit, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Form Step', subType: 'form' },
-    { id: 'action-email', label: 'Email', icon: Mail, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Send Email', subType: 'email' },
-    { id: 'action-approval', label: 'Approval', icon: Shield, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Approval Step', subType: 'approval' },
+    { id: 'action-user-task', label: 'User Task', icon: ClipboardCheck, nodeType: 'ACTION' as any, defaultLabel: 'User Task', subType: 'userTask' },
+    { id: 'action-api-call', label: 'API Call', icon: Globe, nodeType: 'ACTION' as any, defaultLabel: 'API Call', subType: 'apiCall' },
 ];
 
 const LOGIC_NODES = [
-    { id: 'logic-condition', label: 'Condition', icon: GitBranch, nodeType: 'CONDITION' as WorkflowNodeType, defaultLabel: 'Condition' },
+    { id: 'logic-condition', label: 'Condition', icon: GitBranch, nodeType: 'CONDITION' as any, defaultLabel: 'Condition' },
 ];
 
 const NODE_GROUPS = [
@@ -38,7 +35,7 @@ function PaletteCard({
 }: {
     icon: React.ElementType;
     label: string;
-    nodeType: WorkflowNodeType;
+    nodeType: string;
     defaultLabel: string;
     subType?: string;
     accentColor: string;

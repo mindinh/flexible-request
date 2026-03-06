@@ -45,6 +45,12 @@ export interface StepDefinition {
     sequenceNum?: number;
     slaDays?: number;
     approverRules?: ApproverRule[];
+    predecessors?: any[];
+    stepType?: string;
+    posX?: number;
+    posY?: number;
+    actionSubType?: string;
+    formId?: string;
     // Step Owner assignment (from Studio configuration)
     ownerType?: string;       // Principal type (USER/GROUP/TEAM/etc.)
     ownerId?: string;         // ShadowUser or ShadowGroup ID

@@ -49,8 +49,11 @@ entity StepDefinitions : cuid, managedWithUser {
     isStartStep   : Boolean default false; // True if this step starts when request is submitted
     // Node type for workflow canvas rendering
     stepType      : String(20) default 'action'; // start, end, action, condition
+    posX          : Integer;
+    posY          : Integer;
     actionSubType : String(20); // form, email, approval (only for stepType=action)
     formId        : String(36); // UUID reference to a form in RequestTypes.formSchemasContent
+    inputMapping  : LargeString; // JSON Mapping metadata: { [fieldId]: { sourceStepId, sourceFieldId } }
     slaDays       : Integer default 3; // Number of days to complete this step (SLA)
     schemaContent : LargeString; // Form schema JSON (each step has its own schema)
     // Sync Trigger: When to sync data to S/4HANA or external system
@@ -60,10 +63,16 @@ entity StepDefinitions : cuid, managedWithUser {
         WITH_NEXT; // Wait and sync with next step
         ON_COMPLETE; // Sync when entire workflow completes
     } default 'NONE';
+    notifications : LargeString; // JSON: ["email", "bell", "teams"]
+    emailSubject  : String;      // Email subject template (supports {{requestId}}, {{requestTitle}}, etc.)
+    emailBody     : LargeString; // Email body template (HTML, supports {{requestId}}, {{requestTitle}}, etc.)
 
-    // Default Step Owner (set at design time) - JOIN with ShadowUsers/Groups for display
     ownerType     : String(20); // Principal type (USER/GROUP/TEAM/etc.)
     ownerId       : UUID; // ShadowUser or ShadowGroup ID
+
+    // Fixed Approver (design-time configuration)
+    approverType  : String(20); // Principal type (USER/GROUP/TEAM/etc.)
+    approverId    : UUID; // ShadowUser or ShadowGroup ID
 
     // Dependencies: What must complete before this step can start
     predecessors  : Composition of many StepDependencies
@@ -78,8 +87,10 @@ entity StepDefinitions : cuid, managedWithUser {
  * A step can only start when ALL its predecessors are COMPLETED.
  */
 entity StepDependencies : cuid {
-    step      : Association to StepDefinitions; // This step...
-    dependsOn : Association to StepDefinitions; // ...waits for this step to complete
+  requestType : Association to RequestTypes;
+  step        : Association to StepDefinitions;
+  dependsOn   : Association to StepDefinitions;
+  action      : String; // The custom form action ID that triggers this branch
 }
 
 /**

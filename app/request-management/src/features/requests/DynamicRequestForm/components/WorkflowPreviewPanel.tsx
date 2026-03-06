@@ -48,10 +48,9 @@ export function WorkflowPreviewPanel({
     onStepClick,
     stepOwners = {}
 }: WorkflowPreviewPanelProps) {
-    // Sort steps by sequence number
-    const sortedSteps = steps.slice().sort((a, b) =>
-        (a.sequenceNum || 0) - (b.sequenceNum || 0)
-    );
+    // Steps are now pre-sorted topologically by the data hooks.
+    // Just filter out End nodes for a cleaner UI.
+    const sortedSteps = steps.filter(step => (step as any).stepType !== 'end');
 
     const workflowSteps = sortedSteps.map((step, idx) => {
         // Determine status based on step position
@@ -106,18 +105,7 @@ export function WorkflowPreviewPanel({
                 selectedStepId={selectedStepId}
             />
 
-            {/* Click to Configure Tip */}
-            {onStepClick && (
-                <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-sm text-amber-700">
-                    <h4 className="font-semibold mb-1 flex items-center gap-2">
-                        <MousePointerClick className="w-4 h-4" />
-                        Configure Step Owners
-                    </h4>
-                    <p className="opacity-90">
-                        Click on any step above to assign its owner. The selected step will be highlighted.
-                    </p>
-                </div>
-            )}
+            {/* Click to Configure Tip removed - View Only Mode */}
 
             {/* Help / Info Card */}
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-700">

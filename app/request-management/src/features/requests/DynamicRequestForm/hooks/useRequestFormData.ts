@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
@@ -6,6 +6,7 @@ import { parseSchemaContent, flattenSchemaFields } from '../../../../lib/schemaP
 import { globalEvents, EVENT_TYPES } from '../../../../lib/events';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
 import { useAuth } from '../../../../lib/auth-context';
+import { sortStepsTopologically } from '../../../../lib/workflowUtils';
 
 interface UseRequestFormDataOptions {
     typeId?: string;
@@ -81,14 +82,20 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
     // Determine effective type ID
     const effectiveTypeId = isEditMode ? existingRequest?.requestType_ID : typeId;
 
-    // Fetch Request Type with steps
     const { data: requestType, isLoading: isLoadingType, error } = useQuery({
         queryKey: ['requestTypeForForm', effectiveTypeId],
         queryFn: async () => {
             // Fetch full definition including steps and rules from public service
             // Remove IsActiveEntity filter as /browse/RequestTypes is read-only active view
-            const response = await api.get(`/browse/RequestTypes('${effectiveTypeId}')?$expand=steps($expand=approverRules)`);
-            return response.data;
+            const response = await api.get(`/browse/RequestTypes('${effectiveTypeId}')?$expand=steps($expand=approverRules,predecessors)`);
+            const data = response.data;
+
+            // Apply topological sort to steps
+            if (data?.steps) {
+                data.steps = sortStepsTopologically(data.steps);
+            }
+
+            return data;
         },
         enabled: !!effectiveTypeId,
     });
@@ -150,8 +157,30 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
         }
     }, [startStep, formData.coordinatorId, formData.stepOwnerId, isInitializing]);
 
+    // Parse forms from request type
+    const forms = useMemo(() => {
+        if (!requestType?.formSchemasContent) return [];
+        try {
+            return JSON.parse(requestType.formSchemasContent);
+        } catch {
+            return [];
+        }
+    }, [requestType?.formSchemasContent]);
+
     // Get schema items - render exactly as defined in the Form Schema
-    const schemaItems = parseSchemaContent(startStep?.schemaContent);
+    // For decoupled forms, resolve by formId from the requestType's forms collection
+    const schemaItems = useMemo(() => {
+        if (!startStep) return [];
+
+        // If step points to a specific form, resolve it
+        if (startStep.formId) {
+            const form = forms.find((f: any) => f.id === startStep.formId);
+            if (form) return form.items || [];
+        }
+
+        // Fallback to legacy embedded schemaContent on the step definition
+        return parseSchemaContent(startStep.schemaContent);
+    }, [startStep, forms]);
 
     // Step owners map - tracks owner assignment for ALL steps
     const [stepAssignments, setStepAssignments] = useState<Record<string, {

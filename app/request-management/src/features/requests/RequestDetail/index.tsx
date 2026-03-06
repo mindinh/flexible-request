@@ -215,6 +215,11 @@ export function RequestDetail() {
         <div className="max-w-7xl mx-auto space-y-6 pb-8">
             <RequestDetailHeader
                 request={request}
+                currentStepName={currentStep?.stepDefinition?.stepName}
+                pendingApprovers={currentStep?.approvals
+                    ?.filter(a => a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED')
+                    ?.map(a => a.approverDisplayName || a.approver || 'Unknown Approver')
+                }
                 onBack={() => navigate('/requests')}
             />
 
@@ -223,15 +228,37 @@ export function RequestDetail() {
                     <RequestInfoCard request={request} />
 
                     {sortedSteps.map((step) => {
-                        if (step.stepDefinition_ID !== selectedStepId) return null;
-
                         const stepDef = request.requestType?.steps?.find(s => s.ID === step.stepDefinition_ID);
-                        if (!stepDef?.schemaContent) return null;
+                        if (!stepDef) return null;
 
-                        const stepSchemaItems = parseSchemaContent(stepDef.schemaContent);
+                        const isStartStepRuntime = step.ID === startStep?.ID;
+                        const isStepOwner = isOwner(step.ownerId);
+
+                        // Visibility Logic: Only show the Start Step form in this view.
+                        // All other steps (User Tasks, Approvals) are handled via Inbox.
+                        const isVisible = isStartStepRuntime;
+
+                        if (!isVisible) return null;
+
+                        // Resolve schema items (support for decoupled forms)
+                        let stepSchemaItems: any[] = [];
+                        if (stepDef.formId) {
+                            try {
+                                const forms = request.requestType?.formSchemasContent ? JSON.parse(request.requestType.formSchemasContent) : [];
+                                const form = forms.find((f: any) => f.id === stepDef.formId);
+                                if (form) stepSchemaItems = form.items || [];
+                            } catch (e) {
+                                console.warn('Failed to parse formSchemasContent in RequestDetail', e);
+                            }
+                        }
+
+                        // Fallback to legacy schemaContent if no items found via formId
+                        if (stepSchemaItems.length === 0 && stepDef.schemaContent) {
+                            stepSchemaItems = parseSchemaContent(stepDef.schemaContent);
+                        }
+
                         if (stepSchemaItems.length === 0) return null;
 
-                        const isStepOwner = isOwner(step.ownerId);
                         const stepIsGroupAssigned = isGroupLikeType((step as any).ownerType) ||
                             (step as any).approvals?.some((a: any) => (a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED') && isGroupLikeType(a.approverType));
                         const stepClaimedBy = (step as any).claimedBy;
@@ -241,6 +268,7 @@ export function RequestDetail() {
 
                         const canEditStep = !stepClaimRequired && !stepClaimedByOther;
                         const isEditable = (step.status === 'STARTED' ||
+                            (step.status === 'IN_PROGRESS' && !!currentUserApproval) ||
                             (step.status === 'IN_CLARIFICATION' && (isRequester || isStepOwner))) && canEditStep;
 
                         const currentStepFormData = stepFormData[step.ID] || (() => {
@@ -256,6 +284,7 @@ export function RequestDetail() {
                                 key={step.ID}
                                 step={step}
                                 stepDefinition={stepDef}
+                                schemaItems={stepSchemaItems}
                                 formData={currentStepFormData}
                                 isEditable={isEditable}
                                 onFieldChange={(fieldId, value) =>
@@ -319,8 +348,8 @@ export function RequestDetail() {
                             steps={workflowSteps}
                             requestStatus={request?.status}
                             showCompletion={true}
-                            onStepClick={(stepId) => setSelectedStepId(stepId)}
-                            selectedStepId={selectedStepId || undefined}
+                            onStepClick={() => { }} // Globally disable interaction as requested
+                            selectedStepId={undefined} // No step selection in detail view
                         />
 
                         <RecentActivityCard

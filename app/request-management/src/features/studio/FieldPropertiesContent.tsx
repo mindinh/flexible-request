@@ -398,14 +398,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                     </div>
                 )}
 
-                {/* ── FIELD LABEL ── */}
-                <div className="space-y-1.5">
-                    <SectionLabel>Field Label</SectionLabel>
-                    <Input
-                        value={selectedItem.label}
-                        onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
-                    />
-                </div>
+
 
                 {/* ── DATA BINDING ── */}
                 {isField && (

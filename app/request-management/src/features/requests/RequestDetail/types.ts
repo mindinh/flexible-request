@@ -66,12 +66,17 @@ export interface RequestTypeStep {
     stepName: string;
     isStartStep?: boolean;
     schemaContent?: string;
+    formId?: string;
+    stepType?: string;
+    actionSubType?: string;
     sequenceNum?: number;
     slaDays?: number;
     ownerId?: string;
     ownerType?: string;
     ownerDisplayName?: string;
+    inputMapping?: string;
     approverRules?: ApproverRule[];
+    predecessors?: any[];
 }
 
 /**
@@ -94,6 +99,7 @@ export interface RequestType {
     description?: string;
     icon?: string;
     steps?: RequestTypeStep[];
+    formSchemasContent?: string;
 }
 
 /**

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
@@ -161,6 +161,12 @@ function FieldCard({ field, isSelected, onSelect, onDelete, onDragStart, onDragO
                         {field.label}
                         {field.required && <span className="text-primary ml-1">*</span>}
                     </label>
+                    {!field.key && (
+                        <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-amber-50 text-amber-600 border-amber-200 gap-1 font-bold">
+                            <AlertCircle size={10} />
+                            UNBOUND
+                        </Badge>
+                    )}
                 </div>
                 <Button
                     variant="ghost"
@@ -223,6 +229,9 @@ function DraggableSectionField({ field, selectedFieldId, onFieldSelect, onFieldD
                         {field.label}
                         {field.required && <span className="text-primary ml-1">*</span>}
                     </label>
+                    {!field.key && (
+                        <AlertCircle size={12} className="text-amber-500 flex-shrink-0" />
+                    )}
                 </div>
                 <Button
                     variant="ghost"
@@ -250,7 +259,7 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
     onFieldSelect: (fieldId: string) => void;
     onFieldDelete: (fieldId: string) => void;
     onDelete: () => void;
-    onFieldDrop: (fieldType: string, fieldLabel: string) => void;
+    onFieldDrop: (fieldType: string, fieldLabel: string, key?: string) => void;
     onSwapFields: (fromId: string, toId: string) => void;
     dragOverFieldId: string | null;
     setDragOverFieldId: (id: string | null) => void;
@@ -281,7 +290,7 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type && data.label && data.type !== 'section' && data.type !== 'table') {
-                onFieldDrop(data.type, data.label);
+                onFieldDrop(data.type, data.label, data.dataFieldKey);
             }
         } catch {
             // Not a palette drop, ignore
@@ -313,11 +322,6 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
         }
     };
 
-    const handleFieldDragEnd = (e: React.DragEvent) => {
-        (e.currentTarget as HTMLElement).style.opacity = '1';
-        dragFieldIdRef.current = null;
-        setDragOverFieldId(null);
-    };
 
     return (
         <Card
@@ -443,7 +447,7 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
     onColumnSelect: (columnId: string) => void;
     onColumnDelete: (columnId: string) => void;
     onDelete: () => void;
-    onColumnDrop: (fieldType: string, fieldLabel: string) => void;
+    onColumnDrop: (fieldType: string, fieldLabel: string, key?: string) => void;
     onSwapColumns: (fromId: string, toId: string) => void;
     dragOverColumnId: string | null;
     setDragOverColumnId: (id: string | null) => void;
@@ -473,7 +477,7 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type && data.label && data.type !== 'section' && data.type !== 'table') {
-                onColumnDrop(data.type, data.label);
+                onColumnDrop(data.type, data.label, data.dataFieldKey);
             }
         } catch {
             // Not a palette drop, ignore
@@ -504,9 +508,6 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
         }
     };
 
-    const handleColDragEnd = (_e: React.DragEvent) => {
-        setDragOverColumnId(null);
-    };
 
     return (
         <Card
@@ -629,6 +630,9 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         forms,
         activeFormId,
         updateFormName,
+        updateForms,
+        selectedFooterActionId,
+        setSelectedFooterActionId,
     } = useStudioStore();
 
     const currentSchema = schema;
@@ -681,12 +685,13 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         setItems(currentSchema);
     }, [currentSchema]);
 
-    const addItem = (type: string, label: string) => {
+    const addItem = (type: string, label: string, key?: string) => {
         const newItem: UiCanvasItem = {
             id: `${type}-${Date.now()}`,
             type,
             label,
             required: false,
+            key: key || undefined,
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),
             ...(type === 'table' ? { columns: [] } : {}),
         } as UiCanvasItem;
@@ -713,13 +718,14 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         onFieldSelect?.(id);
     };
 
-    const addFieldToSection = (sectionId: string, fieldType: string, fieldLabel: string) => {
+    const addFieldToSection = (sectionId: string, fieldType: string, fieldLabel: string, key?: string) => {
         const defaultColSpan = ['textarea', 'radio'].includes(fieldType) ? 12 : 6;
         const newField: UiFormField = {
             id: `${fieldType}-${Date.now()}`,
-            type: fieldType,
+            type: fieldType as any,
             label: fieldLabel,
             required: false,
+            key: key || undefined,
             colSpan: defaultColSpan as 3 | 6 | 9 | 12,
         };
 
@@ -751,11 +757,12 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         }
     };
 
-    const addColumnToTable = (tableId: string, fieldType: string, fieldLabel: string) => {
+    const addColumnToTable = (tableId: string, fieldType: string, fieldLabel: string, key?: string) => {
         const newColumn = {
             id: `col-${Date.now()}`,
-            type: fieldType,
+            type: fieldType as any,
             label: fieldLabel,
+            key: key || undefined,
         };
 
         const newItems = items.map(item => {
@@ -1003,7 +1010,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                         try {
                                             const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                             if (data.type && data.label) {
-                                                addItem(data.type, data.label);
+                                                addItem(data.type, data.label, data.dataFieldKey);
                                             }
                                         } catch {
                                             // ignore
@@ -1036,7 +1043,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                         onFieldSelect={(fieldId) => selectField(fieldId)}
                                                         onFieldDelete={(fieldId) => deleteFieldFromSection(item.id, fieldId)}
                                                         onDelete={() => deleteItem(item.id)}
-                                                        onFieldDrop={(type, label) => addFieldToSection(item.id, type, label)}
+                                                        onFieldDrop={(type: string, label: string, key?: string) => addFieldToSection(item.id, type, label, key)}
                                                         onSwapFields={(fromId, toId) => handleSwapSectionFields(item.id, fromId, toId)}
                                                         dragOverFieldId={dragOverFieldId}
                                                         setDragOverFieldId={setDragOverFieldId}
@@ -1057,7 +1064,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                         onColumnSelect={(columnId) => selectField(columnId)}
                                                         onColumnDelete={(columnId) => deleteColumnFromTable(item.id, columnId)}
                                                         onDelete={() => deleteItem(item.id)}
-                                                        onColumnDrop={(type, label) => addColumnToTable(item.id, type, label)}
+                                                        onColumnDrop={(type: string, label: string, key?: string) => addColumnToTable(item.id, type, label, key)}
                                                         onSwapColumns={(fromId, toId) => handleSwapTableColumns(item.id, fromId, toId)}
                                                         dragOverColumnId={dragOverColumnId}
                                                         setDragOverColumnId={setDragOverColumnId}
@@ -1108,6 +1115,70 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* In-place Form Footer Actions Editor */}
+                            <div className="mt-6 pt-6 border-t border-slate-200">
+                                <div className="flex items-center justify-end gap-3 min-h-[44px]">
+                                    <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-primary hover:text-primary hover:bg-primary/5 gap-1.5 font-medium"
+                                            onClick={() => {
+                                                if (!activeFormId) return;
+                                                const newActions = [...(activeForm?.footerActions || [])];
+                                                const newId = `action-${Date.now()}`;
+                                                newActions.unshift({
+                                                    id: newId,
+                                                    label: 'New Action',
+                                                    variant: 'primary'
+                                                });
+                                                updateForms(forms.map(f => f.id === activeFormId ? { ...f, footerActions: newActions } : f));
+                                                // Automatically select the new button
+                                                setSelectedFooterActionId(newId);
+                                            }}
+                                        >
+                                            <Plus size={16} />
+                                            Add Button
+                                        </Button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {activeForm?.footerActions?.map((action) => (
+                                            <div key={action.id} className="relative">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedFooterActionId(action.id);
+                                                    }}
+                                                    className={cn(
+                                                        "h-8 px-4 font-medium min-w-[80px] transition-all",
+                                                        action.variant === 'success' && "bg-green-50 text-green-600 hover:bg-green-100 border-green-200",
+                                                        action.variant === 'danger' && "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200",
+                                                        (action.variant === 'primary' || !action.variant) && "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200",
+                                                        action.variant === 'outline' && "bg-white text-slate-600 hover:bg-slate-50 border-slate-200",
+                                                        action.variant === 'ghost' && "bg-transparent text-slate-500 hover:bg-slate-100 border-transparent",
+                                                        action.variant === 'secondary' && "bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200",
+                                                        action.variant === 'warning' && "bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-200",
+                                                        selectedFooterActionId === action.id && "ring-2 ring-primary ring-offset-2 scale-105"
+                                                    )}
+                                                >
+                                                    {action.label}
+                                                </Button>
+                                            </div>
+                                        ))}
+
+                                        {(!activeForm?.footerActions || activeForm.footerActions.length === 0) && (
+                                            <div className="flex gap-2 opacity-40 grayscale pointer-events-none">
+                                                <Button size="sm" variant="outline" className="h-8 px-4 bg-green-50 text-green-600 border-green-200">Approve</Button>
+                                                <Button size="sm" variant="outline" className="h-8 px-4 bg-rose-50 text-rose-600 border-rose-200">Reject</Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

@@ -14,6 +14,12 @@ interface RuntimeStep {
 type StepDefinitionWithOwner = StepDefinition & {
     ownerType?: string | null;
     ownerId?: string | null;
+    approverType?: string | null;
+    approverId?: string | null;
+    inputMapping?: string | null;
+    conditionLogic?: string | null;
+    stepType?: string | null;
+    actionSubType?: string | null;
 };
 
 /**
@@ -59,7 +65,7 @@ export class WorkflowEngine {
         // 2. Fetch all Step Definitions (include ownerType/ownerId for default assignment)
         const definitions = await SELECT.from(StepDefinitions)
             .where({ requestType_ID: request.requestType_ID })
-            .columns('*', 'ownerType', 'ownerId') as StepDefinitionWithOwner[];
+            .columns('*', 'ownerType', 'ownerId', 'approverType', 'approverId') as StepDefinitionWithOwner[];
         const validDefinitions = definitions.filter(d => d.ID);
 
         // 3. Fetch Existing Steps
@@ -91,17 +97,80 @@ export class WorkflowEngine {
                 continue;
             }
 
-            // Check dependencies
+            // 1. Get ALL StepDefinitions that could possibly follow this step
+            // 2. Filter them based on the specific ACTION taken in the completed predecessors
+            // This is a more complex multi-branching logic.
+
+            const completedSteps = await SELECT.from(Steps)
+                .where({ request_ID: requestId, status: { in: [Step.status.COMPLETED, Step.status.SKIPPED] } })
+                .columns('ID', 'stepDefinition_ID', 'modifiedBy_ID');
+
+            // Find the most recently completed step to determine the "action" context
+            // In a better design, we'd pass the action ID explicitly to advance(), 
+            // but for now we look at the last completed step's history to find the action label.
+            // Or better: StepDependencies has 'action' field. We match it.
+
             const predecessors = await SELECT.from(StepDependencies)
                 .where({ step_ID: defId })
-                .columns('dependsOn_ID') as StepDependency[];
+                .columns('dependsOn_ID', 'action') as (StepDependency & { action?: string })[];
 
             if (predecessors.length > 0) {
-                // Explicit dependencies
-                const allPredecessorsComplete = predecessors.every(
-                    (p) => p.dependsOn_ID && completedDefIds.has(p.dependsOn_ID)
-                );
-                if (allPredecessorsComplete) stepsToActivate.push(def);
+                // Determine if this step (defId) should be activated.
+                // A step activates if ALL its predecessors are complete, 
+                // AND for those predecessors that have specific "action" branches defined, 
+                // the branch matches the action taken.
+
+                const allPredecessorsComplete = await Promise.all(predecessors.map(async (p) => {
+                    if (!p.dependsOn_ID || !completedDefIds.has(p.dependsOn_ID)) return false;
+
+                    // If a specific action branch is required, verify it
+                    if (p.action) {
+                        const lastStepInstance = existingSteps.find(s => s.stepDefinition_ID === p.dependsOn_ID);
+                        if (!lastStepInstance) return false;
+
+                        const lastAction = await SELECT.one.from(this.db.entities.StepHistory)
+                            .where({ step_ID: lastStepInstance.ID })
+                            .and('action IN', ['APPROVE', 'CONDITION_EVAL'])
+                            .orderBy('timestamp desc')
+                            .columns('action', 'comment');
+
+                        // Branching mechanism depends on the predecessor step type
+                        const predDef = definitions.find(d => d.ID === p.dependsOn_ID);
+
+                        if (predDef?.stepType === 'condition') {
+                            // Condition nodes emit 'CONDITION_EVAL' with comment 'true' or 'false'
+                            return lastAction?.comment === p.action;
+                        }
+
+                        // Approval nodes emit 'APPROVE' with 'Action: [Label]'
+                        // We need to find the Action with this ID in the Form to get the Label.
+                        if (predDef?.formId && lastAction?.action === 'APPROVE') {
+                            try {
+                                const requestType = await SELECT.one.from(this.db.entities.RequestTypes)
+                                    .where({ ID: request.requestType_ID })
+                                    .columns('formSchemasContent');
+
+                                const forms = requestType?.formSchemasContent ? JSON.parse(requestType.formSchemasContent) : [];
+                                const form = forms.find((f: any) => f.id === predDef.formId);
+                                const action = form?.footerActions?.find((a: any) => a.id === p.action);
+
+                                if (action) {
+                                    const expectedComment = `Action: ${action.label}`;
+                                    return lastAction?.comment === expectedComment;
+                                }
+                            } catch (e) {
+                                this.log.error('Failed to resolve action label for branching', e);
+                            }
+                        }
+
+                        // Fallback: If no action found in form, maybe it's a default?
+                        return true;
+                    }
+
+                    return true;
+                }));
+
+                if (allPredecessorsComplete.every(v => v)) stepsToActivate.push(def);
             } else {
                 // Sequential fallback
                 const currentDefIndex = defIndexMap.get(defId) ?? 999;
@@ -150,9 +219,19 @@ export class WorkflowEngine {
             dueDate.setDate(dueDate.getDate() + slaDays);
 
             let initialStatus: string = Step.status.UPCOMING;
+            const isApprovalStep = def.stepType === 'action' && (def.actionSubType === 'approval' || def.actionSubType === 'userTask');
+            const isEndStep = def.stepType === 'end' || (def.stepType === 'action' && def.actionSubType === 'end');
+            const isConditionStep = def.stepType === 'condition';
 
             if (def.isStartStep) {
                 initialStatus = request.status === Request.status.DRAFT ? Step.status.STARTED : Step.status.IN_PROGRESS;
+            } else if (isApprovalStep) {
+                // Approval steps skip the "Data entry required" (STARTED) phase
+                // if they rely on mapped data and go straight to approvers.
+                initialStatus = Step.status.IN_PROGRESS;
+            } else if (isEndStep || isConditionStep) {
+                // Condition nodes also complete instantly upon activation
+                initialStatus = Step.status.COMPLETED;
             } else {
                 initialStatus = Step.status.STARTED;
             }
@@ -182,6 +261,14 @@ export class WorkflowEngine {
 
             // Ensure RequestData record exists for the new step to enable frontend data capture
             let initialPayload = '{}';
+
+            // Resolve Input Mappings if any
+            if (def.inputMapping && def.inputMapping !== '{}') {
+                const combinedData = await this.getRequestDataPayload(requestId);
+                initialPayload = this.resolveMapping(def.inputMapping, combinedData);
+                this.log.info(`[WorkflowEngine] Applied input mapping for step ${def.stepName}`);
+            }
+
             if (sourceRequestId && def.isStartStep) {
                 this.log.info(`[WorkflowEngine] Attempting to deep copy Step 1 data from source request ${sourceRequestId} to new request ${requestId}`);
 
@@ -271,15 +358,41 @@ export class WorkflowEngine {
                     stepId: newStepId,
                     requestId
                 });
+            } else if (isEndStep) {
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'AUTO_COMPLETE',
+                    fromValue: Step.status.UPCOMING,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null,
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: `Step "${def.stepName}" auto-completed (End Step)`
+                });
+
+                // Trigger final completion check
+                await this.advance(requestId, userUUID, sourceRequestId);
             }
 
             // Create Approvals if needed
             if (initialStatus === Step.status.IN_PROGRESS && request.requestType_ID) {
-                const approvers = await this.approverResolver.resolveApprovers(
+                let approvers = await this.approverResolver.resolveApprovers(
                     defId,
                     request.requestType_ID,
                     requestData
                 );
+
+                // Fallback to fixed approver if no rules matched
+                if (approvers.length === 0 && def.approverId) {
+                    const displayName = await this.approverResolver.lookupDisplayName(def.approverId, def.approverType || 'USER');
+                    approvers = [{
+                        approverId: def.approverId,
+                        approverDisplayName: displayName,
+                        approverType: def.approverType || 'USER',
+                        ruleName: 'Fixed Approver'
+                    }];
+                }
 
                 if (approvers.length > 0) {
                     await this.createApprovals(requestId, newStepId, approvers, auditActor);
@@ -306,6 +419,27 @@ export class WorkflowEngine {
                     // Recurse
                     await this.advance(requestId, userUUID, sourceRequestId);
                 }
+            } else if (isConditionStep) {
+                // Instantly evaluate condition against current request payload
+                const combinedData = await this.getRequestDataPayload(requestId);
+                const conditionResult = this.evaluateConditionLogic(def.conditionLogic, combinedData);
+
+                this.log.info(`Condition Node "${def.stepName}" evaluated to ${conditionResult}`);
+
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'CONDITION_EVAL',
+                    fromValue: Step.status.UPCOMING,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null, // System action
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: conditionResult ? 'true' : 'false'
+                });
+
+                // Immediately advance workflow to evaluate dependent edges
+                await this.advance(requestId, userUUID, sourceRequestId);
             }
         }
     }
@@ -327,11 +461,8 @@ export class WorkflowEngine {
         // But this method is called only if NO new steps were activated in this pass.
         // However, auto-complete calls advance() recursively, so we should be fine.
 
-        const allDefinitionsCreated = existingSteps.length >= totalStepDefinitions;
-
-        const allStepsTerminal = existingSteps.every((s) =>
-            s.status === Step.status.COMPLETED || s.status === Step.status.SKIPPED
-        );
+        const terminalStatuses = [Step.status.COMPLETED, Step.status.SKIPPED, Step.status.REJECTED];
+        const allStepsTerminal = existingSteps.every((s) => terminalStatuses.includes(s.status as any));
 
         const anyStepsInProgress = existingSteps.some((s) =>
             s.status === Step.status.IN_PROGRESS ||
@@ -339,24 +470,43 @@ export class WorkflowEngine {
             s.status === Step.status.IN_CLARIFICATION
         );
 
-        this.log.info(`Workflow status check: ${existingSteps.length}/${totalStepDefinitions} steps, allTerminal=${allStepsTerminal}`);
+        this.log.info(`Workflow status check: ${existingSteps.length} steps created, allTerminal=${allStepsTerminal}`);
 
-        if (allDefinitionsCreated && allStepsTerminal && !anyStepsInProgress && existingSteps.length > 0) {
-            this.log.info(`All steps completed for Request ${requestId}.`);
-            await UPDATE(Requests, requestId).with({
-                status: Request.status.COMPLETED,
-                modifiedBy_ID: userUUID
-            });
+        // WORKFLOW COMPLETE: If all existing steps are terminal AND no active work remains
+        if (allStepsTerminal && !anyStepsInProgress && existingSteps.length > 0) {
+            this.log.info(`Workflow terminal state reached for Request ${requestId}.`);
 
-            await INSERT.into(RequestHistory).entries({
-                request_ID: requestId,
-                action: 'STATUS_CHANGE',
-                actor_ID: null, // System action
-                createdBy_ID: userUUID,
-                modifiedBy_ID: userUUID,
-                timestamp: new Date().toISOString(),
-                comment: 'Request COMPLETED'
-            });
+            // Check if any step was COMPLETED via a "Reject" action
+            const { StepHistory } = this.db.entities;
+            const history = await SELECT.from(StepHistory)
+                .where({ step_ID: { in: existingSteps.map(s => s.ID) }, action: 'APPROVE' })
+                .columns('comment');
+
+            const wasRejected = history.some(h =>
+                h.comment && h.comment.toLowerCase().includes('action: reject')
+            );
+
+            // Also check if any step is explicitly in REJECTED status
+            const hasRejectedStep = existingSteps.some(s => s.status === Step.status.REJECTED);
+
+            const finalStatus = (wasRejected || hasRejectedStep) ? Request.status.REJECTED : Request.status.COMPLETED;
+
+            if (request.status !== finalStatus) {
+                await UPDATE(Requests, requestId).with({
+                    status: finalStatus,
+                    modifiedBy_ID: userUUID
+                });
+
+                await INSERT.into(RequestHistory).entries({
+                    request_ID: requestId,
+                    action: 'STATUS_CHANGE',
+                    actor_ID: null, // System action
+                    createdBy_ID: userUUID,
+                    modifiedBy_ID: userUUID,
+                    timestamp: new Date().toISOString(),
+                    comment: `Request ${finalStatus}`
+                });
+            }
         } else if (request.status === Request.status.SUBMITTED) {
             // Ensure IN_PROGRESS if submitted but not done
             await UPDATE(Requests, requestId).with({ status: Request.status.IN_PROGRESS });
@@ -368,7 +518,7 @@ export class WorkflowEngine {
      * RESOLVED N+1 ISSUE: Performs a single bulk query for all steps.
      */
     public async getRequestDataPayload(requestId: string): Promise<Record<string, unknown>> {
-        const { Steps, RequestData, RequestMasterData } = this.db.entities;
+        const { Steps, RequestData, Requests } = this.db.entities;
 
         // 1. Get Master Data (Flat) - Assuming 1:1 with Request
         // Not implemented fully yet but placeholder
@@ -400,7 +550,92 @@ export class WorkflowEngine {
             }
         }
 
+        // 3. Inject System Fields for mapping support
+        const { ShadowUsers } = this.db.entities;
+        const request = await SELECT.one.from(Requests).where({ ID: requestId }).columns('displayId', 'title', 'createdBy_ID');
+        if (request) {
+            combinedData['__request_uuid'] = requestId;
+            combinedData['__request_displayId'] = request.displayId;
+            combinedData['__request_title'] = request.title;
+
+            if (request.createdBy_ID) {
+                const user = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+                combinedData['__requester_name'] = user?.displayName || user?.email || 'Requester';
+            }
+        }
+
         return combinedData;
+    }
+
+    /**
+     * Resolve and apply input mapping for a step
+     */
+    private resolveMapping(mappingStr: string | null | undefined, combinedData: Record<string, unknown>): string {
+        if (!mappingStr || mappingStr === '{}') return '{}';
+
+        try {
+            const mapping = JSON.parse(mappingStr);
+            const payload: Record<string, unknown> = {};
+
+            // Mapping format: { [targetFieldId]: { sourceStepId, sourceFieldId } }
+            for (const [targetKey, sourceInfo] of Object.entries(mapping)) {
+                if (sourceInfo && typeof sourceInfo === 'object') {
+                    const { sourceFieldId } = sourceInfo as any;
+                    if (sourceFieldId && combinedData[sourceFieldId] !== undefined) {
+                        payload[targetKey] = combinedData[sourceFieldId];
+                    }
+                }
+            }
+
+            return JSON.stringify(payload);
+        } catch (e) {
+            this.log.error(`Failed to resolve input mapping:`, e);
+            return '{}';
+        }
+    }
+
+    /**
+     * Evaluates condition rules against request data payload
+     */
+    private evaluateConditionLogic(logicStr: string | null | undefined, combinedData: Record<string, unknown>): boolean {
+        if (!logicStr || logicStr === '{}') return true; // Default true if no logic
+
+        try {
+            const logic = JSON.parse(logicStr) as { matchType: 'AND' | 'OR', rules: { fieldId: string, operator: string, value: string }[] };
+            if (!logic.rules || logic.rules.length === 0) return true;
+
+            const evaluateRule = (rule: { fieldId: string, operator: string, value: string }): boolean => {
+                const dataValue = combinedData[rule.fieldId];
+                if (dataValue === undefined || dataValue === null) return false;
+
+                const stringData = String(dataValue).toLowerCase();
+                const stringTarget = String(rule.value || '').toLowerCase();
+
+                switch (rule.operator) {
+                    case 'EQUALS':
+                        return stringData === stringTarget;
+                    case 'NOT_EQUALS':
+                        return stringData !== stringTarget;
+                    case 'CONTAINS':
+                        return stringData.includes(stringTarget);
+                    case 'GREATER_THAN':
+                        return Number(dataValue) > Number(rule.value);
+                    case 'LESS_THAN':
+                        return Number(dataValue) < Number(rule.value);
+                    default:
+                        return false;
+                }
+            };
+
+            if (logic.matchType === 'AND') {
+                return logic.rules.every(evaluateRule);
+            } else { // 'OR'
+                return logic.rules.some(evaluateRule);
+            }
+        } catch (e) {
+            this.log.error(`Failed to evaluate condition logic:`, e);
+            return false;
+        }
     }
 
     /**

@@ -94,8 +94,10 @@ export const AdminService = {
     /**
      * Create a Step Dependency (predecessor relationship)
      */
-    async createStepDependency(stepId: string, dependsOnId: string): Promise<any> {
-        const payload = { dependsOn_ID: dependsOnId };
+    async createStepDependency(stepId: string, dependsOnId: string, action?: string): Promise<any> {
+        const payload: any = { dependsOn_ID: dependsOnId };
+        if (action) payload.action = action;
+
         const response = await api.post(
             `${API_BASE}/StepDefinitions(ID='${stepId}',IsActiveEntity=false)/predecessors`,
             payload
@@ -293,5 +295,23 @@ export const AdminService = {
      */
     async deleteSamlMapping(id: string): Promise<void> {
         await api.delete(`${API_BASE}/SamlGroupMappings(ID='${id}')`);
+    },
+
+    /**
+     * Test an external API call from the backend to avoid CORS issues.
+     */
+    async testApiCall(data: {
+        method: string;
+        url: string;
+        headers: string;
+        body: string;
+        authType: string;
+        authUser: string;
+        authPass: string;
+        authToken: string;
+    }): Promise<{ status: number; body: any }> {
+        const response = await api.post(`${API_BASE}/testApiCall`, data);
+        // The backend returns a JSON string, so we need to parse it
+        return JSON.parse(response.data.value);
     }
 };

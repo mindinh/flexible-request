@@ -13,6 +13,7 @@
     "@types/nodemailer": "^7.0.11",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "axios": "^1.13.2",
     "nodemailer": "^8.0.1"
   },
   "devDependencies": {
@@ -22,7 +23,6 @@
     "@sap/cds-dk": "^9",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.3",
-    "axios": "^1.13.2",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

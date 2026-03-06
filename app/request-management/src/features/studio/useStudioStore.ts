@@ -35,6 +35,7 @@ interface StudioState {
     error: string | null;
     activeStepId: string | null;
     selectedSchemaFieldId: string | null;
+    selectedFooterActionId: string | null;
     selectedRuleId: string | null;
     isDryRunOpen: boolean;
 
@@ -48,6 +49,12 @@ interface StudioState {
 
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
+
+    // Simulation State
+    isSimulationMode: boolean;
+    simulationActiveNodeId: string | null;
+    simulationHistory: string[];
+    simulationVariables: Record<string, any>;
 
     // Actions
     setActiveTab: (tab: string) => void;
@@ -74,6 +81,7 @@ interface StudioState {
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     setActiveStepId: (id: string | null) => void;
     setSelectedSchemaFieldId: (id: string | null) => void;
+    setSelectedFooterActionId: (id: string | null) => void;
     setSelectedRuleId: (id: string | null) => void;
     setIsDryRunOpen: (open: boolean) => void;
     // Data Schema actions
@@ -81,6 +89,13 @@ interface StudioState {
     setSelectedDataFieldId: (id: string | null) => void;
     updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
     setIsFormEditorOpen: (open: boolean) => void;
+    updateForms: (forms: UiForm[]) => void;
+
+    // Simulation Actions
+    startSimulation: () => void;
+    stopSimulation: () => void;
+    stepSimulation: () => void;
+    updateSimulationVariable: (key: string, value: any) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -104,6 +119,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     error: null,
     activeStepId: null,
     selectedSchemaFieldId: null,
+    selectedFooterActionId: null,
     selectedRuleId: null,
     isDryRunOpen: false,
 
@@ -118,13 +134,20 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     draftConflict: false,
     draftConflictMessage: null,
 
+    // Simulation
+    isSimulationMode: false,
+    simulationActiveNodeId: null,
+    simulationHistory: [],
+    simulationVariables: {},
+
     setActiveTab: (tab) => set({ activeTab: tab }),
     setDirty: (dirty) => set({ isDirty: dirty }),
     setActiveStepId: (id) => {
         // Clear selected rule when changing steps (rules are step-specific)
         set({ activeStepId: id, selectedSchemaFieldId: null, selectedRuleId: null });
     },
-    setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id }),
+    setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id, selectedFooterActionId: null }),
+    setSelectedFooterActionId: (id) => set({ selectedFooterActionId: id, selectedSchemaFieldId: null }),
     setSelectedRuleId: (id) => set({ selectedRuleId: id, isDryRunOpen: id ? false : get().isDryRunOpen }),
     setIsDryRunOpen: (open) => set({ isDryRunOpen: open, selectedRuleId: open ? null : get().selectedRuleId }),
     // Data Schema actions
@@ -198,6 +221,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             try {
                 if (fullDraft.formSchemasContent) {
                     forms = JSON.parse(fullDraft.formSchemasContent);
+                    // Add default actions to existing forms if they don't have any
+                    forms = forms.map((f: any) => ({
+                        ...f,
+                        footerActions: f.footerActions !== undefined ? f.footerActions : [
+                            { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
+                            { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
+                        ]
+                    }));
                 }
             } catch (e) {
                 console.warn('Failed to parse formSchemasContent:', e);
@@ -264,7 +295,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     },
 
     saveChanges: async () => {
-        const { requestTypeId, metadata, rules, workflow, forms, statusNetwork, isDirty } = get();
+        const { requestTypeId, metadata, rules, workflow, forms, isDirty } = get();
         console.log("saveChanges called. Dirty:", isDirty, "ID:", requestTypeId);
 
         if (!requestTypeId || !metadata || !isDirty) {
@@ -344,12 +375,21 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     isStartStep: node.data.isStart,
                     slaDays: node.data.sla,
                     stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
+                    posX: Math.round(node.position.x),
+                    posY: Math.round(node.position.y),
                     actionSubType: node.data.actionSubType || null,
                     formId: node.data.formId || null,
+                    inputMapping: (node.data.inputMapping as string) || '{}',
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
                     ownerId: node.data.owner_ID || null,
+                    // Fixed approver fields
+                    approverType: node.data.approverType || null,
+                    approverId: node.data.approver_ID || null,
+                    notifications: JSON.stringify(node.data.notifications || []),
+                    emailSubject: (node.data.emailSubject as string) || null,
+                    emailBody: (node.data.emailBody as string) || null,
                 };
 
                 if (originalNodeIds.has(node.id)) {
@@ -383,14 +423,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             const { originalEdges } = get();
 
             // Helper to create edge key for comparison
-            const edgeKey = (source: string, target: string) => `${source}|${target}`;
+            const edgeKey = (source: string, target: string, handle?: string) => `${source}|${target}|${handle || ''}`;
 
             // Build sets for comparison
-            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e.source, e.target)));
-            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e.source, e.target)));
+            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string)));
+            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string)));
 
             // Find edges to DELETE (in original but not in current)
-            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e.source, e.target)));
+            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string)));
             console.log("Deleting dependencies...", edgesToDelete.length);
             for (const edge of edgesToDelete) {
                 if (edge.id) {
@@ -399,12 +439,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
 
             // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e.source, e.target)));
+            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // edge.source is the predecessor (dependsOn)
                 // edge.target is the step that depends on source
-                await AdminService.createStepDependency(edge.target, edge.source);
+                await AdminService.createStepDependency(edge.target, edge.source, edge.sourceHandle as string);
             }
 
             // 3. Save Form Schemas at Request Type level
@@ -618,6 +658,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             id: crypto.randomUUID(),
             name,
             items: [],
+            footerActions: [
+                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
+                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
+            ]
         };
         return {
             forms: [...state.forms, newForm],
@@ -678,4 +722,72 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
         isDirty: true,
     })),
+    updateForms: (forms) => set({ forms, isDirty: true }),
+
+    // Simulation Actions
+    startSimulation: () => {
+        const { workflow } = get();
+        const startNode = workflow.nodes.find(n => n.data.isStart || n.type === 'startNode');
+        if (!startNode) {
+            set({ error: 'Cannot start simulation: No start node found.' });
+            return;
+        }
+        set({
+            isSimulationMode: true,
+            simulationActiveNodeId: startNode.id,
+            simulationHistory: [startNode.id],
+            simulationVariables: {},
+            error: null
+        });
+    },
+
+    stopSimulation: () => set({
+        isSimulationMode: false,
+        simulationActiveNodeId: null,
+        simulationHistory: [],
+        simulationVariables: {}
+    }),
+
+    updateSimulationVariable: (key, value) => set(state => ({
+        simulationVariables: { ...state.simulationVariables, [key]: value }
+    })),
+
+    stepSimulation: () => set(state => {
+        const { workflow, simulationActiveNodeId, simulationVariables } = state;
+        if (!simulationActiveNodeId) return {};
+
+        const currentNode = workflow.nodes.find(n => n.id === simulationActiveNodeId);
+        if (!currentNode) return {};
+
+        // Find outgoing edges
+        const outgoingEdges = workflow.edges.filter(e => e.source === simulationActiveNodeId);
+
+        if (outgoingEdges.length === 0) {
+            // End of flow
+            return { simulationActiveNodeId: null };
+        }
+
+        let nextNodeId: string | null = null;
+
+        if (currentNode.type === 'conditionNode') {
+            // Condition Logic Traversal
+            const trueEdge = outgoingEdges.find(e => e.sourceHandle === 'true');
+            const falseEdge = outgoingEdges.find(e => e.sourceHandle === 'false');
+
+            // Simplified logic: Check if simulationVariables['condition_result'] is true
+            // In a real implementation, we would evaluate currentNode.data.conditionLogic
+            const result = simulationVariables[currentNode.id] === true;
+            nextNodeId = result ? (trueEdge?.target || null) : (falseEdge?.target || null);
+        } else {
+            // Sequential traversal (take the first available edge)
+            nextNodeId = outgoingEdges[0].target;
+        }
+
+        if (!nextNodeId) return { simulationActiveNodeId: null };
+
+        return {
+            simulationActiveNodeId: nextNodeId,
+            simulationHistory: [...state.simulationHistory, nextNodeId]
+        };
+    }),
 }));

@@ -31,8 +31,9 @@ service AdminService @(
     entity StepDefinitions   as
         projection on db.StepDefinitions {
             *,
-            virtual null as ownerDisplayName : String,
-            approverRules                    : redirected to ApproverRules
+            virtual null as ownerDisplayName    : String,
+            virtual null as approverDisplayName : String,
+            approverRules                       : redirected to ApproverRules
         };
 
     @restrict: [{
@@ -113,4 +114,19 @@ service AdminService @(
         // Reset the counter back to startNumber
         action resetRange();
     };
+
+    /**
+     * Test an external API call from the backend to avoid CORS issues.
+     * Returns { status: number, body: any } as a JSON string.
+     */
+    action testApiCall(
+        method : String,
+        url : String,
+        headers : String, // JSON string of headers
+        body : String,    // Request body
+        authType : String,
+        authUser : String,
+        authPass : String,
+        authToken : String
+    ) returns LargeString;
 }

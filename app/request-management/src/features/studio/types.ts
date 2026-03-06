@@ -112,10 +112,18 @@ export interface UiTableField {
 export type UiCanvasItem = UiFormField | UiSection | UiTableField;
 
 // --- Forms ---
+export interface UiFormAction {
+    id: string;
+    label: string;
+    variant?: 'default' | 'primary' | 'outline' | 'ghost' | 'danger' | 'success' | 'secondary' | 'warning';
+    icon?: string;
+}
+
 export interface UiForm {
     id: string;
     name: string;
     items: UiCanvasItem[];
+    footerActions?: UiFormAction[];
 }
 
 // --- Workflow ---
@@ -130,6 +138,25 @@ export interface UiWorkflowNodeData {
     formId?: string;            // Reference to a UiForm for this step
     actionSubType?: string;     // 'form' | 'email' | 'approval' (for action nodes)
     triggerType?: string;       // 'FORM_SUB' | 'API_TRIGGER' (for start nodes)
+    inputMapping?: string;      // JSON string of input mappings
+    owner_ID?: string;          // Default Step Owner ID
+    ownerType?: string;         // USER/GROUP/etc.
+    ownerName?: string;         // Display name
+    approver_ID?: string;       // Fixed Approver ID
+    approverType?: string;      // USER/GROUP/etc.
+    approverName?: string;      // Display name
+
+    // API Call Configuration
+    apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    apiUrl?: string;
+    apiHeaders?: Array<{ key: string; value: string }>;
+    apiBody?: string;
+    apiAuthType?: 'none' | 'bearer' | 'basic';
+    apiAuthToken?: string;
+    apiAuthUser?: string;
+    apiAuthPass?: string;
+    apiResponseMapping?: Array<{ path: string; targetKey: string }>;
+
     [key: string]: unknown;
 }
 

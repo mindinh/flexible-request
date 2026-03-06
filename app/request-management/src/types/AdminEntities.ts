@@ -21,7 +21,11 @@ export interface AdminStepDefinition {
     requestType_ID?: string;
     // Node type for workflow canvas
     stepType?: string; // 'start' | 'end' | 'action' | 'condition'
+    posX?: number;
+    posY?: number;
     actionSubType?: string; // 'form' | 'email' | 'approval'
+    formId?: string;
+    inputMapping?: string;
     predecessors?: AdminStepDependency[];
     approverRules?: AdminApproverRule[];
     // Schema content stored directly on step
@@ -31,6 +35,10 @@ export interface AdminStepDefinition {
     // Default Step Owner (design-time configuration)
     ownerType?: string;
     ownerId?: string;
+    ownerDisplayName?: string;
+    approverType?: string;
+    approverId?: string;
+    approverDisplayName?: string;
 }
 
 // ApprovalConfig removed
@@ -57,7 +65,7 @@ export interface AdminApproverRule {
     stepDefinition_ID?: string;
     priority: number;
     conditionExpr: string; // JSON string
-    principalType: 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION';
+    principalType: 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION' | 'DEPARTMENT';
     principalId: string;    // UUID of ShadowUsers or ShadowGroups
     isFinal?: boolean;
     description?: string;

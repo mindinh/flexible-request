@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../../components/studio';
 
 // Local imports
 import { useRequestFormData } from './hooks';
+import { useAuth } from '../../../lib/auth-context';
 import {
     FormHeader,
     RequestInfoForm,
@@ -28,6 +29,7 @@ import type { Principal } from '../../../components/shared/PrincipalSelect';
 export function DynamicRequestForm() {
     const { typeId, id: requestId } = useParams<{ typeId?: string; id?: string }>();
     const navigate = useNavigate();
+    const { isAdmin, currentUserId } = useAuth();
     const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
     // Use custom hook for all data management
@@ -51,19 +53,20 @@ export function DynamicRequestForm() {
         handleSubmit,
         isLoading,
     } = useRequestFormData({ typeId, requestId });
-
-    // Get all steps sorted by sequence
+    // Get all steps
     const steps = useMemo(() => {
-        const allSteps = requestType?.steps || [];
-        return [...allSteps].sort((a, b) => (a.sequenceNum || 0) - (b.sequenceNum || 0));
+        // Steps are now pre-sorted by useRequestFormData
+        return requestType?.steps || [];
     }, [requestType?.steps]);
 
-    // Selected step ID for owner assignment (default to start step)
-    const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+    const isCoordinator = useMemo(() => {
+        if (!existingRequest) return true;
+        return existingRequest.coordinatorId === currentUserId;
+    }, [existingRequest, currentUserId]);
 
-    // Initialize selected step to start step when available
-    const effectiveSelectedStepId = selectedStepId || startStep?.ID || steps[0]?.ID;
-    const isStartStep = effectiveSelectedStepId === startStep?.ID;
+    // Fixed to start step for view-only mode
+    const effectiveSelectedStepId = startStep?.ID || steps[0]?.ID;
+    const isStartStep = true; // Always show start step form in this view
 
     // Future steps data map - stores pre-filled data for non-start steps
     const [futureStepsData, setFutureStepsData] = useState<Record<string, Record<string, any>>>({});
@@ -71,14 +74,26 @@ export function DynamicRequestForm() {
     // Get the currently selected step definition
     const selectedStep = useMemo(() => {
         if (!effectiveSelectedStepId) return null;
-        return steps.find(s => s.ID === effectiveSelectedStepId) || null;
+        return (steps as any[]).find(s => s.ID === effectiveSelectedStepId) || null;
     }, [steps, effectiveSelectedStepId]);
 
     // Resolve schema items for the selected step
     const currentSchemaItems = useMemo(() => {
         if (isStartStep) return startStepSchemaItems;
+
+        // Decoupled form support for future/non-start steps
+        if (selectedStep?.formId) {
+            try {
+                const forms = requestType?.formSchemasContent ? JSON.parse(requestType.formSchemasContent) : [];
+                const form = forms.find((f: any) => f.id === selectedStep.formId);
+                if (form) return form.items || [];
+            } catch (e) {
+                console.warn('Failed to parse formSchemasContent for step form resolution', e);
+            }
+        }
+
         return parseSchemaContent(selectedStep?.schemaContent);
-    }, [isStartStep, startStepSchemaItems, selectedStep?.schemaContent]);
+    }, [isStartStep, startStepSchemaItems, selectedStep, requestType?.formSchemasContent]);
 
     // Resolve form data for the selected step
     const currentFormData = isStartStep ? formData : (futureStepsData[effectiveSelectedStepId] || {});
@@ -119,7 +134,7 @@ export function DynamicRequestForm() {
         }
 
         // Fall back to default from step definition ONLY if no assignment record exists
-        const step = steps.find(s => s.ID === effectiveSelectedStepId);
+        const step = (steps as any[]).find(s => s.ID === effectiveSelectedStepId);
         if (step?.ownerId) {
             return {
                 id: step.ownerId,
@@ -160,10 +175,7 @@ export function DynamicRequestForm() {
         }
     };
 
-    // Handle step click from sidebar
-    const handleStepClick = (stepId: string) => {
-        setSelectedStepId(stepId);
-    };
+    // handleStepClick removed (view-only)
 
     // Loading state
     if (isPageLoading) {
@@ -232,7 +244,7 @@ export function DynamicRequestForm() {
                             </div>
                         )}
 
-                        {!isStartStep && currentSchemaItems.length > 0 && (
+                        {(!isAdmin && !isCoordinator) ? null : (!isStartStep && currentSchemaItems.length > 0 && (
                             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
                                 <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
                                 <div>
@@ -242,7 +254,7 @@ export function DynamicRequestForm() {
                                     </p>
                                 </div>
                             </div>
-                        )}
+                        ))}
 
                         {/* Action Buttons */}
                         <FormActions
@@ -265,8 +277,8 @@ export function DynamicRequestForm() {
                         steps={steps}
                         resolvedApprovers={resolvedApprovers}
                         isEditMode={isEditMode}
-                        selectedStepId={effectiveSelectedStepId}
-                        onStepClick={handleStepClick}
+                        selectedStepId={undefined}
+                        onStepClick={() => { }}
                         stepOwners={stepOwners}
                     />
                 </div>

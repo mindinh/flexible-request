@@ -17,125 +17,117 @@ export function ConditionNode({ data, selected }: NodeProps) {
                 cursor: 'pointer',
             }}
         >
-            {/* Card container */}
+            {/* Diamond container */}
             <div
                 style={{
                     display: 'flex',
-                    width: '180px',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '100px',
+                    height: '100px',
                     backgroundColor: '#fff',
-                    borderRadius: '10px',
-                    border: `1.5px solid ${selected ? accent : '#e2e8f0'}`,
-                    overflow: 'hidden',
+                    border: `2px solid ${selected ? accent : '#e2e8f0'}`,
+                    transform: 'rotate(45deg)',
                     boxShadow: selected
-                        ? `0 0 0 2px ${accent}22, 0 4px 16px rgba(0,0,0,0.08)`
+                        ? `0 0 0 2px ${accent}22, 0 4px 20px rgba(0,0,0,0.1)`
                         : '0 1px 4px rgba(0,0,0,0.06)',
                     transition: 'all 0.15s ease',
+                    position: 'relative',
                 }}
             >
-                {/* Purple left accent */}
+                {/* Inverse rotation for content */}
                 <div style={{
-                    width: '4px',
-                    backgroundColor: accent,
-                    flexShrink: 0,
-                }} />
-
-                {/* Content */}
-                <div style={{
+                    transform: 'rotate(-45deg)',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '10px',
-                    padding: '12px 14px',
-                    flex: 1,
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    padding: '10px',
+                    width: '100%',
                 }}>
+                    <GitBranch size={16} color={accent} style={{ marginBottom: '4px' }} />
                     <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '8px',
-                        backgroundColor: '#f5f3ff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
+                        fontWeight: 700,
+                        fontSize: '11px',
+                        color: '#1e293b',
+                        lineHeight: 1.1,
+                        maxWidth: '70px',
+                        wordBreak: 'break-word',
                     }}>
-                        <GitBranch size={16} color={accent} />
-                    </div>
-                    <div style={{ overflow: 'hidden' }}>
-                        <div style={{
-                            fontWeight: 600,
-                            fontSize: '12.5px',
-                            color: '#1e293b',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            lineHeight: 1.3,
-                        }}>
-                            {(data.label as string) || 'Condition'}
-                        </div>
-                        <div style={{
-                            fontSize: '10.5px',
-                            color: '#a78bfa',
-                            marginTop: '2px',
-                        }}>
-                            IF / ELSE
-                        </div>
+                        {(data.label as string) || 'Condition'}
                     </div>
                 </div>
             </div>
 
-            {/* Output labels */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                width: '180px',
-                padding: '4px 6px 0',
-            }}>
-                <span style={{ fontSize: '9px', fontWeight: 600, color: '#22c55e', letterSpacing: '0.04em' }}>YES</span>
-                <span style={{ fontSize: '9px', fontWeight: 600, color: '#ef4444', letterSpacing: '0.04em' }}>NO</span>
-            </div>
-
-            {/* Input handle */}
+            {/* Input handle (Top) */}
             <Handle
                 type="target"
-                position={Position.Left}
+                position={Position.Top}
                 style={{
-                    width: '8px',
-                    height: '8px',
+                    width: '10px',
+                    height: '10px',
                     backgroundColor: '#fff',
                     border: `2px solid ${accent}`,
-                    top: '26px',
-                    left: '-4px',
+                    top: '-5px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 20,
                 }}
             />
 
-            {/* Yes output */}
-            <Handle
-                type="source"
-                position={Position.Right}
-                id="true"
-                style={{
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: '#22c55e',
-                    border: '2px solid #fff',
-                    top: '20px',
-                    right: '-4px',
-                }}
-            />
+            {/* Yes output (Bottom) */}
+            <div style={{
+                position: 'absolute',
+                bottom: '-25px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+            }}>
+                <Handle
+                    type="source"
+                    position={Position.Bottom}
+                    id="true"
+                    style={{
+                        position: 'static',
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: '#22c55e',
+                        border: '2px solid #fff',
+                        transform: 'none',
+                    }}
+                />
+                <span style={{ fontSize: '9px', fontWeight: 800, color: '#22c55e' }}>YES</span>
+            </div>
 
-            {/* No output */}
-            <Handle
-                type="source"
-                position={Position.Right}
-                id="false"
-                style={{
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: '#ef4444',
-                    border: '2px solid #fff',
-                    top: '36px',
-                    right: '-4px',
-                }}
-            />
+            {/* No output (Right) */}
+            <div style={{
+                position: 'absolute',
+                right: '-40px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+            }}>
+                <span style={{ fontSize: '9px', fontWeight: 800, color: '#ef4444' }}>NO</span>
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id="false"
+                    style={{
+                        position: 'static',
+                        width: '12px',
+                        height: '12px',
+                        backgroundColor: '#ef4444',
+                        border: '2px solid #fff',
+                        transform: 'none',
+                    }}
+                />
+            </div>
         </div>
     );
 }

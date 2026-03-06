@@ -125,31 +125,43 @@ export class NotificationHandler {
             this.log.info(`[notification-handler] Processing notification for approval: ${approvalId}`);
 
             const db = await cds.connect.to('db');
-            const { StepApprovals, Steps, Requests, RequestData, ShadowUsers, GroupMembers } = db.entities('sap.cre');
+            const { StepApprovals, Steps, Requests, RequestData, ShadowUsers, GroupMembers, StepDefinitions } = db.entities('sap.cre');
 
-            // 1. Fetch Approval, Step, and Request
+            // 1. Fetch Approval, Step (with stepDefinition), and Request
             const approval = await SELECT.one.from(StepApprovals, approvalId);
             const step = await SELECT.one.from(Steps, stepId)
-                .columns((s: any) => { s.ID; s.stepDefinition((sd: any) => { sd.stepName; }); });
+                .columns((s: any) => { s.ID; s.stepDefinition_ID; s.stepDefinition((sd: any) => { sd.stepName; sd.notifications; sd.emailSubject; sd.emailBody; }); });
             const request = await SELECT.one.from(Requests, requestId).columns('ID', 'displayId', 'title', 'priority', 'createdBy');
 
             if (!approval || !step || !request) {
                 throw new Error('Missing data for notification, aborting.');
             }
 
-            // 2. Resolve recipient emails
+            // 2. Check if email notification is enabled for this step
+            let notificationChannels: string[] = [];
+            try {
+                if (step.stepDefinition?.notifications) {
+                    notificationChannels = JSON.parse(step.stepDefinition.notifications);
+                }
+            } catch { /* ignore parse error */ }
+
+            const isEmailEnabled = notificationChannels.includes('email');
+            this.log.info(`[notification-handler] Email enabled: ${isEmailEnabled}, channels: ${JSON.stringify(notificationChannels)}`);
+
+            // 3. Resolve recipient emails (always needed for in-app notifications)
             const recipientEmails: string[] = [];
+            const recipientUserIds: string[] = [];
             const groupTypes = ['GROUP', 'ROLE', 'TEAM', 'DEPARTMENT', 'POSITION'];
 
             if (approval.approverType === 'USER') {
                 const user = await SELECT.one.from(ShadowUsers)
                     .where({ ID: approval.approver })
-                    .columns('email');
+                    .columns('ID', 'email');
                 if (user?.email) recipientEmails.push(user.email);
+                if (user?.ID) recipientUserIds.push(user.ID);
             } else if (groupTypes.includes(approval.approverType)) {
                 this.log.info(`[notification-handler] Resolving members for ${approval.approverType}: ${approval.approver}`);
 
-                // Fetch member IDs first
                 const members = await SELECT.from(GroupMembers)
                     .where({ group_ID: approval.approver })
                     .columns('user_ID');
@@ -158,17 +170,39 @@ export class NotificationHandler {
                     const userIds = members.map((m: any) => m.user_ID).filter(Boolean);
                     this.log.info(`[notification-handler] Found ${userIds.length} member ID(s)`);
 
-                    // Fetch emails for these users
                     const users = await SELECT.from(ShadowUsers)
                         .where({ ID: { in: userIds } })
-                        .columns('email');
+                        .columns('ID', 'email');
 
                     users.forEach((u: any) => {
                         if (u.email) recipientEmails.push(u.email);
+                        if (u.ID) recipientUserIds.push(u.ID);
                     });
                 } else {
                     this.log.warn(`[notification-handler] No members found for group ${approval.approver}`);
                 }
+            }
+
+            // 4. Create in-app notification records (always)
+            const notificationTitle = 'Approval Required';
+            const notificationMessage = `Request ${request.displayId} needs your approval`;
+
+            for (const userId of recipientUserIds) {
+                await this.createInAppNotification(
+                    userId,
+                    notificationTitle,
+                    notificationMessage,
+                    request,
+                    stepId,
+                    'APPROVAL',
+                    'Approver'
+                );
+            }
+
+            // 5. Send email only if enabled in step definition
+            if (!isEmailEnabled) {
+                this.log.info(`[notification-handler] Email not enabled for this step, skipping email.`);
+                return;
             }
 
             if (recipientEmails.length === 0) {
@@ -176,81 +210,44 @@ export class NotificationHandler {
                 return;
             }
 
-            // 3. Fetch submitted data summary
-            const stepData = await SELECT.one.from(RequestData).where({ step_ID: stepId });
-            let dataSummary = 'No additional data.';
-            if (stepData?.payload) {
-                try {
-                    const parsed = JSON.parse(stepData.payload);
-                    dataSummary = Object.entries(parsed)
-                        .filter(([k, v]) => k !== 'ID' && v !== null && v !== '')
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join('\n');
-                } catch { /* ignore parse error */ }
-            }
-
-            // 4. Resolve Requester Name
-            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
-            const requesterName = requester?.displayName || requester?.email || 'Requester';
-
-            // 5. Build email content 
+            // 6. Build email content from step definition template (or use defaults)
             const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
             const deepLink = `${appUrl}/inbox/request/${requestId}`;
-            const subject = `New Approval Request [${request.displayId}] – Action Required`;
+            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+            const requesterName = requester?.displayName || requester?.email || 'Requester';
+            const stepName = step.stepDefinition?.stepName || 'User Task';
 
-            const html = `
-                <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 20px; color: #333; line-height: 1.6;">
-                    <p>Dear Approver,</p>
-                    
-                    <p>You have been assigned a new request that requires your review and decision.</p>
-                    <p>Please find the details below:</p>
-                    
-                    <ul style="list-style: none; padding-left: 20px;">
-                        <li><strong>Request:</strong> ${request.displayId} - ${request.title}</li>
-                        <li><strong>Step:</strong> ${approval.ruleName || step.stepDefinition?.stepName || 'Approval Step'}</li>
-                        <li><strong>Priority:</strong> ${NotificationHandler.formatPriority(request.priority)}</li>
-                        <li><strong>Created By:</strong> ${requesterName}</li>
-                    </ul>
+            // Variable interpolation map — keys match SYSTEM_OUTPUT_FIELDS defined in the Studio UI
+            const vars: Record<string, string> = {
+                '{{__request_uuid}}': request.ID || '',
+                '{{__request_displayId}}': request.displayId || '',
+                '{{__request_title}}': request.title || '',
+                '{{__requester_name}}': requesterName,
+            };
 
-                    <p>Kindly review the request in the system and provide your approval or rejection at your earliest convenience.</p>
-                    <p>You can access the request here:<br/>
-                    <a href="${deepLink}" style="color: #0070f3; font-weight: bold; text-decoration: underline;">Open in ProRequest System</a></p>
-
-                    <p>If you have any questions or require further clarification, please feel free to contact the requester.</p>
-
-                    <p>Thank you for your prompt attention.</p>
-                    <p>Best regards,<br/><strong>proRequest System</strong></p>
-                </div>
-            `;
-
-            const text = `Dear Approver,\n\nYou have been assigned a new request that requires your review and decision.\n\nPlease find the details below:\n- Request: ${request.title}\n- Step: ${approval.ruleName || step.stepDefinition?.stepName}\n- Priority: ${NotificationHandler.formatPriority(request.priority)}\n- Created By: ${requesterName}\n\nKindly review the request in the system and provide your approval or rejection at your earliest convenience.\nYou can access the request here: ${deepLink}\n\nIf you have any questions or require further clarification, please feel free to contact the requester.\n\nThank you for your prompt attention.\n\nBest regards,\nproRequest System`;
-
-            // 6. Create in-app notification records
-            const notificationTitle = 'Approval Required';
-            const notificationMessage = `Request ${request.displayId} needs your approval`;
-
-            for (const email of recipientEmails) {
-                const targetUser = await SELECT.one.from(ShadowUsers).where({ email }).columns('ID');
-                if (targetUser) {
-                    await this.createInAppNotification(
-                        targetUser.ID,
-                        notificationTitle,
-                        notificationMessage,
-                        request,
-                        stepId,
-                        'APPROVAL',
-                        'Approver'
-                    );
+            const interpolate = (template: string): string => {
+                let result = template;
+                for (const [key, value] of Object.entries(vars)) {
+                    result = result.replaceAll(key, value);
                 }
-            }
+                return result;
+            };
 
-            // 6. Send to all resolved emails
-            this.log.info(`[notification-handler] Sending to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);
+            const subject = step.stepDefinition?.emailSubject
+                ? interpolate(step.stepDefinition.emailSubject)
+                : '';
+
+            const html = step.stepDefinition?.emailBody
+                ? interpolate(step.stepDefinition.emailBody)
+                : '';
+
+            // 7. Send to all resolved emails
+            this.log.info(`[notification-handler] Sending email to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);
             for (const email of recipientEmails) {
                 await EmailService.sendMail({
                     to: email,
                     subject,
-                    text: `Action Required: ${request.title}\nStep: ${approval.ruleName || step.stepDefinition?.stepName}\nLink: ${deepLink}`,
+                    text: subject, // plain text fallback
                     html
                 });
             }

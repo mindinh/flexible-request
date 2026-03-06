@@ -18,38 +18,43 @@ export function EndNode({ data, selected }: NodeProps) {
                 cursor: 'pointer',
             }}
         >
-            {/* Pill container */}
+            {/* Circle container */}
             <div
                 style={{
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '10px 20px',
-                    borderRadius: '24px',
+                    justifyContent: 'center',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '50%',
                     backgroundColor: '#fff',
-                    border: `1.5px solid ${selected ? accent : '#e2e8f0'}`,
+                    border: `2px solid ${selected ? accent : '#e2e8f0'}`,
                     boxShadow: selected
                         ? `0 0 0 2px ${accent}22, 0 4px 12px rgba(0,0,0,0.08)`
                         : '0 1px 4px rgba(0,0,0,0.05)',
                     transition: 'all 0.15s ease',
+                    position: 'relative',
                 }}
             >
                 <div style={{
-                    width: '28px',
-                    height: '28px',
+                    width: '32px',
+                    height: '32px',
                     borderRadius: '50%',
                     backgroundColor: '#f1f5f9',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    marginBottom: '4px',
                 }}>
-                    <Square size={12} color={accent} fill={accent} />
+                    <Square size={14} color={accent} fill={accent} />
                 </div>
                 <span style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
+                    fontSize: '11px',
+                    fontWeight: 800,
                     color: '#475569',
-                    letterSpacing: '0.01em',
+                    letterSpacing: '0.02em',
+                    textTransform: 'uppercase',
                 }}>
                     {(data.label as string) || 'End'}
                 </span>
@@ -58,15 +63,15 @@ export function EndNode({ data, selected }: NodeProps) {
             {/* Input handle */}
             <Handle
                 type="target"
-                position={Position.Left}
+                position={Position.Top}
                 style={{
-                    width: '8px',
-                    height: '8px',
+                    width: '10px',
+                    height: '10px',
                     backgroundColor: '#fff',
                     border: `2px solid ${accent}`,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    left: '-4px',
+                    top: '-5px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
                 }}
             />
         </div>
