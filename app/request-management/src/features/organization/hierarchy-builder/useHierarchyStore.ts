@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Node, Edge } from '@xyflow/react';
 
+const BRAND_RED = '#b10e10';
+
 export type MemberInfo = {
     userId: string;
     displayName: string;
@@ -57,6 +59,7 @@ interface HierarchyState {
     reset: () => void;
 
     setSavedOrgs: (orgs: SavedOrg[]) => void;
+    removeSavedOrg: (orgName: string) => void;
     setCurrentOrg: (orgId: string | null, orgName: string) => void;
     setCurrentOrgName: (name: string) => void;
     setIsDirty: (dirty: boolean) => void;
@@ -129,8 +132,8 @@ export const useHierarchyStore = create<HierarchyState>((set) => ({
                 source: parentNodeId,
                 target: childNode.id,
                 type: 'smoothstep',
-                animated: true,
-                style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                animated: false,
+                style: { stroke: BRAND_RED, strokeWidth: 2 },
                 data: {
                     relationship: 'Direct Report',
                     accessLevel: 'View Only',
@@ -154,6 +157,9 @@ export const useHierarchyStore = create<HierarchyState>((set) => ({
     }),
 
     setSavedOrgs: (orgs) => set({ savedOrgs: orgs }),
+    removeSavedOrg: (orgName) => set((state) => ({
+        savedOrgs: state.savedOrgs.filter((o) => o.name !== orgName),
+    })),
     setCurrentOrg: (orgId, orgName) => set({ currentOrgId: orgId, currentOrgName: orgName }),
     setCurrentOrgName: (name) => set({ currentOrgName: name, isDirty: true }),
     setIsDirty: (dirty) => set({ isDirty: dirty }),

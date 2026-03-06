@@ -10,49 +10,13 @@ import {
     type Node,
     type OnConnect,
     useReactFlow,
-    Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
-import { Wand2 } from 'lucide-react';
-import dagre from 'dagre';
-import { Button } from '../../../components/ui/Button';
 import { hierarchyNodeTypes } from './nodes';
 import { useHierarchyStore, type HierarchyEdgeData } from './useHierarchyStore';
 
-const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
-    userNode: { width: 200, height: 75 },
-    groupNode: { width: 220, height: 110 },
-};
-
-function getLayoutedElements(nodes: Node[], edges: Edge[], direction = 'TB') {
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({ rankdir: direction, nodesep: 60, ranksep: 80, edgesep: 40 });
-
-    nodes.forEach((node) => {
-        const dims = NODE_DIMENSIONS[node.type || 'userNode'] || NODE_DIMENSIONS.userNode;
-        dagreGraph.setNode(node.id, dims);
-    });
-
-    edges.forEach((edge) => {
-        dagreGraph.setEdge(edge.source, edge.target);
-    });
-
-    dagre.layout(dagreGraph);
-
-    return {
-        nodes: nodes.map((node) => {
-            const pos = dagreGraph.node(node.id);
-            const dims = NODE_DIMENSIONS[node.type || 'userNode'] || NODE_DIMENSIONS.userNode;
-            return {
-                ...node,
-                position: { x: pos.x - dims.width / 2, y: pos.y - dims.height / 2 },
-            };
-        }),
-        edges,
-    };
-}
+const BRAND_RED = '#b10e10';
 
 export function HierarchyCanvas() {
     const { screenToFlowPosition } = useReactFlow();
@@ -83,8 +47,8 @@ export function HierarchyCanvas() {
             const newEdge = {
                 ...params,
                 type: 'smoothstep',
-                animated: true,
-                style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                animated: false,
+                style: { stroke: BRAND_RED, strokeWidth: 2 },
                 data: {
                     relationship: 'Direct Report',
                     accessLevel: 'View Only',
@@ -171,17 +135,6 @@ export function HierarchyCanvas() {
         [screenToFlowPosition, store]
     );
 
-    const onLayout = useCallback(() => {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-            nodes,
-            edges,
-            'TB'
-        );
-        setNodes([...layoutedNodes]);
-        setEdges([...layoutedEdges]);
-        syncStore(layoutedNodes, layoutedEdges);
-    }, [nodes, edges, setNodes, setEdges, syncStore]);
-
     return (
         <motion.div
             style={{
@@ -211,18 +164,11 @@ export function HierarchyCanvas() {
                 attributionPosition="bottom-left"
                 style={{ backgroundColor: '#fafafa' }}
                 defaultEdgeOptions={{
-                    style: { stroke: '#8b5cf6', strokeWidth: 2 },
+                    style: { stroke: BRAND_RED, strokeWidth: 2 },
                     type: 'smoothstep',
-                    animated: true,
+                    animated: false,
                 }}
             >
-                <Panel position="top-right">
-                    <Button variant="outline" size="sm" onClick={onLayout}>
-                        <Wand2 size={16} className="text-violet-500" />
-                        Auto Layout
-                    </Button>
-                </Panel>
-
                 <Controls
                     style={{
                         backgroundColor: 'white',

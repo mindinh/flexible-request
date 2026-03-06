@@ -1,5 +1,7 @@
 import { Users } from 'lucide-react';
 
+const BRAND_RED = '#b10e10';
+
 interface HierarchyPaletteProps {
     isCollapsed?: boolean;
 }
@@ -39,7 +41,7 @@ export function HierarchyPalette({ isCollapsed = false }: HierarchyPaletteProps)
                 >
                     <div
                         className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
-                        style={{ backgroundColor: 'color-mix(in srgb, #2563eb 10%, transparent)', color: '#2563eb' }}
+                        style={{ backgroundColor: 'color-mix(in srgb, #b10e10 10%, transparent)', color: BRAND_RED }}
                     >
                         <Users size={16} />
                     </div>
@@ -55,7 +57,7 @@ export function HierarchyPalette({ isCollapsed = false }: HierarchyPaletteProps)
                 draggable
                 onDragStart={handleDragStart}
                 className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 bg-white transition-all cursor-grab active:cursor-grabbing hover:shadow-sm"
-                style={{ color: '#2563eb' }}
+                style={{ color: BRAND_RED }}
                 title="Group"
             >
                 <Users size={18} />

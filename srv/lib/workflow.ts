@@ -19,7 +19,7 @@ type StepDefinitionWithOwner = StepDefinition & {
     approverType?: string | null;
     approverId?: string | null;
     inputMapping?: string | null;
-    conditionLogic?: string | null;
+    conditionExpr?: string | null;
     actionSubType?: string | null;
     stepType?: string | null;
 };
@@ -326,7 +326,6 @@ export class WorkflowEngine {
                 const payload = {
                     stepId: newStepId,
                     requestId
-<<<<<<< HEAD
                 };
 
                 const req = (cds as any).context;
@@ -337,24 +336,6 @@ export class WorkflowEngine {
                 } else {
                     (cds as any).emit('sap.cre.StepActivated', payload);
                 }
-=======
-                });
-            } else if (isEndStep) {
-                await INSERT.into(StepHistory).entries({
-                    step_ID: newStepId,
-                    action: 'AUTO_COMPLETE',
-                    fromValue: Step.status.UPCOMING,
-                    toValue: Step.status.COMPLETED,
-                    actor_ID: null,
-                    createdBy_ID: auditActor,
-                    modifiedBy_ID: auditActor,
-                    timestamp: new Date().toISOString(),
-                    comment: `Step "${def.stepName}" auto-completed (End Step)`
-                });
-
-                // Trigger final completion check
-                await this.advance(requestId, userUUID, sourceRequestId);
->>>>>>> a267c5224a1b3be3c50640fa8bcba77e119e590f
             }
 
             // Handle End Nodes: auto-complete and check workflow completion
@@ -492,7 +473,7 @@ export class WorkflowEngine {
             } else if (isConditionStep) {
                 // Instantly evaluate condition against current request payload
                 const combinedData = await this.getRequestDataPayload(requestId);
-                const conditionResult = this.evaluateConditionLogic(def.conditionLogic, combinedData);
+                const conditionResult = this.evaluateConditionLogic(def.conditionExpr, combinedData);
 
                 this.log.info(`Condition Node "${def.stepName}" evaluated to ${conditionResult}`);
 

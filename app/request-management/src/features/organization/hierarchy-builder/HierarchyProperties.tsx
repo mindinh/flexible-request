@@ -74,7 +74,8 @@ function UserPickerDialog({
                         <input
                             type="text" placeholder="Search users…" value={search}
                             onChange={(e) => setSearch(e.target.value)} autoFocus
-                            className="w-full pl-9 pr-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition"
+                            className="w-full pl-9 pr-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 transition"
+                            style={{ '--tw-ring-color': 'color-mix(in srgb, #b10e10 20%, transparent)' } as any}
                         />
                     </div>
                 </div>
@@ -106,7 +107,7 @@ function UserPickerDialog({
                                         <div className="text-[12px] font-medium text-slate-700 truncate">{name}</div>
                                         {user.email && <div className="text-[10px] text-slate-400 truncate">{user.email}</div>}
                                     </div>
-                                    <Plus size={14} className="text-blue-500 opacity-0 group-hover:opacity-100 transition" />
+                                    <Plus size={14} style={{ color: BRAND_RED }} className="opacity-0 group-hover:opacity-100 transition" />
                                 </div>
                             );
                         })
@@ -156,7 +157,8 @@ export function HierarchyProperties() {
                     <div className="rounded-xl border border-slate-200 p-3">
                         <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Relationship Type</label>
                         <select value={edgeData.relationship || 'Direct Report'} onChange={(e) => updateEdgeData(edge.id, { relationship: e.target.value })}
-                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400">
+                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 transition"
+                            style={{ '--tw-ring-color': 'color-mix(in srgb, #b10e10 20%, transparent)' } as any}>
                             {RELATIONSHIP_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                     </div>
@@ -165,7 +167,11 @@ export function HierarchyProperties() {
                         <div className="flex gap-1.5">
                             {ACCESS_LEVEL_OPTIONS.map((level) => (
                                 <button key={level} onClick={() => updateEdgeData(edge.id, { accessLevel: level })}
-                                    className={`px-3 py-1.5 text-[11px] rounded-lg border transition-all font-medium ${(edgeData.accessLevel || 'View Only') === level ? 'bg-violet-100 border-violet-300 text-violet-700' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                                    className="px-3 py-1.5 text-[11px] rounded-lg border transition-all font-medium"
+                                    style={(edgeData.accessLevel || 'View Only') === level
+                                        ? { backgroundColor: '#fef2f2', borderColor: 'color-mix(in srgb, #b10e10 30%, transparent)', color: BRAND_RED }
+                                        : { backgroundColor: 'white', borderColor: '#e2e8f0', color: '#64748b' }
+                                    }>
                                     {level}
                                 </button>
                             ))}
@@ -174,7 +180,8 @@ export function HierarchyProperties() {
                     <div className="rounded-xl border border-slate-200 p-3">
                         <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5"><Calendar size={10} className="inline mr-1" />Effective Date</label>
                         <input type="date" value={edgeData.effectiveDate || ''} onChange={(e) => updateEdgeData(edge.id, { effectiveDate: e.target.value })}
-                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+                            className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 transition"
+                            style={{ '--tw-ring-color': 'color-mix(in srgb, #b10e10 20%, transparent)' } as any} />
                     </div>
                 </div>
             </div>
@@ -215,7 +222,9 @@ export function HierarchyProperties() {
                 {/* Title Bar */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                     <h3 className="text-[13px] font-semibold text-slate-800 flex items-center gap-2">
-                        {isGroup ? <Users size={14} className="text-blue-600" /> : <User size={14} className="text-indigo-500" />}
+                        {isGroup
+                            ? <Users size={14} style={{ color: BRAND_RED }} />
+                            : <User size={14} style={{ color: BRAND_RED }} />}
                         {isGroup ? 'Group Details' : 'User Details'}
                     </h3>
                     <button onClick={clearSelection} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition"><X size={16} /></button>
@@ -236,11 +245,12 @@ export function HierarchyProperties() {
                                         <div className="text-[12px] font-medium text-slate-700 truncate">{nodeData.label}</div>
                                         {nodeData.subtitle && <div className="text-[10px] text-slate-400 truncate">{nodeData.subtitle}</div>}
                                     </div>
-                                    <button onClick={() => setShowUserPicker(true)} className="text-[10px] text-blue-600 hover:underline font-medium">Change</button>
+                                    <button onClick={() => setShowUserPicker(true)} className="text-[10px] hover:underline font-medium" style={{ color: BRAND_RED }}>Change</button>
                                 </div>
                             ) : (
                                 <button onClick={() => setShowUserPicker(true)}
-                                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-[12px] font-medium rounded-lg border-2 border-dashed border-blue-200 text-blue-600 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-300 transition">
+                                    className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-[12px] font-medium rounded-lg border-2 border-dashed transition"
+                                    style={{ borderColor: 'color-mix(in srgb, #b10e10 25%, transparent)', color: BRAND_RED, backgroundColor: '#fef2f2' }}>
                                     <User size={14} /> Select User
                                 </button>
                             )}
@@ -262,7 +272,8 @@ export function HierarchyProperties() {
                                 <input type="text" value={nodeData.label}
                                     onChange={(e) => updateNodeData(selectedNodeId, { label: e.target.value })}
                                     placeholder="Group name"
-                                    className="w-full px-3 py-2 text-[13px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition" />
+                                    className="w-full px-3 py-2 text-[13px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 transition"
+                                    style={{ '--tw-ring-color': 'color-mix(in srgb, #b10e10 20%, transparent)' } as any} />
                                 <p className="text-[10px] text-slate-400 mt-1">Display name on the canvas</p>
                             </div>
 
@@ -272,7 +283,8 @@ export function HierarchyProperties() {
                                 <textarea value={nodeData.description || ''}
                                     onChange={(e) => updateNodeData(selectedNodeId, { description: e.target.value })}
                                     placeholder="Optional description" rows={2}
-                                    className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition resize-none" />
+                                    className="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 transition resize-none"
+                                    style={{ '--tw-ring-color': 'color-mix(in srgb, #b10e10 20%, transparent)' } as any} />
                             </div>
 
                             {/* Members */}
@@ -280,7 +292,8 @@ export function HierarchyProperties() {
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Members ({members.length})</label>
                                     <button onClick={() => setShowMemberPicker(true)}
-                                        className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700 transition">
+                                        className="flex items-center gap-1 text-[10px] font-medium transition"
+                                        style={{ color: BRAND_RED }}>
                                         <Plus size={10} /> Add Member
                                     </button>
                                 </div>

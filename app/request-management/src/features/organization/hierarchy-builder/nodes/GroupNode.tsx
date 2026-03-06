@@ -3,6 +3,8 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Users, Building2, Briefcase, Shield, Plus, User } from 'lucide-react';
 import { useHierarchyStore } from '../useHierarchyStore';
 
+const BRAND_RED = '#b10e10';
+
 const GROUP_ICONS: Record<string, React.ElementType> = {
     GROUP: Users,
     TEAM: Users,
@@ -31,14 +33,20 @@ function AddChildDialog({
             <div className="bg-white rounded-xl shadow-xl border border-slate-200 p-2 flex gap-1.5 min-w-[170px]">
                 <button
                     onClick={(e) => { e.stopPropagation(); onAddGroup(); }}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition"
+                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium transition"
+                    style={{ color: BRAND_RED, backgroundColor: 'color-mix(in srgb, #b10e10 8%, white)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'color-mix(in srgb, #b10e10 14%, white)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'color-mix(in srgb, #b10e10 8%, white)'; }}
                 >
                     <Users size={14} />
                     Group
                 </button>
                 <button
                     onClick={(e) => { e.stopPropagation(); onAddUser(); }}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition"
+                    className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium transition"
+                    style={{ color: BRAND_RED, backgroundColor: 'color-mix(in srgb, #b10e10 8%, white)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'color-mix(in srgb, #b10e10 14%, white)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'color-mix(in srgb, #b10e10 8%, white)'; }}
                 >
                     <User size={14} />
                     User
@@ -61,7 +69,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
     const label = (data.label as string) || 'Group';
     const memberCount = (data.memberCount as number) ?? (data.members as any[])?.length ?? 0;
     const groupTypeCode = (data.groupTypeCode as string) || 'GROUP';
-    const accentColor = '#2563eb'; // blue
+    const accentColor = BRAND_RED;
     const Icon = GROUP_ICONS[groupTypeCode] || GROUP_ICONS.DEFAULT;
 
     const handleAddGroup = useCallback(() => {
@@ -69,7 +77,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
         addChildNode(id, {
             id: childId,
             type: 'groupNode',
-            position: { x: 0, y: 150 }, // will be auto-laid out
+            position: { x: 0, y: 150 },
             data: {
                 entityType: 'GROUP',
                 entityId: '',
@@ -126,7 +134,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
                             width: '34px',
                             height: '34px',
                             borderRadius: '10px',
-                            background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
+                            background: 'linear-gradient(135deg, #fde8e8, #fbd5d5)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -157,7 +165,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
                                     textTransform: 'uppercase',
                                     letterSpacing: '0.5px',
                                     color: accentColor,
-                                    backgroundColor: '#eff6ff',
+                                    backgroundColor: '#fef2f2',
                                     padding: '1px 6px',
                                     borderRadius: '4px',
                                 }}
@@ -225,7 +233,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
                     onMouseEnter={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = accentColor;
                         (e.currentTarget as HTMLButtonElement).style.color = accentColor;
-                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#eff6ff';
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#fef2f2';
                     }}
                     onMouseLeave={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0';

@@ -1,6 +1,8 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { User } from 'lucide-react';
 
+const BRAND_RED = '#b10e10';
+
 /**
  * UserNode — Displays an individual user in the hierarchy canvas.
  * Rounded card with avatar placeholder, name, and subtitle.
@@ -8,7 +10,7 @@ import { User } from 'lucide-react';
 export function UserNode({ data, selected }: NodeProps) {
     const label = (data.label as string) || 'User';
     const subtitle = (data.subtitle as string) || '';
-    const accentColor = '#6366f1'; // indigo
+    const accentColor = BRAND_RED;
 
     return (
         <div
@@ -36,7 +38,7 @@ export function UserNode({ data, selected }: NodeProps) {
                         width: '34px',
                         height: '34px',
                         borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #e0e7ff, #c7d2fe)',
+                        background: 'linear-gradient(135deg, #fde8e8, #fbd5d5)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -73,7 +75,7 @@ export function UserNode({ data, selected }: NodeProps) {
                             textTransform: 'uppercase',
                             letterSpacing: '0.5px',
                             color: accentColor,
-                            backgroundColor: '#eef2ff',
+                            backgroundColor: '#fef2f2',
                             padding: '1px 6px',
                             borderRadius: '4px',
                         }}

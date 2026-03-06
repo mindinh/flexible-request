@@ -10,8 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FormField, ConfirmDialog } from '@/components/studio';
 import { PrincipalSelect, type Principal } from '@/components/shared/PrincipalSelect';
 import { OrgHierarchySelect } from '@/components/shared/OrgHierarchySelect';
-import type { UiWorkflowNode, UiWorkflowEdge, UiNodeInput, UiNodeOutput } from './types';
-import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings } from './workflowIOHelpers';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/Dialog';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -1971,9 +1969,9 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     </p>
 
                                     {stepApprover ? (
-                                        <div className="flex items-center justify-between p-3 rounded-xl border border-blue-100 bg-blue-50/30 group">
+                                        <div className="flex items-center justify-between p-3 rounded-xl border border-red-100 bg-red-50/30 group">
                                             <div className="flex items-center gap-3">
-                                                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 text-blue-600">
+                                                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-100 text-red-600">
                                                     <Shield size={16} />
                                                 </div>
                                                 <div>
@@ -1998,28 +1996,11 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     )}
 
                                     <OrgHierarchySelect
-                                        onChange={(principal) => {
-                                            if (!principal) return;
-                                            const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
-                                            // Avoid duplicates
-                                            if (existing.some(a => a.id === principal.id && a.type === principal.type)) return;
-                                            updateNodeData(node.id, {
-                                                approvers: [...existing, {
-                                                    id: principal.id,
-                                                    type: principal.type,
-                                                    displayName: principal.displayName,
-                                                }],
-                                            });
-                                        }}
-                                        placeholder="Add approver..."
-                                        excludeIds={
-                                            ((node.data.approvers as Array<{ id: string }>) || []).map(a => a.id)
-                                        }
-                                    <PrincipalSelect
-                                        value={null}
                                         onChange={handleApproverChange}
-                                        placeholder="Add recipients..."
-                                        className="bg-slate-50 border-slate-200"
+                                        placeholder="Add recipient(s)..."
+                                        excludeIds={
+                                            stepApprover ? [stepApprover.id] : []
+                                        }
                                     />
                                 </Card>
 

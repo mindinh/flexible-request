@@ -129,4 +129,8 @@ entity OrgHierarchies : cuid, managed {
     relationship  : String(100); // e.g., 'Direct Report', 'Matrix Manager'
     accessLevel   : String(50) default 'View Only'; // e.g., 'View Only', 'Full Access'
     effectiveDate : Date; // Date when relationship becomes active
+
+    // Canvas layout position for hierarchy builder
+    posX          : Integer;
+    posY          : Integer;
 }
