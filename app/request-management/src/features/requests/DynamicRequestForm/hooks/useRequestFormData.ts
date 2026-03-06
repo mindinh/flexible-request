@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../lib/api';
@@ -151,7 +151,18 @@ export function useRequestFormData({ typeId, requestId }: UseRequestFormDataOpti
     }, [startStep, formData.coordinatorId, formData.stepOwnerId, isInitializing]);
 
     // Get schema items - render exactly as defined in the Form Schema
-    const schemaItems = parseSchemaContent(startStep?.schemaContent);
+    // Fallback: if schemaContent is empty but formId exists, resolve from formSchemasContent
+    const schemaItems = useMemo(() => {
+        let schemaContent = startStep?.schemaContent;
+        if (!schemaContent && startStep?.formId && requestType?.formSchemasContent) {
+            try {
+                const forms = JSON.parse(requestType.formSchemasContent);
+                const assignedForm = forms.find((f: any) => f.id === startStep.formId);
+                if (assignedForm?.items) schemaContent = JSON.stringify(assignedForm.items);
+            } catch { /* ignore malformed formSchemasContent */ }
+        }
+        return parseSchemaContent(schemaContent);
+    }, [startStep?.schemaContent, startStep?.formId, requestType?.formSchemasContent]);
 
     // Step owners map - tracks owner assignment for ALL steps
     const [stepAssignments, setStepAssignments] = useState<Record<string, {

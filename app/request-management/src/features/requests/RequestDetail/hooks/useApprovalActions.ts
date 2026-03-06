@@ -11,6 +11,7 @@ interface ApprovalParams {
     approvalId: string;
     decision: 'approve' | 'reject';
     comment?: string;
+    decisionAction?: string;  // Custom action ID for workflow branching
 }
 
 interface SendBackParams {
@@ -39,24 +40,35 @@ export function useApprovalActions(requestId: string | undefined) {
         queryClient.invalidateQueries({ queryKey: ['auditLog', requestId] });
     };
 
-    // Save and Submit Step Data
+    // Save Step Data (Data Only)
     const saveStepDataMutation = useMutation({
         mutationFn: async ({ stepId, dataId, payload }: SaveStepDataParams) => {
             const jsonPayload = JSON.stringify(payload);
-
-            // 1. Save Data
             if (dataId) {
                 await api.patch(`/browse/RequestData(${dataId})`, { payload: jsonPayload });
             } else {
-                // Fallback: create RequestData if it doesn't exist for some reason
                 await api.post('/browse/RequestData', {
                     step_ID: stepId,
                     payload: jsonPayload
                 });
             }
+        },
+        onSuccess: invalidateQueries,
+    });
 
-
-            // 2. Submit Step (Transition Status)
+    // Save Data AND Submit Step (Used by Requester to submit a step)
+    const submitStepWithDataMutation = useMutation({
+        mutationFn: async ({ stepId, dataId, payload }: SaveStepDataParams) => {
+            const jsonPayload = JSON.stringify(payload);
+            if (dataId) {
+                await api.patch(`/browse/RequestData(${dataId})`, { payload: jsonPayload });
+            } else {
+                await api.post('/browse/RequestData', {
+                    step_ID: stepId,
+                    payload: jsonPayload
+                });
+            }
+            // Submit Step (Transition Status)
             await api.post(`/browse/Requests(${requestId})/RequestService.submitStep`, {
                 stepId
             });
@@ -66,11 +78,13 @@ export function useApprovalActions(requestId: string | undefined) {
 
     // Approval action mutation
     const approvalMutation = useMutation({
-        mutationFn: async ({ approvalId, decision, comment }: ApprovalParams) => {
+        mutationFn: async ({ approvalId, decision, comment, decisionAction }: ApprovalParams) => {
             const endpoint = decision === 'approve'
                 ? `/browse/StepApprovals(${approvalId})/RequestService.approve`
                 : `/browse/StepApprovals(${approvalId})/RequestService.rejectApproval`;
-            await api.post(endpoint, { comment: comment || '' });
+            const body: Record<string, any> = { comment: comment || '' };
+            if (decisionAction) body.decisionAction = decisionAction;
+            await api.post(endpoint, body);
         },
         onSuccess: invalidateQueries,
     });
@@ -101,14 +115,15 @@ export function useApprovalActions(requestId: string | undefined) {
 
     return {
         // Mutations
-        saveStepData: saveStepDataMutation.mutate,
-        approve: (approvalId: string, comment?: string) =>
-            approvalMutation.mutate({ approvalId, decision: 'approve', comment }),
+        saveStepData: saveStepDataMutation.mutateAsync,
+        submitStepWithData: submitStepWithDataMutation.mutateAsync,
+        approve: (approvalId: string, comment?: string, decisionAction?: string) =>
+            approvalMutation.mutateAsync({ approvalId, decision: 'approve', comment, decisionAction }),
         reject: (approvalId: string, comment?: string) =>
-            approvalMutation.mutate({ approvalId, decision: 'reject', comment }),
-        sendBack: sendBackMutation.mutate,
-        respondToClarification: respondToClarificationMutation.mutate,
-        submitStep: submitStepMutation.mutate,
+            approvalMutation.mutateAsync({ approvalId, decision: 'reject', comment }),
+        sendBack: sendBackMutation.mutateAsync,
+        respondToClarification: respondToClarificationMutation.mutateAsync,
+        submitStep: submitStepMutation.mutateAsync,
 
         // Loading states
         isSaving: saveStepDataMutation.isPending,

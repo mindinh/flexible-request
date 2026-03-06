@@ -142,6 +142,16 @@ export class RequestTypeHandler {
                 schemaContent: step.schemaContent,
                 ownerType: step.ownerType,
                 ownerId: step.ownerId,
+                // New fields added for workflow Studio
+                stepType: step.stepType,
+                actionSubType: step.actionSubType,
+                formId: step.formId,
+                positionX: step.positionX,
+                positionY: step.positionY,
+                inputsContent: step.inputsContent,
+                outputsContent: step.outputsContent,
+                approversContent: step.approversContent,
+                notificationsContent: step.notificationsContent,
             });
 
             // Clone ApproverRules

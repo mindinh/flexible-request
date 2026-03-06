@@ -3,8 +3,8 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
-import { useState, useEffect } from 'react';
-import { Copy, Trash2, Type, Settings2, Plus, GripVertical, Database } from 'lucide-react';
+import { useEffect } from 'react';
+import { Copy, Trash2, Settings2, Plus, GripVertical, Database, Link2, Unlink } from 'lucide-react';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiDataField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
 import { useIntegrationsStore } from '../integrations/useIntegrationsStore';
 import { useStudioStore } from './useStudioStore';
@@ -22,21 +22,7 @@ function isUiFormField(item: UiCanvasItem | UiFormField): item is UiFormField {
     return item.type !== 'section' && item.type !== 'table';
 }
 
-// Helper: Get default dataType based on controlType
-function getDefaultDataType(controlType: string): string {
-    switch (controlType) {
-        case 'number':
-        case 'currency':
-            return 'number';
-        case 'date':
-        case 'datetime':
-            return 'date';
-        case 'checkbox':
-            return 'boolean';
-        default:
-            return 'string';
-    }
-}
+
 
 /** Update payload type for field properties */
 type FieldUpdatePayload = Partial<UiFormField> & {
@@ -53,8 +39,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     );
 }
 
-// ─── Data Binding Section ───
-function DataBindingSection({ fieldItem, onUpdate }: {
+// ─── Schema Binding Selector (Prominent) ───
+function SchemaBindingSelector({ fieldItem, onUpdate }: {
     fieldItem: UiFormField;
     onUpdate: (updates: FieldUpdatePayload) => void;
 }) {
@@ -68,48 +54,75 @@ function DataBindingSection({ fieldItem, onUpdate }: {
             if (field.type === 'Object' && field.children?.length) {
                 result.push(...flattenFields(field.children, fullKey));
             } else {
-                result.push({ key: fullKey, label: `${field.label} (${fullKey})` });
+                result.push({ key: fullKey, label: field.label });
             }
         }
         return result;
     };
     const availableFields = flattenFields(dataSchema);
+    const isBound = !!fieldItem.bindTo;
 
-    if (availableFields.length === 0) return null;
+    if (availableFields.length === 0) {
+        return (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                    <Database size={12} />
+                    No data schema fields defined. Add fields in the <strong>Data Schema</strong> tab to enable binding.
+                </p>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-1.5">
-            <SectionLabel>
-                <span className="flex items-center gap-1">
-                    <Database size={10} className="text-emerald-500" />
-                    Data Binding
+        <div className={`p-3 rounded-lg border transition-colors ${isBound ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center gap-1.5 mb-2">
+                {isBound ? (
+                    <Link2 size={12} className="text-emerald-600" />
+                ) : (
+                    <Unlink size={12} className="text-slate-400" />
+                )}
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Data Schema Binding
                 </span>
-            </SectionLabel>
+                <span className="text-[10px] text-slate-400 ml-auto">Optional</span>
+            </div>
             <Select
-                value={fieldItem.key || '__none__'}
+                value={fieldItem.bindTo || '__none__'}
                 onValueChange={(val) => {
                     if (val === '__none__') {
-                        onUpdate({ key: undefined });
+                        onUpdate({ bindTo: undefined });
                     } else {
-                        onUpdate({ key: val });
+                        // Bind to the global schema field
+                        const schemaField = availableFields.find(f => f.key === val);
+                        const updates: FieldUpdatePayload = { bindTo: val };
+                        if (schemaField && !fieldItem.label) {
+                            updates.label = schemaField.label;
+                        }
+                        onUpdate(updates);
                     }
                 }}
             >
-                <SelectTrigger className="w-full h-9 text-sm">
-                    <SelectValue placeholder="Not bound" />
+                <SelectTrigger className={`w-full h-9 text-sm ${isBound ? 'border-emerald-300 bg-white' : ''}`}>
+                    <SelectValue placeholder="Not bound — select to bind…" />
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="__none__">
-                        <span className="text-slate-400 italic">Not bound</span>
+                        <span className="text-slate-400 italic">Not bound (local field)</span>
                     </SelectItem>
                     {availableFields.map(f => (
-                        <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                        <SelectItem key={f.key} value={f.key}>
+                            <span className="flex items-center gap-2">
+                                <span>{f.label}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">{f.key}</span>
+                            </span>
+                        </SelectItem>
                     ))}
                 </SelectContent>
             </Select>
-            {fieldItem.key && (
-                <p className="text-[11px] text-emerald-600 italic">
-                    Bound to: <code className="font-mono bg-emerald-50 px-1 py-0.5 rounded">{fieldItem.key}</code>
+            {isBound && (
+                <p className="mt-1.5 text-[11px] text-emerald-600 flex items-center gap-1">
+                    <Link2 size={10} />
+                    Bound to global field <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded text-[10px]">{fieldItem.bindTo}</code>
                 </p>
             )}
         </div>
@@ -398,6 +411,14 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                     </div>
                 )}
 
+                {/* ── DATA SCHEMA BINDING (prominent, for form fields) ── */}
+                {isField && (
+                    <SchemaBindingSelector
+                        fieldItem={fieldItem!}
+                        onUpdate={(updates) => onUpdate(selectedItem!.id, updates)}
+                    />
+                )}
+
                 {/* ── FIELD LABEL ── */}
                 <div className="space-y-1.5">
                     <SectionLabel>Field Label</SectionLabel>
@@ -406,14 +427,6 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
                     />
                 </div>
-
-                {/* ── DATA BINDING ── */}
-                {isField && (
-                    <DataBindingSection
-                        fieldItem={fieldItem!}
-                        onUpdate={(updates) => onUpdate(selectedItem!.id, updates)}
-                    />
-                )}
 
                 {/* ── PLACEHOLDER ── */}
                 {isField && (

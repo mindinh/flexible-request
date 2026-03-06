@@ -48,6 +48,9 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     const [sendBackComment, setSendBackComment] = useState('');
     const [showSendBackDialog, setShowSendBackDialog] = useState(false);
     const [panelWidth, setPanelWidth] = useState(320);
+    // Custom decision action confirmation
+    const [customActionConfirm, setCustomActionConfirm] = useState<{ actionId: string; label: string } | null>(null);
+    const [customActionComment, setCustomActionComment] = useState('');
 
     // Data fetching
     const {
@@ -58,7 +61,6 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         stepFormData,
         setStepFormData,
         selectedStepId,
-        setSelectedStepId,
         sortedSteps,
         workflowSteps,
         currentStep,
@@ -67,9 +69,9 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         clarificationComment,
     } = useRequestDetailData(requestId);
 
-    // Mutations
     const {
         saveStepData,
+        submitStepWithData,
         approve,
         reject,
         sendBack,
@@ -117,6 +119,22 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
 
         return null;
     }, [currentStep, currentUserId]);
+
+    // Resolve formActions from formSchemasContent for the current step's assigned form
+    const resolvedFormActions = useMemo(() => {
+        if (!currentStep || !request?.requestType) return [];
+        const stepDef = request.requestType.steps?.find(
+            (s: any) => s.ID === (currentStep as any).stepDefinition_ID
+        );
+        if (!stepDef?.formId || !request.requestType.formSchemasContent) return [];
+        try {
+            const forms = JSON.parse(request.requestType.formSchemasContent);
+            const matchedForm = forms.find((f: any) => f.id === stepDef.formId);
+            return (matchedForm?.actions || []) as Array<{ id: string; label: string; variant: string }>;
+        } catch { return []; }
+    }, [currentStep, request]);
+
+    const hasCustomActions = resolvedFormActions.length > 0;
 
     // Loading state
     if (isLoading) {
@@ -195,8 +213,77 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
         }));
     };
 
+    // ─── Global Context Helper ───
+    // Builds a merged form data object with globally-bound field values injected.
+    const buildFormDataWithGlobalContext = (
+        currentRuntimeStep: any,
+        rawFormData: Record<string, any>
+    ): Record<string, any> => {
+        if (!request?.requestType?.formSchemasContent) return rawFormData;
+
+        const currentStepDef = request.requestType?.steps?.find(
+            (s: any) => s.ID === currentRuntimeStep.stepDefinition_ID
+        );
+        if (!currentStepDef?.formId) return rawFormData;
+
+        try {
+            const allForms = JSON.parse(request.requestType.formSchemasContent);
+
+            // 1. Build global context from OTHER steps' data + form schemas
+            const globalContext: Record<string, any> = {};
+            for (const otherStep of sortedSteps) {
+                if (otherStep.ID === currentRuntimeStep.ID) continue;
+                if (!otherStep.data?.payload) continue;
+                const otherStepDef = request.requestType?.steps?.find(
+                    (s: any) => s.ID === otherStep.stepDefinition_ID
+                );
+                if (!otherStepDef?.formId) continue;
+                const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
+                if (!otherForm?.items) continue;
+                let otherPayload: Record<string, any> = {};
+                try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
+                const extractBound = (items: any[]) => {
+                    for (const item of items) {
+                        if (item.type === 'section' && item.fields) extractBound(item.fields);
+                        else if (item.type === 'table' && item.columns) extractBound(item.columns);
+                        else if (item.bindTo) {
+                            const value = otherPayload[item.id];
+                            if (value !== undefined && value !== null) {
+                                globalContext[item.bindTo] = value;
+                            }
+                        }
+                    }
+                };
+                extractBound(otherForm.items);
+            }
+
+            if (Object.keys(globalContext).length === 0) return rawFormData;
+
+            // 2. Inject bound values into the current step's form data
+            const merged = { ...rawFormData };
+            const currentForm = allForms.find((f: any) => f.id === currentStepDef.formId);
+            if (currentForm?.items) {
+                const injectBound = (items: any[]) => {
+                    for (const item of items) {
+                        if (item.type === 'section' && item.fields) injectBound(item.fields);
+                        else if (item.type === 'table' && item.columns) injectBound(item.columns);
+                        else if (item.bindTo && globalContext[item.bindTo] !== undefined) {
+                            if (merged[item.id] === undefined || merged[item.id] === null) {
+                                merged[item.id] = globalContext[item.bindTo];
+                            }
+                        }
+                    }
+                };
+                injectBound(currentForm.items);
+            }
+            return merged;
+        } catch {
+            return rawFormData;
+        }
+    };
+
     const handleStepSubmit = (step: any) => {
-        const data = stepFormData[step.ID] || (() => {
+        const rawData = stepFormData[step.ID] || (() => {
             try {
                 return step.data?.payload ? JSON.parse(step.data.payload) : {};
             } catch {
@@ -204,10 +291,13 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
             }
         })();
 
-        saveStepData({
+        // Merge bound global values so they persist in the step payload
+        const mergedPayload = buildFormDataWithGlobalContext(step, rawData);
+
+        submitStepWithData({
             stepId: step.ID,
             dataId: step.data?.ID,
-            payload: data
+            payload: mergedPayload
         });
     };
 
@@ -422,9 +512,19 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                         if (step.stepDefinition_ID !== selectedStepId) return null;
 
                         const stepDef = request.requestType?.steps?.find(s => s.ID === step.stepDefinition_ID);
-                        if (!stepDef?.schemaContent) return null;
 
-                        const stepSchemaItems = parseSchemaContent(stepDef.schemaContent);
+                        // Resolve schema: direct schemaContent first, then fallback to formId → formSchemasContent
+                        let resolvedSchemaContent = stepDef?.schemaContent;
+                        if (!resolvedSchemaContent && stepDef?.formId && request.requestType?.formSchemasContent) {
+                            try {
+                                const forms = JSON.parse(request.requestType.formSchemasContent);
+                                const assignedForm = forms.find((f: any) => f.id === stepDef.formId);
+                                if (assignedForm?.items) resolvedSchemaContent = JSON.stringify(assignedForm.items);
+                            } catch { /* ignore malformed formSchemasContent */ }
+                        }
+                        if (!resolvedSchemaContent) return null;
+
+                        const stepSchemaItems = parseSchemaContent(resolvedSchemaContent);
                         if (stepSchemaItems.length === 0) return null;
 
                         const isStepOwner = isOwner(step.ownerId);
@@ -438,22 +538,25 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                         const stepClaimedByOther = stepClaimedBy && !stepClaimedByMe;
 
                         const canEditStep = !stepClaimRequired && !stepClaimedByOther;
+                        const isApprover = !!(currentUserApproval && step.ID === currentStep?.ID);
                         const isEditable = (step.status === 'STARTED' ||
+                            step.status === 'IN_PROGRESS' && isApprover ||
                             (step.status === 'IN_CLARIFICATION' && (isRequester || isStepOwner))) && canEditStep;
 
-                        const currentFormData = stepFormData[step.ID] || (() => {
+                        const rawFormData = stepFormData[step.ID] || (() => {
                             try {
                                 return step.data?.payload ? JSON.parse(step.data.payload) : {};
                             } catch {
                                 return {};
                             }
                         })();
+                        const currentFormData = buildFormDataWithGlobalContext(step, rawFormData);
 
                         return (
                             <StepFormSection
                                 key={step.ID}
                                 step={step}
-                                stepDefinition={stepDef}
+                                stepDefinition={stepDef!}
                                 formData={currentFormData}
                                 isEditable={isEditable}
                                 onFieldChange={(fieldId, value) =>
@@ -461,6 +564,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 }
                                 onSubmit={() => handleStepSubmit(step)}
                                 isSubmitting={isSaving}
+                                resolvedSchemaItems={stepSchemaItems}
                                 claimRequired={stepClaimRequired}
                                 claimedByOther={stepClaimedByOther}
                                 claimedByName={stepClaimedBy?.displayName}
@@ -478,7 +582,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                     >
                         Cancel
                     </Button>
-                    {showApprovalActions && (
+                    {showApprovalActions && !hasCustomActions && (
                         <>
                             <Button
                                 variant="outline"
@@ -506,6 +610,39 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 Approve
                             </Button>
                         </>
+                    )}
+                    {showApprovalActions && hasCustomActions && (
+                        resolvedFormActions.map((action) => {
+                            const variantMap: Record<string, 'default' | 'destructive' | 'outline' | 'ghost'> = {
+                                primary: 'default',
+                                success: 'default',
+                                secondary: 'outline',
+                                outline: 'outline',
+                                ghost: 'ghost',
+                                destructive: 'destructive',
+                                warning: 'outline',
+                            };
+                            const colorMap: Record<string, string> = {
+                                primary: 'bg-green-600 hover:bg-green-700',
+                                success: 'bg-emerald-600 hover:bg-emerald-700',
+                                destructive: '',
+                                warning: 'border-amber-500 text-amber-700 hover:bg-amber-50',
+                                secondary: '',
+                                outline: '',
+                                ghost: '',
+                            };
+                            return (
+                                <Button
+                                    key={action.id}
+                                    variant={variantMap[action.variant] || 'default'}
+                                    onClick={() => setCustomActionConfirm({ actionId: action.id, label: action.label })}
+                                    disabled={isProcessing || isBlocked}
+                                    className={colorMap[action.variant] || ''}
+                                >
+                                    {action.label}
+                                </Button>
+                            );
+                        })
                     )}
                 </div>
             </div>
@@ -547,8 +684,6 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                             showCompletion={true}
                             isSimulation={false}
                             variant="preview"
-                            onStepClick={(stepId) => setSelectedStepId(stepId)}
-                            selectedStepId={selectedStepId || undefined}
                         />
                     </div>
                 ) : (
@@ -580,9 +715,23 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                 message="Add an optional note for this approval."
                 confirmLabel="Approve"
                 variant="default"
-                onConfirm={() => {
-                    if (currentUserApproval) {
-                        approve(currentUserApproval.ID, approveComment.trim() || undefined);
+                onConfirm={async () => {
+                    if (currentUserApproval && currentStep) {
+                        try {
+                            const rawData = stepFormData[currentStep.ID] || (() => {
+                                try { return currentStep.data?.payload ? JSON.parse(currentStep.data.payload) : {}; }
+                                catch { return {}; }
+                            })();
+                            const mergedPayload = buildFormDataWithGlobalContext(currentStep, rawData);
+                            await saveStepData({
+                                stepId: currentStep.ID,
+                                dataId: currentStep.data?.ID,
+                                payload: mergedPayload
+                            });
+                            await approve(currentUserApproval.ID, approveComment.trim() || undefined);
+                        } catch (error) {
+                            console.error("Failed to save data before approving", error);
+                        }
                     }
                     setShowApproveConfirm(false);
                     setApproveComment('');
@@ -610,9 +759,23 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                 confirmLabel="Reject Request"
                 variant="danger"
                 confirmDisabled={!rejectComment.trim()}
-                onConfirm={() => {
-                    if (currentUserApproval && rejectComment.trim()) {
-                        reject(currentUserApproval.ID, rejectComment.trim());
+                onConfirm={async () => {
+                    if (currentUserApproval && rejectComment.trim() && currentStep) {
+                        try {
+                            const rawData = stepFormData[currentStep.ID] || (() => {
+                                try { return currentStep.data?.payload ? JSON.parse(currentStep.data.payload) : {}; }
+                                catch { return {}; }
+                            })();
+                            const mergedPayload = buildFormDataWithGlobalContext(currentStep, rawData);
+                            await saveStepData({
+                                stepId: currentStep.ID,
+                                dataId: currentStep.data?.ID,
+                                payload: mergedPayload
+                            });
+                            await reject(currentUserApproval.ID, rejectComment.trim());
+                        } catch (error) {
+                            console.error("Failed to save data before rejecting", error);
+                        }
                     }
                     setShowRejectConfirm(false);
                     setRejectComment('');
@@ -650,6 +813,53 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                     value={sendBackComment}
                     onChange={(e) => setSendBackComment(e.target.value)}
                     placeholder="Explain what clarification is needed (required)..."
+                    maxLength={200}
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+            </ConfirmDialog>
+
+            {/* Custom Action Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={!!customActionConfirm}
+                title={customActionConfirm?.label || 'Confirm Action'}
+                message={`Are you sure you want to proceed with: ${customActionConfirm?.label}?`}
+                confirmLabel={customActionConfirm?.label || 'Confirm'}
+                variant="default"
+                onConfirm={async () => {
+                    if (currentUserApproval && customActionConfirm && currentStep) {
+                        try {
+                            const rawData = stepFormData[currentStep.ID] || (() => {
+                                try { return currentStep.data?.payload ? JSON.parse(currentStep.data.payload) : {}; }
+                                catch { return {}; }
+                            })();
+                            const mergedPayload = buildFormDataWithGlobalContext(currentStep, rawData);
+                            await saveStepData({
+                                stepId: currentStep.ID,
+                                dataId: currentStep.data?.ID,
+                                payload: mergedPayload
+                            });
+                            await approve(
+                                currentUserApproval.ID,
+                                customActionComment.trim() || undefined,
+                                customActionConfirm.actionId
+                            );
+                        } catch (error) {
+                            console.error("Failed to save data before custom action", error);
+                        }
+                    }
+                    setCustomActionConfirm(null);
+                    setCustomActionComment('');
+                }}
+                onCancel={() => {
+                    setCustomActionConfirm(null);
+                    setCustomActionComment('');
+                }}
+            >
+                <textarea
+                    value={customActionComment}
+                    onChange={(e) => setCustomActionComment(e.target.value)}
+                    placeholder="Add an optional comment..."
                     maxLength={200}
                     rows={3}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"

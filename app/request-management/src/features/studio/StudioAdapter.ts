@@ -12,7 +12,9 @@ import type {
     UiSection,
     UiFormField,
     UiStatusNode,
-    UiStatusEdge
+    UiStatusEdge,
+    UiNodeInput,
+    UiNodeOutput
 } from './types';
 
 // Helper to parse/stringify JSON safely
@@ -139,6 +141,24 @@ export const StudioAdapter = {
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
                     ownerName: (step as any).ownerDisplayName || '',
+                    // I/O mappings
+                    inputs: parseJson<UiNodeInput[]>(step.inputsContent, []),
+                    outputs: parseJson<UiNodeOutput[]>(step.outputsContent, []),
+                    // Approvers & Notifications
+                    approvers: parseJson<Array<{ id: string; type: string; displayName: string }>>(step.approversContent, []),
+                    // Parse notificationsContent: new object format or legacy string[]
+                    ...(() => {
+                        const raw = parseJson<any>(step.notificationsContent, null);
+                        if (!raw) return { notificationTypes: [], emailConfig: undefined };
+                        // Legacy: plain string[] like ["bell","email"]
+                        if (Array.isArray(raw)) return { notificationTypes: raw as string[], emailConfig: undefined };
+                        // New object contract: { channels, emailConfig? }
+                        return {
+                            notificationTypes: Array.isArray(raw.channels) ? raw.channels : [],
+                            emailConfig: raw.emailConfig ?? undefined,
+                        };
+                    })(),
+                    conditionExpr: step.conditionExpr ? parseJson<any>(step.conditionExpr, null) : null,
                 }
             });
 
@@ -146,11 +166,13 @@ export const StudioAdapter = {
             if (step.predecessors) {
                 step.predecessors.forEach(pred => {
                     if (pred.dependsOn_ID) {
+                        const action = (pred as any).action as string | undefined;
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
-                            type: 'smoothstep'
+                            type: 'smoothstep',
+                            ...(action ? { sourceHandle: action, label: action } : {}),
                         });
                     }
                 });

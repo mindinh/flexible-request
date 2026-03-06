@@ -14,7 +14,7 @@ import {
     FormActions,
     WorkflowPreviewPanel
 } from './components';
-import { parseSchemaContent } from '../../../lib/schemaParser';
+
 import type { Principal } from '../../../components/shared/PrincipalSelect';
 
 /**
@@ -58,15 +58,8 @@ export function DynamicRequestForm() {
         return [...allSteps].sort((a, b) => (a.sequenceNum || 0) - (b.sequenceNum || 0));
     }, [requestType?.steps]);
 
-    // Selected step ID for owner assignment (default to start step)
-    const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-
-    // Initialize selected step to start step when available
-    const effectiveSelectedStepId = selectedStepId || startStep?.ID || steps[0]?.ID;
-    const isStartStep = effectiveSelectedStepId === startStep?.ID;
-
-    // Future steps data map - stores pre-filled data for non-start steps
-    const [futureStepsData, setFutureStepsData] = useState<Record<string, Record<string, any>>>({});
+    // Always locked to start step — users cannot navigate to future steps
+    const effectiveSelectedStepId = startStep?.ID || steps[0]?.ID;
 
     // Get the currently selected step definition
     const selectedStep = useMemo(() => {
@@ -74,28 +67,15 @@ export function DynamicRequestForm() {
         return steps.find(s => s.ID === effectiveSelectedStepId) || null;
     }, [steps, effectiveSelectedStepId]);
 
-    // Resolve schema items for the selected step
-    const currentSchemaItems = useMemo(() => {
-        if (isStartStep) return startStepSchemaItems;
-        return parseSchemaContent(selectedStep?.schemaContent);
-    }, [isStartStep, startStepSchemaItems, selectedStep?.schemaContent]);
+    // Schema items always come from start step
+    const currentSchemaItems = startStepSchemaItems;
 
-    // Resolve form data for the selected step
-    const currentFormData = isStartStep ? formData : (futureStepsData[effectiveSelectedStepId] || {});
+    // Form data always from start step
+    const currentFormData = formData;
 
-    // Handle field changes for the selected step
+    // Handle field changes — always for start step
     const handleCurrentFieldChange = (fieldId: string, value: any) => {
-        if (isStartStep) {
-            handleFieldChange(fieldId, value);
-        } else {
-            setFutureStepsData(prev => ({
-                ...prev,
-                [effectiveSelectedStepId]: {
-                    ...prev[effectiveSelectedStepId],
-                    [fieldId]: value
-                }
-            }));
-        }
+        handleFieldChange(fieldId, value);
     };
 
     // Get the current step owner value for the selected step
@@ -131,7 +111,7 @@ export function DynamicRequestForm() {
         return null;
     }, [effectiveSelectedStepId, stepOwners, steps]);
 
-    // Handle step owner change for the selected step
+    // Handle step owner change for the start step
     const handleStepOwnerChange = (principal: Principal | null) => {
         if (!effectiveSelectedStepId) return;
 
@@ -142,27 +122,18 @@ export function DynamicRequestForm() {
                 ownerName: principal.displayName,
             });
 
-            // Also update formData for backward compatibility (start step)
-            if (isStartStep) {
-                handleFieldChange('stepOwnerId', principal.id);
-                handleFieldChange('stepOwnerType', principal.type);
-                handleFieldChange('stepOwnerName', principal.displayName);
-            }
+            // Also update formData for backward compatibility
+            handleFieldChange('stepOwnerId', principal.id);
+            handleFieldChange('stepOwnerType', principal.type);
+            handleFieldChange('stepOwnerName', principal.displayName);
         } else {
             handleAssignmentChange(effectiveSelectedStepId, null);
 
-            // Clear formData for start step
-            if (isStartStep) {
-                handleFieldChange('stepOwnerId', null);
-                handleFieldChange('stepOwnerType', null);
-                handleFieldChange('stepOwnerName', null);
-            }
+            // Clear formData
+            handleFieldChange('stepOwnerId', null);
+            handleFieldChange('stepOwnerType', null);
+            handleFieldChange('stepOwnerName', null);
         }
-    };
-
-    // Handle step click from sidebar
-    const handleStepClick = (stepId: string) => {
-        setSelectedStepId(stepId);
     };
 
     // Loading state
@@ -232,17 +203,7 @@ export function DynamicRequestForm() {
                             </div>
                         )}
 
-                        {!isStartStep && currentSchemaItems.length > 0 && (
-                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-start gap-3">
-                                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                                <div>
-                                    <p className="text-sm font-medium text-blue-800">Pre-fill Information</p>
-                                    <p className="text-xs text-blue-600 mt-0.5">
-                                        You are viewing a future step. Information entered here will be pre-filled for the assigned step owner.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
+
 
                         {/* Action Buttons */}
                         <FormActions
@@ -264,10 +225,8 @@ export function DynamicRequestForm() {
                     <WorkflowPreviewPanel
                         steps={steps}
                         resolvedApprovers={resolvedApprovers}
-                        isEditMode={isEditMode}
-                        selectedStepId={effectiveSelectedStepId}
-                        onStepClick={handleStepClick}
                         stepOwners={stepOwners}
+                        formSchemasContent={requestType?.formSchemasContent}
                     />
                 </div>
             </div>

@@ -8,10 +8,13 @@ import type {
     UiWorkflowEdge,
     UiRequestTypeDetails,
     UiStatusNode,
-    UiStatusEdge
+    UiStatusEdge,
+    UiNodeInput,
+    UiNodeOutput
 } from './types';
 import { StudioAdapter } from './StudioAdapter';
 import { AdminService } from '../../services/AdminService';
+import { syncOutputsFromForm } from './workflowIOHelpers';
 
 interface StudioState {
     // Data
@@ -43,8 +46,9 @@ interface StudioState {
     selectedDataFieldId: string | null;
 
     // Draft Conflict State
-    // Form Editor sub-tab
+    // Editor sub-tabs
     isFormEditorOpen: boolean;
+    isEmailEditorOpen: boolean;
 
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
@@ -70,6 +74,7 @@ interface StudioState {
     deleteForm: (formId: string) => void;
     selectForm: (formId: string | null) => void;
     updateFormName: (formId: string, name: string) => void;
+    updateFormActions: (formId: string, actions: import('./types').UiFormAction[]) => void;
     updateRules: (rules: UiRule[]) => void;
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     setActiveStepId: (id: string | null) => void;
@@ -81,6 +86,11 @@ interface StudioState {
     setSelectedDataFieldId: (id: string | null) => void;
     updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
     setIsFormEditorOpen: (open: boolean) => void;
+    setIsEmailEditorOpen: (open: boolean) => void;
+    // I/O mapping actions
+    updateNodeInputs: (nodeId: string, inputs: UiNodeInput[]) => void;
+    updateNodeOutputs: (nodeId: string, outputs: UiNodeOutput[]) => void;
+    syncUserTaskOutputs: (nodeId: string) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -111,14 +121,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     dataSchema: [],
     selectedDataFieldId: null,
 
-    // Form Editor sub-tab
+    // Editor sub-tabs
     isFormEditorOpen: false,
+    isEmailEditorOpen: false,
 
     // Draft Conflict
     draftConflict: false,
     draftConflictMessage: null,
 
-    setActiveTab: (tab) => set({ activeTab: tab }),
+    // Auto-close editors when switching to a base tab
+    setActiveTab: (tab) => {
+        const BASE_TABS = ['data-schema', 'workflow', 'statuses'];
+        if (BASE_TABS.includes(tab)) {
+            set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false });
+        } else {
+            set({ activeTab: tab });
+        }
+    },
     setDirty: (dirty) => set({ isDirty: dirty }),
     setActiveStepId: (id) => {
         // Clear selected rule when changing steps (rules are step-specific)
@@ -131,6 +150,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     updateDataSchema: (fields) => set({ dataSchema: fields, isDirty: true }),
     setSelectedDataFieldId: (id) => set({ selectedDataFieldId: id }),
     setIsFormEditorOpen: (open) => set({ isFormEditorOpen: open }),
+    setIsEmailEditorOpen: (open) => set({ isEmailEditorOpen: open }),
 
     loadRequestType: async (id: string) => {
         // Guard: Skip if already loading the same request type
@@ -219,6 +239,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
             const activeFormId = forms.length > 0 ? forms[0].id : null;
             const schema = activeFormId ? (forms.find(f => f.id === activeFormId)?.items || []) : [];
+
+            // Enrich workflow nodes with form actions (for dynamic handles on ActionNode)
+            for (const node of workflow.nodes) {
+                if (node.data.formId) {
+                    const matchedForm = forms.find(f => f.id === node.data.formId);
+                    if (matchedForm?.actions && matchedForm.actions.length > 0) {
+                        node.data.formActions = matchedForm.actions;
+                    }
+                }
+            }
 
             // Set active step to the start step
             const startStep = fullDraft.steps?.find(s => s.isStartStep) || fullDraft.steps?.[0];
@@ -338,6 +368,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
             console.log("Processing steps...", workflow.nodes.length);
             for (const node of workflow.nodes) {
+                const inputs = (node.data.inputs as UiNodeInput[]) || [];
+                const outputs = (node.data.outputs as UiNodeOutput[]) || [];
                 const stepData = {
                     ID: node.id,
                     stepName: node.data.label,
@@ -353,6 +385,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
                     ownerId: node.data.owner_ID || null,
+                    // I/O mapping content
+                    inputsContent: inputs.length > 0 ? JSON.stringify(inputs) : null,
+                    outputsContent: outputs.length > 0 ? JSON.stringify(outputs) : null,
+                    // Approvers & Notifications content
+                    approversContent: (() => {
+                        const approvers = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
+                        return approvers.length > 0 ? JSON.stringify(approvers) : null;
+                    })(),
+                    notificationsContent: (() => {
+                        const notifTypes = (node.data.notificationTypes as string[]) || [];
+                        if (notifTypes.length === 0 && !node.data.emailConfig) return null;
+                        const payload: { channels: string[]; emailConfig?: any } = {
+                            channels: notifTypes,
+                        };
+                        if (node.data.emailConfig) {
+                            payload.emailConfig = node.data.emailConfig;
+                        }
+                        return JSON.stringify(payload);
+                    })(),
+                    conditionExpr: node.data.conditionExpr ? JSON.stringify(node.data.conditionExpr) : null,
                 };
 
                 if (originalNodeIds.has(node.id)) {
@@ -386,14 +438,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             const { originalEdges } = get();
 
             // Helper to create edge key for comparison
-            const edgeKey = (source: string, target: string) => `${source}|${target}`;
+            const edgeKey = (source: string, target: string, sourceHandle?: string) => `${source}|${target}|${sourceHandle || ''}`;
 
             // Build sets for comparison
-            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e.source, e.target)));
-            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e.source, e.target)));
+            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
+            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
 
             // Find edges to DELETE (in original but not in current)
-            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e.source, e.target)));
+            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
             console.log("Deleting dependencies...", edgesToDelete.length);
             for (const edge of edgesToDelete) {
                 if (edge.id) {
@@ -402,12 +454,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
 
             // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e.source, e.target)));
+            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // edge.source is the predecessor (dependsOn)
                 // edge.target is the step that depends on source
-                await AdminService.createStepDependency(edge.target, edge.source);
+                await AdminService.createStepDependency(edge.target, edge.source, edge.sourceHandle as string | undefined);
             }
 
             // 3. Save Form Schemas at Request Type level
@@ -621,6 +673,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             id: crypto.randomUUID(),
             name,
             items: [],
+            actions: [
+                { id: 'approve', label: 'Approve', variant: 'primary' },
+                { id: 'reject', label: 'Reject', variant: 'destructive' },
+            ],
         };
         return {
             forms: [...state.forms, newForm],
@@ -660,6 +716,23 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         isDirty: true,
     })),
 
+    updateFormActions: (formId, actions) => set(state => {
+        // Update the form's actions
+        const newForms = state.forms.map(f => f.id === formId ? { ...f, actions } : f);
+        // Also sync formActions on any workflow node that uses this form
+        const newNodes = state.workflow.nodes.map(n => {
+            if (n.data.formId === formId) {
+                return { ...n, data: { ...n.data, formActions: actions } };
+            }
+            return n;
+        });
+        return {
+            forms: newForms,
+            workflow: { ...state.workflow, nodes: newNodes },
+            isDirty: true,
+        };
+    }),
+
     updateRules: (rules) => set({
         rules,
         isDirty: true
@@ -681,4 +754,56 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
         isDirty: true,
     })),
+
+    // ─── I/O Mapping Actions ─────────────────────────────────────────────
+    updateNodeInputs: (nodeId, inputs) => set(state => ({
+        workflow: {
+            ...state.workflow,
+            nodes: state.workflow.nodes.map(n =>
+                n.id === nodeId
+                    ? { ...n, data: { ...n.data, inputs } }
+                    : n
+            ),
+        },
+        isDirty: true,
+    })),
+
+    updateNodeOutputs: (nodeId, outputs) => set(state => ({
+        workflow: {
+            ...state.workflow,
+            nodes: state.workflow.nodes.map(n =>
+                n.id === nodeId
+                    ? { ...n, data: { ...n.data, outputs } }
+                    : n
+            ),
+        },
+        isDirty: true,
+    })),
+
+    /**
+     * Sync User Task outputs from its assigned form layout.
+     * Derives output mappings from all bound fields (fields with a `key`) in the form.
+     */
+    syncUserTaskOutputs: (nodeId) => {
+        const { workflow, forms } = get();
+        const node = workflow.nodes.find(n => n.id === nodeId);
+        if (!node || !node.data.formId) return;
+
+        const form = forms.find(f => f.id === node.data.formId);
+        if (!form) return;
+
+        const derivedOutputs = syncOutputsFromForm(form.items);
+
+        set(state => ({
+            workflow: {
+                ...state.workflow,
+                nodes: state.workflow.nodes.map(n =>
+                    n.id === nodeId
+                        ? { ...n, data: { ...n.data, outputs: derivedOutputs } }
+                        : n
+                ),
+            },
+            isDirty: true,
+        }));
+    },
 }));

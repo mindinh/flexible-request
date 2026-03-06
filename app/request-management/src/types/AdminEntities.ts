@@ -29,6 +29,12 @@ export interface AdminStepDefinition {
     approverRules?: AdminApproverRule[];
     // Schema content stored directly on step
     schemaContent?: string;
+    // Input/Output mapping content (JSON)
+    inputsContent?: string;
+    outputsContent?: string;
+    approversContent?: string;
+    notificationsContent?: string;
+    conditionExpr?: string; // JSON condition expression for condition nodes
     // Sync trigger
     syncTrigger?: string;
     // Default Step Owner (design-time configuration)
