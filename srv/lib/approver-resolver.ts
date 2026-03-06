@@ -136,7 +136,7 @@ export class ApproverResolver {
     /**
      * Look up display name from ShadowUsers or ShadowGroups
      */
-    private async lookupDisplayName(principalId: string, principalType: string): Promise<string> {
+    public async lookupDisplayName(principalId: string, principalType: string): Promise<string> {
         const { ShadowUsers, ShadowGroups } = this.db.entities;
 
         try {

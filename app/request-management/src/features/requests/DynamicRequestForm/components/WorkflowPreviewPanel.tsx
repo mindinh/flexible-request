@@ -69,10 +69,9 @@ export function WorkflowPreviewPanel({
     stepOwners = {},
     formSchemasContent
 }: WorkflowPreviewPanelProps) {
-    // Sort steps by sequence number
-    const sortedSteps = steps.slice().sort((a, b) =>
-        (a.sequenceNum || 0) - (b.sequenceNum || 0)
-    );
+    // Steps are now pre-sorted topologically by the data hooks.
+    // Just filter out End nodes for a cleaner UI.
+    const sortedSteps = steps.filter(step => (step as any).stepType !== 'end');
 
     const workflowSteps = sortedSteps.map((step, idx) => {
         // Determine status based on step position
@@ -109,7 +108,7 @@ export function WorkflowPreviewPanel({
 
         // Resolve form actions for this step (decision branching badges)
         const formActions = resolveFormActions(step.formId, formSchemasContent);
-        const branchLabel = formActions.length > 0
+        const branchLabel = (formActions.length > 0 && !step.isStartStep)
             ? `Decisions: ${formActions.map(a => a.label).join(' / ')}`
             : undefined;
 

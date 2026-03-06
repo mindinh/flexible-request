@@ -1,7 +1,6 @@
+import { cn } from '@/lib/utils';
 import {
-    Type, Hash, List, CheckSquare, LayoutGrid,
-    Table, CircleDot, Mail, SlidersHorizontal,
-    DollarSign, Tag, Image, Clock, Paperclip, Rows3, ScrollText, TextCursorInput
+    LayoutGrid, Table, Rows3, ScrollText, Database
 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 
@@ -14,34 +13,8 @@ const LAYOUT_ELEMENTS = [
     { id: 'scrollview', label: 'Scroll View', icon: ScrollText },
 ];
 
-const INPUT_ELEMENTS = [
-    { id: 'text', label: 'Input Field', icon: TextCursorInput },
-    { id: 'textarea', label: 'Text Area', icon: Type },
-    { id: 'number', label: 'Number', icon: Hash },
-    { id: 'currency', label: 'Currency', icon: DollarSign },
-    { id: 'email', label: 'Email', icon: Mail },
-    { id: 'slider', label: 'Slider', icon: SlidersHorizontal },
-    { id: 'label', label: 'Label', icon: Tag },
-    { id: 'selection', label: 'Selection', icon: List },
-];
-
-const SELECTION_ELEMENTS = [
-    { id: 'select', label: 'Dropdown', icon: List },
-    { id: 'radio', label: 'Radio', icon: CircleDot },
-    { id: 'checkbox', label: 'Checkbox', icon: CheckSquare },
-];
-
-const ADVANCED_ELEMENTS = [
-    { id: 'date', label: 'Date & Time', icon: Clock },
-    { id: 'file', label: 'Attachment', icon: Paperclip },
-    { id: 'image', label: 'Image', icon: Image },
-];
-
 const ELEMENT_GROUPS = [
     { key: 'layout', label: 'LAYOUT', items: LAYOUT_ELEMENTS },
-    { key: 'input', label: 'INPUT', items: INPUT_ELEMENTS },
-    { key: 'selection', label: 'SELECTION', items: SELECTION_ELEMENTS },
-    { key: 'advanced', label: 'ADVANCED / SYSTEM', items: ADVANCED_ELEMENTS },
 ];
 
 interface SchemaPaletteProps {
@@ -52,17 +25,19 @@ function PaletteCard({
     icon: Icon,
     label,
     type,
+    dataFieldKey,
     isCollapsed,
     onClick,
 }: {
     icon: React.ElementType;
     label: string;
     type: string;
+    dataFieldKey?: string;
     isCollapsed?: boolean;
     onClick: () => void;
 }) {
     const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-        e.dataTransfer.setData('application/json', JSON.stringify({ type, label }));
+        e.dataTransfer.setData('application/json', JSON.stringify({ type, label, dataFieldKey }));
         e.dataTransfer.effectAllowed = 'copy';
     };
 
@@ -94,25 +69,28 @@ function PaletteCard({
 }
 
 export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
-    const { addSchemaItem, activeStepId } = useStudioStore();
+    const { addSchemaItem, activeStepId, dataSchema } = useStudioStore();
 
-    const handleAdd = (type: string, label: string) => {
+    const handleAdd = (type: string, label: string, key?: string) => {
         if (!activeStepId) return;
-        addSchemaItem(type, label);
+        addSchemaItem(type, label, key);
     };
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Standard Element Groups */}
+            {/* Standard Element Groups (LAYOUT) */}
             {ELEMENT_GROUPS.map((group) => (
-                <div key={group.key} className="flex flex-col gap-2">
+                <div key={group.key} className="mb-2">
                     {!isCollapsed && (
-                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1">
+                        <h4 className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">
                             {group.label}
-                        </span>
+                        </h4>
                     )}
-                    <div className={`grid gap-2 ${isCollapsed ? 'grid-cols-1 px-1' : 'grid-cols-2'}`}>
-                        {group.items.map(item => (
+                    <div className={cn(
+                        "grid gap-2",
+                        isCollapsed ? "grid-cols-1" : "grid-cols-2"
+                    )}>
+                        {group.items.map((item) => (
                             <PaletteCard
                                 key={item.id}
                                 icon={item.icon}
@@ -125,7 +103,36 @@ export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
                     </div>
                 </div>
             ))}
+
+            <div className="h-px bg-slate-100 my-1" />
+
+            {/* Data Schema Fields */}
+            {dataSchema && dataSchema.length > 0 && (
+                <div className="mb-2">
+                    {!isCollapsed && (
+                        <h4 className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 mb-3">
+                            <Database size={12} className="text-primary" />
+                            Data Schema
+                        </h4>
+                    )}
+                    <div className={cn(
+                        "grid gap-2",
+                        isCollapsed ? "grid-cols-1" : "grid-cols-2"
+                    )}>
+                        {dataSchema.map((field) => (
+                            <PaletteCard
+                                key={field.key}
+                                type="text"
+                                label={field.label}
+                                icon={Database}
+                                isCollapsed={isCollapsed}
+                                dataFieldKey={field.key}
+                                onClick={() => handleAdd('text', field.label, field.key)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
-

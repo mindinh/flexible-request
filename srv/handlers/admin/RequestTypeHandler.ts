@@ -150,8 +150,26 @@ export class RequestTypeHandler {
                 positionY: step.positionY,
                 inputsContent: step.inputsContent,
                 outputsContent: step.outputsContent,
+                inputMapping: step.inputMapping,
                 approversContent: step.approversContent,
                 notificationsContent: step.notificationsContent,
+                conditionExpr: step.conditionExpr,
+                // Email Template
+                emailSubject: step.emailSubject,
+                emailBody: step.emailBody,
+                // API Call
+                apiMethod: step.apiMethod,
+                apiUrl: step.apiUrl,
+                apiHeaders: step.apiHeaders,
+                apiBody: step.apiBody,
+                apiAuthType: step.apiAuthType,
+                apiAuthToken: step.apiAuthToken,
+                apiAuthUser: step.apiAuthUser,
+                apiAuthPass: step.apiAuthPass,
+                apiResponseMapping: step.apiResponseMapping,
+                // Approver IDs
+                approverId: step.approverId,
+                approverType: step.approverType,
             });
 
             // Clone ApproverRules

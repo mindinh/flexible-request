@@ -370,7 +370,7 @@ export function DataMappingTabContent() {
 
     const inputs = (node.data.inputs as UiNodeInput[]) || [];
     const outputs = (node.data.outputs as UiNodeOutput[]) || [];
-    const isUserTask = node.data.actionSubType === 'form';
+    const isUserTask = (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask') || node.type === 'actionNode' && (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask');
 
     // Flatten available fields from data schema
     const availableFields = flattenDataFields(dataSchema);

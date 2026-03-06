@@ -6,6 +6,7 @@ import { SupportTypesTab } from './SupportTypesTab';
 import { UsersTab } from './UsersTab';
 import { GroupsTab } from './GroupsTab';
 import { SamlMappingsTab } from './SamlMappingsTab';
+import { HierarchyBuilderTab } from './hierarchy-builder';
 import { useAuth } from '../../lib/auth-context';
 import { AccessDenied } from '../../components/shared';
 import '../../styles/studio.css';
@@ -83,6 +84,12 @@ export function OrganizationPage() {
                         >
                             SAML Mappings
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="hierarchy"
+                            className="data-[state=active]:bg-violet-100 data-[state=active]:text-violet-700 rounded-lg px-4 py-2"
+                        >
+                            Hierarchy Builder
+                        </TabsTrigger>
                     </TabsList>
 
                     <motion.div
@@ -105,6 +112,10 @@ export function OrganizationPage() {
 
                         <TabsContent value="saml" className="mt-0">
                             <SamlMappingsTab />
+                        </TabsContent>
+
+                        <TabsContent value="hierarchy" className="mt-0">
+                            <HierarchyBuilderTab />
                         </TabsContent>
                     </motion.div>
                 </Tabs>

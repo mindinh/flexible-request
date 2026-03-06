@@ -31,8 +31,9 @@ service AdminService @(
     entity StepDefinitions   as
         projection on db.StepDefinitions {
             *,
-            virtual null as ownerDisplayName : String,
-            approverRules                    : redirected to ApproverRules
+            virtual null as ownerDisplayName    : String,
+            virtual null as approverDisplayName : String,
+            approverRules                       : redirected to ApproverRules
         };
 
     @restrict: [{
@@ -100,17 +101,39 @@ service AdminService @(
     }]
     entity SamlGroupMappings as projection on db.SamlGroupMappings;
 
+    // Organization Hierarchies
+    @restrict: [{
+        grant: '*',
+        to   : 'admin'
+    }]
+    entity OrgHierarchies    as projection on db.OrgHierarchies;
+
     // === System Settings: Number Ranges ===
     @restrict: [{
         grant: '*',
         to   : 'admin'
     }]
-    entity NumberRanges      as projection on db.NumberRanges {
-        *,
-        requestType : redirected to RequestTypes
-    }
-    actions {
-        // Reset the counter back to startNumber
-        action resetRange();
-    };
+    entity NumberRanges      as
+        projection on db.NumberRanges {
+            *,
+            requestType : redirected to RequestTypes
+        }
+        actions {
+            // Reset the counter back to startNumber
+            action resetRange();
+        };
+
+    /**
+     * Test an external API call from the backend to avoid CORS issues.
+     * Returns { status: number, body: any } as a JSON string.
+     */
+    action testApiCall(method: String,
+                       url: String,
+                       headers: String, // JSON string of headers
+                       body: String, // Request body
+                       authType: String,
+                       authUser: String,
+                       authPass: String,
+                       authToken: String) returns LargeString;
+
 }

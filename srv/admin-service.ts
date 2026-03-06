@@ -4,7 +4,9 @@ import { RequestTypeHandler } from './handlers/admin/RequestTypeHandler';
 import { StepHandler } from './handlers/admin/StepHandler';
 import { IdentityHandler } from './handlers/admin/IdentityHandler';
 import { ApproverRulesHandler } from './handlers/admin/ApproverRulesHandler';
+import { OrgHierarchyHandler } from './handlers/admin/OrgHierarchyHandler';
 import { ManagedUserHandler } from './handlers/ManagedUserHandler';
+import { ApiHandler } from './handlers/admin/ApiHandler';
 
 /**
  * AdminService - Configuration management for Request Types and Workflows.
@@ -17,6 +19,7 @@ import { ManagedUserHandler } from './handlers/ManagedUserHandler';
  * - RequestTypeHandler: Clone action, delete validation
  * - StepHandler: Sequence validation, dependency checks
  * - IdentityHandler: ShadowGroups/SupportTypes validation
+ * - ApiHandler: Proxy for external API calls
  */
 export default class AdminService extends cds.ApplicationService {
 
@@ -29,6 +32,8 @@ export default class AdminService extends cds.ApplicationService {
         new StepHandler(this).register();
         new IdentityHandler(this).register();
         new ApproverRulesHandler(this).register();
+        new OrgHierarchyHandler(this).register();
+        new ApiHandler(this).register();
 
         await super.init();
     }

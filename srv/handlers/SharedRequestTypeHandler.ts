@@ -94,6 +94,9 @@ export class SharedRequestTypeHandler {
             if (step?.ownerId) {
                 step.ownerDisplayName = this.resolve(step.ownerId, step.ownerType, userMap, groupMap);
             }
+            if (step?.approverId) {
+                step.approverDisplayName = this.resolve(step.approverId, step.approverType, userMap, groupMap);
+            }
         }
 
         LOG.debug(`Enriched ${steps.length} StepDefinition(s) with ownerDisplayName`);
@@ -150,6 +153,10 @@ export class SharedRequestTypeHandler {
                     if (step.ownerType === 'USER') userIds.add(step.ownerId);
                     else if (GROUP_TYPES.includes(step.ownerType)) groupIds.add(step.ownerId);
                 }
+                if (step?.approverId) {
+                    if (step.approverType === 'USER') userIds.add(step.approverId);
+                    else if (GROUP_TYPES.includes(step.approverType)) groupIds.add(step.approverId);
+                }
                 const rules = Array.isArray(step?.approverRules) ? step.approverRules : [];
                 for (const rule of rules) {
                     if (rule?.principalId) {
@@ -169,6 +176,9 @@ export class SharedRequestTypeHandler {
             for (const step of steps) {
                 if (step?.ownerId) {
                     step.ownerDisplayName = this.resolve(step.ownerId, step.ownerType, userMap, groupMap);
+                }
+                if (step?.approverId) {
+                    step.approverDisplayName = this.resolve(step.approverId, step.approverType, userMap, groupMap);
                 }
                 const rules = Array.isArray(step?.approverRules) ? step.approverRules : [];
                 for (const rule of rules) {

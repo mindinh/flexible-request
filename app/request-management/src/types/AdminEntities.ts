@@ -19,9 +19,9 @@ export interface AdminStepDefinition {
     isStartStep: boolean;
     slaDays: number;
     requestType_ID?: string;
-    // Node type for workflow canvas
     stepType?: string; // 'start' | 'end' | 'action' | 'condition'
     actionSubType?: string; // 'form' | 'email' | 'approval'
+    formId?: string;
     // Canvas position for workflow visualization
     positionX?: number;
     positionY?: number;
@@ -32,6 +32,7 @@ export interface AdminStepDefinition {
     // Input/Output mapping content (JSON)
     inputsContent?: string;
     outputsContent?: string;
+    inputMapping?: string;
     approversContent?: string;
     notificationsContent?: string;
     conditionExpr?: string; // JSON condition expression for condition nodes
@@ -40,6 +41,23 @@ export interface AdminStepDefinition {
     // Default Step Owner (design-time configuration)
     ownerType?: string;
     ownerId?: string;
+    ownerDisplayName?: string;
+    approverType?: string;
+    approverId?: string;
+    approverDisplayName?: string;
+    // Email Template (Custom fields from HEAD)
+    emailSubject?: string;
+    emailBody?: string;
+    // API Call (Custom fields from HEAD)
+    apiMethod?: string;
+    apiUrl?: string;
+    apiHeaders?: string;
+    apiBody?: string;
+    apiAuthType?: string;
+    apiAuthToken?: string;
+    apiAuthUser?: string;
+    apiAuthPass?: string;
+    apiResponseMapping?: string;
 }
 
 // ApprovalConfig removed
@@ -48,7 +66,7 @@ export interface AdminStepDependency {
     ID: string;
     step_ID?: string;
     dependsOn_ID?: string;
-    // We might expand this to include the step name if needed
+    action?: string; // If set, only activates when predecessor completes with this action
 }
 
 export interface AdminStatusNetwork {
@@ -66,7 +84,7 @@ export interface AdminApproverRule {
     stepDefinition_ID?: string;
     priority: number;
     conditionExpr: string; // JSON string
-    principalType: 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION';
+    principalType: 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION' | 'DEPARTMENT';
     principalId: string;    // UUID of ShadowUsers or ShadowGroups
     isFinal?: boolean;
     description?: string;

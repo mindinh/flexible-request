@@ -51,11 +51,10 @@ export function DynamicRequestForm() {
         handleSubmit,
         isLoading,
     } = useRequestFormData({ typeId, requestId });
-
-    // Get all steps sorted by sequence
+    // Get all steps
     const steps = useMemo(() => {
-        const allSteps = requestType?.steps || [];
-        return [...allSteps].sort((a, b) => (a.sequenceNum || 0) - (b.sequenceNum || 0));
+        // Steps are now pre-sorted by useRequestFormData
+        return requestType?.steps || [];
     }, [requestType?.steps]);
 
     // Always locked to start step — users cannot navigate to future steps
@@ -64,7 +63,7 @@ export function DynamicRequestForm() {
     // Get the currently selected step definition
     const selectedStep = useMemo(() => {
         if (!effectiveSelectedStepId) return null;
-        return steps.find(s => s.ID === effectiveSelectedStepId) || null;
+        return (steps as any[]).find(s => s.ID === effectiveSelectedStepId) || null;
     }, [steps, effectiveSelectedStepId]);
 
     // Schema items always come from start step
@@ -99,7 +98,7 @@ export function DynamicRequestForm() {
         }
 
         // Fall back to default from step definition ONLY if no assignment record exists
-        const step = steps.find(s => s.ID === effectiveSelectedStepId);
+        const step = (steps as any[]).find(s => s.ID === effectiveSelectedStepId);
         if (step?.ownerId) {
             return {
                 id: step.ownerId,
@@ -202,7 +201,6 @@ export function DynamicRequestForm() {
                                 </p>
                             </div>
                         )}
-
 
 
                         {/* Action Buttons */}

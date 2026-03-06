@@ -9,12 +9,11 @@ import type {
     UiCanvasItem,
     UiWorkflowNode,
     UiWorkflowEdge,
-    UiSection,
-    UiFormField,
     UiStatusNode,
     UiStatusEdge,
     UiNodeInput,
-    UiNodeOutput
+    UiNodeOutput,
+    SyncTrigger
 } from './types';
 
 // Helper to parse/stringify JSON safely
@@ -134,9 +133,10 @@ export const StudioAdapter = {
                     label: step.stepName,
                     sla: step.slaDays,
                     isStart: step.isStartStep,
-                    syncTrigger: step.syncTrigger || 'NONE',
+                    syncTrigger: step.syncTrigger as SyncTrigger || 'NONE',
                     actionSubType: step.actionSubType || undefined,
-                    formId: (step as any).formId || undefined,
+                    formId: step.formId || undefined,
+                    inputMapping: step.inputMapping || '{}',
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
@@ -159,6 +159,22 @@ export const StudioAdapter = {
                         };
                     })(),
                     conditionExpr: step.conditionExpr ? parseJson<any>(step.conditionExpr, null) : null,
+                    // Legacy/Custom fields (from HEAD)
+                    approver_ID: step.approverId,
+                    approverType: step.approverType,
+                    approverName: step.approverDisplayName || '',
+                    // Email & API Configuration
+                    emailSubject: step.emailSubject || '',
+                    emailBody: step.emailBody || '',
+                    apiMethod: step.apiMethod as "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | undefined,
+                    apiUrl: step.apiUrl,
+                    apiHeaders: step.apiHeaders ? parseJson<any[]>(step.apiHeaders, []) : [],
+                    apiBody: step.apiBody || '',
+                    apiAuthType: (step.apiAuthType || 'none') as "none" | "bearer" | "basic" | undefined,
+                    apiAuthToken: step.apiAuthToken || '',
+                    apiAuthUser: step.apiAuthUser || '',
+                    apiAuthPass: step.apiAuthPass || '',
+                    apiResponseMapping: step.apiResponseMapping ? parseJson<any[]>(step.apiResponseMapping, []) : [],
                 }
             });
 
@@ -172,7 +188,7 @@ export const StudioAdapter = {
                             source: pred.dependsOn_ID,
                             target: step.ID,
                             type: 'smoothstep',
-                            ...(action ? { sourceHandle: action, label: action } : {}),
+                            ...(action ? { sourceHandle: action } : {}),
                         });
                     }
                 });

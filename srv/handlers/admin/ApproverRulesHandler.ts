@@ -37,7 +37,7 @@ export class ApproverRulesHandler {
             if (rule.principalId) {
                 if (rule.principalType === 'USER') {
                     userIds.add(rule.principalId);
-                } else if (['GROUP', 'TEAM', 'ROLE', 'POSITION'].includes(rule.principalType)) {
+                } else if (['GROUP', 'TEAM', 'ROLE', 'POSITION', 'DEPARTMENT'].includes(rule.principalType)) {
                     groupIds.add(rule.principalId);
                 }
             }

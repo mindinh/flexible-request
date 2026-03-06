@@ -25,6 +25,8 @@ interface StepFormSectionProps {
     claimedByOther?: boolean;
     /** Name of the user who claimed the step */
     claimedByName?: string;
+    /** Injected schema items (optional, used for decoupled forms) */
+    schemaItems?: (SchemaField | SchemaSection | SchemaTable)[];
     /** Footer action buttons for decision branching (e.g. Approve, Reject, custom) */
     formActions?: Array<{ id: string; label: string; variant: string }>;
     /** Called when a footer action button is clicked (decision branching) */
@@ -46,13 +48,14 @@ export function StepFormSection({
     claimRequired = false,
     claimedByOther = false,
     claimedByName,
+    schemaItems: injectedSchemaItems,
     formActions,
     onActionClick
 }: StepFormSectionProps) {
     // Use pre-resolved schema items if provided, otherwise fall back to parsing schemaContent
-    const schemaItems = resolvedSchemaItems && resolvedSchemaItems.length > 0
+    const schemaItems = injectedSchemaItems || (resolvedSchemaItems && resolvedSchemaItems.length > 0
         ? resolvedSchemaItems
-        : parseSchemaContent(stepDefinition.schemaContent);
+        : parseSchemaContent(stepDefinition.schemaContent));
 
     if (schemaItems.length === 0) {
         return null;

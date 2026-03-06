@@ -298,5 +298,46 @@ export const AdminService = {
      */
     async deleteSamlMapping(id: string): Promise<void> {
         await api.delete(`${API_BASE}/SamlGroupMappings(ID='${id}')`);
+    },
+
+    async getOrgHierarchies(orgName?: string): Promise<any[]> {
+        let url = `${API_BASE}/OrgHierarchies?$expand=parentUser,parentGroup($expand=type),childUser,childGroup($expand=type)`;
+        if (orgName) {
+            url += `&$filter=relationship eq '${encodeURIComponent(orgName)}'`;
+        }
+        const response = await api.get(url);
+        return response.data.value;
+    },
+
+    /**
+     * Create an OrgHierarchy record
+     */
+    async createOrgHierarchy(data: any): Promise<any> {
+        const response = await api.post(`${API_BASE}/OrgHierarchies`, data);
+        return response.data;
+    },
+
+    /**
+     * Delete an OrgHierarchy record
+     */
+    async deleteOrgHierarchy(id: string): Promise<void> {
+        await api.delete(`${API_BASE}/OrgHierarchies(ID='${id}')`);
+    },
+    /**
+     * Test an external API call from the backend to avoid CORS issues.
+     */
+    async testApiCall(data: {
+        method: string;
+        url: string;
+        headers: string;
+        body: string;
+        authType: string;
+        authUser: string;
+        authPass: string;
+        authToken: string;
+    }): Promise<{ status: number; body: any }> {
+        const response = await api.post(`${API_BASE}/testApiCall`, data);
+        // The backend returns a JSON string, so we need to parse it
+        return JSON.parse(response.data.value);
     }
 };

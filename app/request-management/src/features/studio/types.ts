@@ -114,12 +114,12 @@ export type UiCanvasItem = UiFormField | UiSection | UiTableField;
 
 // --- Form Footer Actions (Decision Branching) ---
 export interface UiFormAction {
-    id: string;        // e.g. 'approve', 'reject', 'sendToLegal'
-    label: string;     // Button text: 'Approve', 'Reject', 'Send to Legal'
-    variant: 'primary' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'success' | 'warning';
+    id: string;
+    label: string;
+    variant?: 'primary' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'success' | 'warning' | 'default' | 'danger';
+    icon?: string;
 }
 
-// --- Forms ---
 export interface UiForm {
     id: string;
     name: string;
@@ -175,6 +175,23 @@ export interface UiWorkflowNodeData {
     triggerType?: string;       // 'FORM_SUB' | 'API_TRIGGER' (for start nodes)
     inputs?: UiNodeInput[];     // Data Schema fields consumed by this step
     outputs?: UiNodeOutput[];   // Data Schema fields produced by this step
+    owner_ID?: string;          // Default Step Owner ID
+    ownerType?: string;         // USER/GROUP/etc.
+    ownerName?: string;         // Display name
+    approver_ID?: string;       // Fixed Approver ID
+    approverType?: string;      // USER/GROUP/etc.
+    approverName?: string;      // Display name
+
+    // API Call Configuration
+    apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    apiUrl?: string;
+    apiHeaders?: Array<{ key: string; value: string }>;
+    apiBody?: string;
+    apiAuthType?: 'none' | 'bearer' | 'basic';
+    apiAuthToken?: string;
+    apiAuthUser?: string;
+    apiAuthPass?: string;
+    apiResponseMapping?: Array<{ path: string; targetKey: string }>;
     [key: string]: unknown;
 }
 

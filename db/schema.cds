@@ -57,8 +57,9 @@ entity StepDefinitions : cuid, managedWithUser {
     schemaContent        : LargeString; // Form schema JSON (each step has its own schema)
     inputsContent        : LargeString; // JSON: Array<{ sourcePath, alias?, type? }>
     outputsContent       : LargeString; // JSON: Array<{ sourcePath, alias?, type?, derivedFrom? }>
+    inputMapping         : LargeString; // JSON: Map of field ID to source {stepId, fieldId}
     approversContent     : LargeString; // JSON: Array<{ id, type, displayName }>
-    notificationsContent : LargeString; // JSON: { types: string[], emailConfig?: {...} }
+    notificationsContent : LargeString; // JSON: { channels: string[], emailConfig?: {...} }
     conditionExpr        : LargeString; // JSON condition expression for condition nodes (AND/OR/NOT groups)
     // Sync Trigger: When to sync data to S/4HANA or external system
     syncTrigger          : String enum {
@@ -68,9 +69,28 @@ entity StepDefinitions : cuid, managedWithUser {
         ON_COMPLETE; // Sync when entire workflow completes
     } default 'NONE';
 
+    // Email Template (Custom fields from HEAD)
+    emailSubject         : String;      // Email subject template (supports {{requestId}}, {{requestTitle}}, etc.)
+    emailBody            : LargeString; // Email body template (HTML, supports {{requestId}}, {{requestTitle}}, etc.)
+
+    // API Call (Custom fields from HEAD)
+    apiMethod            : String(10); // GET, POST, PUT, DELETE
+    apiUrl               : String(1024);
+    apiHeaders           : LargeString; // JSON: Array<{ key, value }>
+    apiBody              : LargeString; // JSON body or template
+    apiAuthType          : String(20); // none, basic, bearer
+    apiAuthToken         : String;
+    apiAuthUser          : String;
+    apiAuthPass          : String;
+    apiResponseMapping   : LargeString; // JSON: Array<{ sourcePath, targetField }>
+
     // Default Step Owner (set at design time) - JOIN with ShadowUsers/Groups for display
     ownerType            : String(20); // Principal type (USER/GROUP/TEAM/etc.)
     ownerId              : UUID; // ShadowUser or ShadowGroup ID
+
+    // Fixed Approver (design-time configuration)
+    approverType         : String(20); // Principal type (USER/GROUP/TEAM/etc.)
+    approverId           : UUID; // ShadowUser or ShadowGroup ID
 
     // Dependencies: What must complete before this step can start
     predecessors         : Composition of many StepDependencies
