@@ -5,7 +5,9 @@ import { api } from '../../../../lib/api';
 import { useApproverResolver } from '../../../../hooks/useApproverResolver';
 import { usePrincipalNames } from '../../../../hooks/usePrincipalNames';
 import { parseSchemaContent } from '../../../../lib/schemaParser';
+import { useAuth, isGroupLikeType, checkIsGroupMember } from '../../../../lib/auth-context';
 import type { WorkflowTimelineStep } from '../../../../components/shared';
+import { sortStepsTopologically } from '../../../../lib/workflowUtils';
 import type { RequestDetailData, HistoryItem, Step } from '../types';
 import { mapStepStatus as mapStatus } from '../types';
 
@@ -13,13 +15,14 @@ import { mapStepStatus as mapStatus } from '../types';
  * Custom hook for fetching and managing request detail data
  */
 export function useRequestDetailData(id: string | undefined) {
+    const { currentUserId } = useAuth();
     // Fetch request details with expanded request type and steps
     const { data: request, isLoading, isFetching } = useQuery({
 
         queryKey: ['request', id],
         queryFn: async () => {
             const response = await api.get(
-                `/browse/Requests(${id})?$expand=requestType($expand=steps($expand=approverRules)),steps($expand=approvals,stepDefinition,data,claimedBy)`
+                `/browse/Requests(${id})?$expand=requestType($expand=steps($expand=approverRules,predecessors)),steps($expand=approvals,stepDefinition,data,claimedBy)`
             );
             return response.data as RequestDetailData;
         },
@@ -61,40 +64,91 @@ export function useRequestDetailData(id: string | undefined) {
         }
     }, [startStepData]);
 
+    // Handle Input Mapping propagation for the selected step
+    useEffect(() => {
+        if (!selectedStepId || !request?.requestType?.steps || !request?.steps) return;
+
+        const currentStepDef = request.requestType.steps.find(s => s.ID === selectedStepId);
+        if (!currentStepDef?.inputMapping) return;
+
+        try {
+            const mapping = JSON.parse(currentStepDef.inputMapping);
+            const resolvedMappingData: Record<string, any> = {};
+            let hasChanges = false;
+
+            Object.entries(mapping).forEach(([targetFieldId, mapInfo]: [string, any]) => {
+                const { sourceStepId, sourceFieldId } = mapInfo;
+
+                // Find the source step in runtime steps
+                const sourceStep = request.steps?.find(s => s.stepDefinition_ID === sourceStepId);
+                if (sourceStep?.data?.payload) {
+                    try {
+                        const sourcePayload = JSON.parse(sourceStep.data.payload);
+                        const sourceValue = sourcePayload[sourceFieldId];
+
+                        if (sourceValue !== undefined) {
+                            resolvedMappingData[targetFieldId] = sourceValue;
+                            hasChanges = true;
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse source payload', e);
+                    }
+                }
+            });
+
+            if (hasChanges) {
+                setStepFormData(prev => ({
+                    ...prev,
+                    [selectedStepId]: {
+                        ...resolvedMappingData,
+                        ...(prev[selectedStepId] || {}) // Keep user edits if any
+                    }
+                }));
+            }
+        } catch (e) {
+            console.error('Failed to resolve input mapping', e);
+        }
+    }, [selectedStepId, request?.steps, request?.requestType?.steps]);
+
     // Initialize selectedStepId to the active step
     // Priority: 1. Step with pending approvals, 2. Data entry/active step, 3. Start step
     useEffect(() => {
-        if (request?.steps && !selectedStepId) {
+        if (request?.steps && !selectedStepId && currentUserId) {
             const steps = request.steps;
 
-            // First priority: Step with pending approvals (group approval scenario)
-            const stepWithPendingApproval = steps.find((s: Step) =>
-                (s.status === 'PENDING' || s.status === 'IN_PROGRESS') &&
-                s.approvals?.some((a: any) => a.status === 'PENDING')
-            );
+            // 1. Try to find a step where the current user is an approver or owner
+            const actionableStep = steps.find((s: Step) => {
+                const isStarted = s.status === 'STARTED' || s.status === 'IN_PROGRESS' || s.status === 'IN_CLARIFICATION';
+                if (!isStarted) return false;
 
-            if (stepWithPendingApproval) {
-                setSelectedStepId(stepWithPendingApproval.stepDefinition_ID || null);
+                // Check approvals
+                const hasMyApproval = s.approvals?.some((a: any) =>
+                    (a.status === 'PENDING' || a.status === 'REAPPROVAL_NEEDED') && (
+                        (a.approverType === 'USER' && a.approver === currentUserId) ||
+                        (currentUserId && a.approver && isGroupLikeType(a.approverType) && checkIsGroupMember(currentUserId, a.approver))
+                    )
+                );
+                if (hasMyApproval) return true;
+
+                // Check ownership
+                const isMyOwnership = (s.ownerId === currentUserId) || (currentUserId && s.ownerId && isGroupLikeType(s.ownerType) && checkIsGroupMember(currentUserId, s.ownerId));
+                if (isMyOwnership) return true;
+
+                return false;
+            });
+
+            if (actionableStep) {
+                setSelectedStepId(actionableStep.stepDefinition_ID || null);
                 return;
             }
 
-            // Second priority: Active data entry steps
-            const activeStep = steps.find((s: Step) =>
-                s.status === 'STARTED' ||
-                s.status === 'IN_PROGRESS' ||
-                s.status === 'IN_CLARIFICATION'
-            );
-
-            if (activeStep) {
-                setSelectedStepId(activeStep.stepDefinition_ID || null);
-            } else {
-                const startStep = steps.find((s: Step) => s.stepDefinition?.isStartStep) || steps[0];
-                if (startStep) {
-                    setSelectedStepId(startStep.stepDefinition_ID || null);
-                }
+            // 2. Fallback: If no actionable step, just show the Start Step (requester view)
+            const startStep = steps.find((s: Step) => s.stepDefinition?.isStartStep) || steps[0];
+            if (startStep) {
+                setSelectedStepId(startStep.stepDefinition_ID || null);
             }
         }
-    }, [request, selectedStepId]);
+    }, [request, selectedStepId, currentUserId]);
 
     // Sort steps for timeline
     const sortedSteps = useMemo(() => {
@@ -147,7 +201,7 @@ export function useRequestDetailData(id: string | undefined) {
         return combinedData;
     }, [formData, request, stepFormData]);
 
-    const resolvedApprovers = useApproverResolver(request?.requestType, approverContext);
+    const resolvedApprovers = useApproverResolver(request?.requestType as any, approverContext);
 
     // Build a map of known user IDs to display names from all available sources
     const knownUsers = useMemo(() => {
@@ -241,13 +295,27 @@ export function useRequestDetailData(id: string | undefined) {
 
     // Prepare workflow timeline steps
     const workflowSteps: WorkflowTimelineStep[] = useMemo(() => {
-        const allStepDefinitions = request?.requestType?.steps || [];
+        const allStepDefinitions = sortStepsTopologically(request?.requestType?.steps || [])
+            .filter(stepDef => stepDef.stepType !== 'end');
 
         return allStepDefinitions.map((stepDef) => {
             const runtimeStep = sortedSteps.find(s => s.stepDefinition_ID === stepDef.ID);
             const stepResolvedApprovers = resolvedApprovers[stepDef.ID] || [];
             const completedApprovals = runtimeStep?.approvals?.filter(a => a.status === 'APPROVED' || a.status === 'REJECTED') || [];
-            const status = runtimeStep?.status || 'UPCOMING';
+
+            // Determine base status
+            let status = runtimeStep?.status || 'UPCOMING';
+
+            // Determination of completion:
+            // 1. Backend says COMPLETED
+            // 2. It's a data-entry step (no approvals), has been STARTED, and has data
+            const hasData = !!runtimeStep?.data?.payload;
+            const isDataEntryOnly = (stepDef.actionSubType === 'form' ||
+                (stepDef.isStartStep && (stepDef.approverRules?.length || 0) === 0));
+
+            if (isDataEntryOnly && hasData && (status === 'STARTED' || status === 'IN_PROGRESS' || status === 'PENDING')) {
+                status = 'COMPLETED';
+            }
 
             // Check for re-approval condition
             const hasPastActivity = auditLog?.some(l =>
@@ -255,9 +323,6 @@ export function useRequestDetailData(id: string | undefined) {
                 (l.action === 'SEND_BACK' || l.action === 'COMPLETE' || l.action === 'AUTO_COMPLETE')
             );
             const isReapproval = hasPastActivity && (status === 'IN_PROGRESS' || status === 'PENDING' || status === 'STARTED');
-
-            const stepSchema = resolveStepSchema(stepDef);
-            const hasSchema = stepSchema.length > 0;
 
             const getSubtitle = () => {
                 const statusUpper = status?.toUpperCase();
@@ -270,12 +335,26 @@ export function useRequestDetailData(id: string | undefined) {
                             Re-approval Needed
                         </span>
                     );
-                } else if (statusUpper === 'COMPLETED' && completedApprovals.length > 0) {
-                    // Prefer decidedByDisplayName (actual decider) over approverDisplayName (assigned approver)
-                    const approverName = completedApprovals[0].decidedByDisplayName ||
-                        completedApprovals[0].approverDisplayName ||
-                        completedApprovals[0].approver;
-                    statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
+                } else if (statusUpper === 'COMPLETED') {
+                    if (completedApprovals.length > 0) {
+                        const isTechnicalReject = completedApprovals.some(a => a.status === 'REJECTED');
+                        const isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
+                        const isRejected = isTechnicalReject || isBranchReject;
+
+                        const approverName = completedApprovals[0].decidedByDisplayName ||
+                            completedApprovals[0].approverDisplayName ||
+                            completedApprovals[0].approver;
+
+                        if (isRejected) {
+                            statusBadge = <span className="text-rose-600 font-medium">Rejected by {approverName}</span>;
+                        } else {
+                            statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
+                        }
+                    } else if (hasData) {
+                        statusBadge = <span className="text-emerald-600 font-medium">Completed</span>;
+                    } else {
+                        statusBadge = <span className="text-slate-500">Completed</span>;
+                    }
                 } else if (statusUpper === 'REJECTED' && completedApprovals.length > 0) {
                     const approverName = completedApprovals[0].decidedByDisplayName ||
                         completedApprovals[0].approverDisplayName ||
@@ -284,6 +363,8 @@ export function useRequestDetailData(id: string | undefined) {
                 } else if (statusUpper === 'IN_PROGRESS') {
                     statusBadge = <span className="text-blue-600 font-medium">In Progress</span>;
                 } else if (statusUpper === 'STARTED') {
+                    const stepSchema = parseSchemaContent(stepDef.schemaContent);
+                    const hasSchema = stepSchema.length > 0 || !!stepDef.formId;
                     if (!hasSchema) {
                         statusBadge = <span className="text-blue-600 font-medium">Review Pending</span>;
                     } else {
@@ -298,12 +379,9 @@ export function useRequestDetailData(id: string | undefined) {
                 }
 
                 // Determine Step Owner
-                // Prioritize runtime step owner (if assigned), then definition default
                 const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
                 let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
 
-                // Resolution Logic:
-                // 1. If we have a name that looks like a UUID (or is missing), try to resolve it using knownUsers map
                 const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
 
                 if (!ownerDisplayName || isUuid(ownerDisplayName)) {
@@ -312,24 +390,16 @@ export function useRequestDetailData(id: string | undefined) {
                     }
                 }
 
-                // 2. If we still have a UUID/missing name, and it matches the fallback coordinator logic
                 if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId && request?.coordinatorId && ownerId === request.coordinatorId) {
                     ownerDisplayName = request.coordinatorDisplayName;
                 }
 
-                // 3. Fallback to enriched principal names (fetched from Identity Service)
                 if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId) {
                     const resolved = enrichedKnownUsers.get(ownerId);
-                    if (resolved) {
-                        ownerDisplayName = resolved;
-                    }
+                    if (resolved) ownerDisplayName = resolved;
                 }
 
-                // 4. Final Fallback: ID or "Request Coordinator" (implied)
                 if ((!ownerDisplayName || isUuid(ownerDisplayName)) && !ownerDisplayName) {
-                    // Try ID as last resort if not UUID, otherwise stay empty? 
-                    // If ownerId is present but we can't resolve it, showing it is technically correct debugging but bad UX.
-                    // Let's use the ID if we have nothing else, as hiding it might be misleading.
                     ownerDisplayName = ownerId;
                 }
 
@@ -349,7 +419,6 @@ export function useRequestDetailData(id: string | undefined) {
                 );
             };
 
-            // Resolve owner name for the preview variant
             const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
             let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
             const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
@@ -360,16 +429,13 @@ export function useRequestDetailData(id: string | undefined) {
                 ownerDisplayName = request.coordinatorDisplayName;
             }
 
-            // Extract decision note from completed approval comment
             const decisionApproval = completedApprovals.find(a => a.comment);
             const decisionNote = decisionApproval?.comment || null;
             const decisionDate = completedApprovals[0]?.decisionAt || null;
 
-            // Calculate SLA info
             let slaInfo: string | null = null;
             if (stepDef.slaDays && runtimeStep) {
                 if (status === 'COMPLETED' || status === 'REJECTED') {
-                    // No SLA display needed for completed steps
                 } else if (status === 'IN_PROGRESS' || status === 'STARTED' || status === 'IN_CLARIFICATION') {
                     const startedAt = (runtimeStep as any).startedAt || (runtimeStep as any).createdAt;
                     if (startedAt) {
@@ -409,7 +475,7 @@ export function useRequestDetailData(id: string | undefined) {
                     const forms = JSON.parse(request.requestType.formSchemasContent);
                     const form = forms.find((f: any) => f.id === stepDef.formId);
                     const actions = form?.actions || [];
-                    if (actions.length > 0) {
+                    if (actions.length > 0 && !stepDef.isStartStep) {
                         const decisionAction = (runtimeStep as any)?.decisionAction;
                         if (decisionAction && status === 'COMPLETED') {
                             // Show the decision that was actually taken
@@ -436,23 +502,24 @@ export function useRequestDetailData(id: string | undefined) {
                 branchLabel,
                 approvalRules: runtimeStep?.approvals && runtimeStep.approvals.length > 0
                     ? runtimeStep.approvals.map(approval => ({
-                        ruleName: approval.ruleName || approval.approverDisplayName || approval.approver,
+                        ruleName: approval.ruleName || approval.approverDisplayName || approval.approver || 'Approval Rule',
                         approvers: [{
-                            // Resolve approver display names consistently for runtime approvals.
-                            name: resolvePrincipalName(approval.approver, approval.approverDisplayName),
+                            name: resolvePrincipalName(approval.approver, approval.approverDisplayName) || 'Unknown Approver',
                             type: (approval.approverType || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION',
-                            status: approval.status as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
+                            status: (approval.status === 'APPROVED' && (/reject/i.test(runtimeStep?.decisionAction || ''))
+                                ? 'REJECTED'
+                                : approval.status) as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
                             comment: approval.comment,
                             timestamp: approval.decisionAt,
-                            decidedBy: approval.decidedByDisplayName  // Who actually made the decision
+                            decidedBy: approval.decidedByDisplayName
                         }]
                     }))
                     : stepResolvedApprovers.length > 0
                         ? stepResolvedApprovers.map(resolved => {
                             return {
-                                ruleName: resolved.ruleName,
+                                ruleName: resolved.ruleName || 'Approval Rule',
                                 approvers: [{
-                                    name: resolvePrincipalName(resolved.approverValue, resolved.approverDisplayName),
+                                    name: resolvePrincipalName(resolved.approverValue, resolved.approverDisplayName) || 'Unknown Approver',
                                     type: (resolved.approverType?.toUpperCase() || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION'
                                 }]
                             };

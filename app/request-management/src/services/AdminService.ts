@@ -300,11 +300,6 @@ export const AdminService = {
         await api.delete(`${API_BASE}/SamlGroupMappings(ID='${id}')`);
     },
 
-    // === Organization Hierarchies ===
-
-    /**
-     * Fetch OrgHierarchy records, optionally filtered by org name (stored in relationship field)
-     */
     async getOrgHierarchies(orgName?: string): Promise<any[]> {
         let url = `${API_BASE}/OrgHierarchies?$expand=parentUser,parentGroup($expand=type),childUser,childGroup($expand=type)`;
         if (orgName) {
@@ -328,4 +323,21 @@ export const AdminService = {
     async deleteOrgHierarchy(id: string): Promise<void> {
         await api.delete(`${API_BASE}/OrgHierarchies(ID='${id}')`);
     },
+    /**
+     * Test an external API call from the backend to avoid CORS issues.
+     */
+    async testApiCall(data: {
+        method: string;
+        url: string;
+        headers: string;
+        body: string;
+        authType: string;
+        authUser: string;
+        authPass: string;
+        authToken: string;
+    }): Promise<{ status: number; body: any }> {
+        const response = await api.post(`${API_BASE}/testApiCall`, data);
+        // The backend returns a JSON string, so we need to parse it
+        return JSON.parse(response.data.value);
+    }
 };

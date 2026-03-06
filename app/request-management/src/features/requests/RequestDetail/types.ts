@@ -20,6 +20,7 @@ export interface Step {
     ownerId?: string;
     ownerType?: string;
     ownerDisplayName?: string;
+    decisionAction?: string;
     data?: {
         ID: string;
         payload?: string;
@@ -67,12 +68,16 @@ export interface RequestTypeStep {
     isStartStep?: boolean;
     schemaContent?: string;
     formId?: string;
+    stepType?: string;
+    actionSubType?: string;
     sequenceNum?: number;
     slaDays?: number;
     ownerId?: string;
     ownerType?: string;
     ownerDisplayName?: string;
+    inputMapping?: string;
     approverRules?: ApproverRule[];
+    predecessors?: any[];
 }
 
 /**

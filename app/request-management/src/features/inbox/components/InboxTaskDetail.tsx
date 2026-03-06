@@ -18,13 +18,11 @@ import { getPriorityConfig } from '../../../config';
 import {
     ChevronRight,
     ChevronLeft,
-    ThumbsUp,
-    ThumbsDown,
-    Undo2,
     Loader2,
     Users,
     X,
 } from 'lucide-react';
+import { cn } from '../../../lib/utils';
 
 interface InboxTaskDetailProps {
     /** The request ID to display */
@@ -512,19 +510,24 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                         if (step.stepDefinition_ID !== selectedStepId) return null;
 
                         const stepDef = request.requestType?.steps?.find(s => s.ID === step.stepDefinition_ID);
+                        if (!stepDef) return null;
 
-                        // Resolve schema: direct schemaContent first, then fallback to formId → formSchemasContent
-                        let resolvedSchemaContent = stepDef?.schemaContent;
-                        if (!resolvedSchemaContent && stepDef?.formId && request.requestType?.formSchemasContent) {
+                        // Resolve schema items (support for decoupled forms)
+                        let stepSchemaItems: any[] = [];
+                        if (stepDef.formId) {
                             try {
-                                const forms = JSON.parse(request.requestType.formSchemasContent);
-                                const assignedForm = forms.find((f: any) => f.id === stepDef.formId);
-                                if (assignedForm?.items) resolvedSchemaContent = JSON.stringify(assignedForm.items);
-                            } catch { /* ignore malformed formSchemasContent */ }
+                                const forms = request.requestType?.formSchemasContent ? JSON.parse(request.requestType.formSchemasContent) : [];
+                                const form = forms.find((f: any) => f.id === stepDef.formId);
+                                if (form) stepSchemaItems = form.items || [];
+                            } catch (e) {
+                                console.warn('Failed to parse formSchemasContent in InboxTaskDetail', e);
+                            }
                         }
-                        if (!resolvedSchemaContent) return null;
 
-                        const stepSchemaItems = parseSchemaContent(resolvedSchemaContent);
+                        // Fallback to legacy schemaContent if no items found via formId
+                        if (stepSchemaItems.length === 0 && stepDef.schemaContent) {
+                            stepSchemaItems = parseSchemaContent(stepDef.schemaContent);
+                        }
                         if (stepSchemaItems.length === 0) return null;
 
                         const isStepOwner = isOwner(step.ownerId);
@@ -559,6 +562,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 stepDefinition={stepDef!}
                                 formData={currentFormData}
                                 isEditable={isEditable}
+                                schemaItems={stepSchemaItems}
                                 onFieldChange={(fieldId, value) =>
                                     handleStepFieldChange(step.ID, fieldId, value)
                                 }
@@ -584,31 +588,50 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                     </Button>
                     {showApprovalActions && !hasCustomActions && (
                         <>
-                            <Button
-                                variant="outline"
-                                onClick={() => setShowSendBackDialog(true)}
-                                disabled={isProcessing || isBlocked}
-                                className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                            >
-                                <Undo2 className="w-4 h-4 mr-2" />
-                                Send Back
-                            </Button>
-                            <Button
-                                variant="destructive"
-                                onClick={() => setShowRejectConfirm(true)}
-                                disabled={isProcessing || isBlocked}
-                            >
-                                <ThumbsDown className="w-4 h-4 mr-2" />
-                                Reject
-                            </Button>
-                            <Button
-                                onClick={() => setShowApproveConfirm(true)}
-                                disabled={isProcessing || isBlocked}
-                                className="bg-green-600 hover:bg-green-700"
-                            >
-                                <ThumbsUp className="w-4 h-4 mr-2" />
-                                Approve
-                            </Button>
+                            {(() => {
+                                // Resolve custom actions from the form schema
+                                let customActions: any[] = [];
+                                const stepDef = request.requestType?.steps?.find(s => s.ID === (currentStep as any).stepDefinition_ID);
+                                if (stepDef?.formId) {
+                                    try {
+                                        const forms = request.requestType?.formSchemasContent ? JSON.parse(request.requestType.formSchemasContent) : [];
+                                        const form = forms.find((f: any) => f.id === stepDef.formId);
+                                        customActions = form?.footerActions || [];
+                                    } catch (e) {
+                                        console.warn('Failed to resolve custom actions in InboxTaskDetail', e);
+                                    }
+                                }
+
+                                if (customActions.length > 0) {
+                                    return customActions.map(action => (
+                                        <Button
+                                            key={action.id}
+                                            variant={action.variant || 'primary'}
+                                            disabled={isProcessing || isBlocked}
+                                            onClick={() => {
+                                                const isRejectAction = action.variant === 'danger' || action.label.toLowerCase().includes('reject');
+                                                if (isRejectAction) {
+                                                    setRejectComment(`Action: ${action.label}`);
+                                                    setShowRejectConfirm(true);
+                                                } else {
+                                                    setApproveComment(`Action: ${action.label}`);
+                                                    setShowApproveConfirm(true);
+                                                }
+                                            }}
+                                            className={cn(
+                                                action.variant === 'success' && "bg-green-600 hover:bg-green-700",
+                                                action.variant === 'danger' && "bg-rose-600 hover:bg-rose-700",
+                                                !action.variant && "bg-primary hover:bg-primary/90"
+                                            )}
+                                        >
+                                            {action.label}
+                                        </Button>
+                                    ));
+                                }
+
+                                // Default fallback: No buttons if no custom actions defined
+                                return null;
+                            })()}
                         </>
                     )}
                     {showApprovalActions && hasCustomActions && (

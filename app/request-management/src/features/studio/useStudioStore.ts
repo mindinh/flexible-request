@@ -38,6 +38,7 @@ interface StudioState {
     error: string | null;
     activeStepId: string | null;
     selectedSchemaFieldId: string | null;
+    selectedFooterActionId: string | null;
     selectedRuleId: string | null;
     isDryRunOpen: boolean;
 
@@ -52,6 +53,12 @@ interface StudioState {
 
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
+
+    // Simulation State
+    isSimulationMode: boolean;
+    simulationActiveNodeId: string | null;
+    simulationHistory: string[];
+    simulationVariables: Record<string, any>;
 
     // Actions
     setActiveTab: (tab: string) => void;
@@ -68,7 +75,7 @@ interface StudioState {
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
     updateWorkflow: (nodes: UiWorkflowNode[], edges: UiWorkflowEdge[]) => void;
     updateSchema: (items: UiCanvasItem[]) => void;
-    addSchemaItem: (type: string, label: string) => void;
+    addSchemaItem: (type: string, label: string, key?: string) => void;
     // Form CRUD
     addForm: (name: string) => void;
     deleteForm: (formId: string) => void;
@@ -79,6 +86,7 @@ interface StudioState {
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     setActiveStepId: (id: string | null) => void;
     setSelectedSchemaFieldId: (id: string | null) => void;
+    setSelectedFooterActionId: (id: string | null) => void;
     setSelectedRuleId: (id: string | null) => void;
     setIsDryRunOpen: (open: boolean) => void;
     // Data Schema actions
@@ -86,11 +94,18 @@ interface StudioState {
     setSelectedDataFieldId: (id: string | null) => void;
     updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
     setIsFormEditorOpen: (open: boolean) => void;
+    updateForms: (forms: UiForm[]) => void;
     setIsEmailEditorOpen: (open: boolean) => void;
     // I/O mapping actions
     updateNodeInputs: (nodeId: string, inputs: UiNodeInput[]) => void;
     updateNodeOutputs: (nodeId: string, outputs: UiNodeOutput[]) => void;
     syncUserTaskOutputs: (nodeId: string) => void;
+
+    // Simulation Actions
+    startSimulation: () => void;
+    stopSimulation: () => void;
+    stepSimulation: () => void;
+    updateSimulationVariable: (key: string, value: any) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -114,6 +129,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     error: null,
     activeStepId: null,
     selectedSchemaFieldId: null,
+    selectedFooterActionId: null,
     selectedRuleId: null,
     isDryRunOpen: false,
 
@@ -129,6 +145,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     draftConflict: false,
     draftConflictMessage: null,
 
+    // Simulation
+    isSimulationMode: false,
+    simulationActiveNodeId: null,
+    simulationHistory: [],
+    simulationVariables: {},
+
     // Auto-close editors when switching to a base tab
     setActiveTab: (tab) => {
         const BASE_TABS = ['data-schema', 'workflow', 'statuses'];
@@ -143,7 +165,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         // Clear selected rule when changing steps (rules are step-specific)
         set({ activeStepId: id, selectedSchemaFieldId: null, selectedRuleId: null });
     },
-    setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id }),
+    setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id, selectedFooterActionId: null }),
+    setSelectedFooterActionId: (id) => set({ selectedFooterActionId: id, selectedSchemaFieldId: null }),
     setSelectedRuleId: (id) => set({ selectedRuleId: id, isDryRunOpen: id ? false : get().isDryRunOpen }),
     setIsDryRunOpen: (open) => set({ isDryRunOpen: open, selectedRuleId: open ? null : get().selectedRuleId }),
     // Data Schema actions
@@ -212,12 +235,24 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             ) || [];
 
             const workflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
+            const startNode = workflow.nodes.find(n => n.data.isStart);
+            const startFormId = startNode?.data?.formId;
 
             // Load forms from formSchemasContent
             let forms: UiForm[] = [];
             try {
                 if (fullDraft.formSchemasContent) {
                     forms = JSON.parse(fullDraft.formSchemasContent);
+                    // Add default actions to existing forms if they don't have any
+                    forms = forms.map((f: any) => ({
+                        ...f,
+                        actions: f.actions !== undefined ? f.actions : (f.footerActions !== undefined ? f.footerActions : (
+                            f.id === startFormId ? [] : [
+                                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
+                                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
+                            ]
+                        ))
+                    }));
                 }
             } catch (e) {
                 console.warn('Failed to parse formSchemasContent:', e);
@@ -294,7 +329,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     },
 
     saveChanges: async () => {
-        const { requestTypeId, metadata, rules, workflow, forms, statusNetwork, isDirty } = get();
+        const { requestTypeId, metadata, rules, workflow, forms, isDirty } = get();
         console.log("saveChanges called. Dirty:", isDirty, "ID:", requestTypeId);
 
         if (!requestTypeId || !metadata || !isDirty) {
@@ -379,12 +414,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     actionSubType: node.data.actionSubType || null,
                     formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
+                    inputMapping: (node.data.inputMapping as string) || null,
                     // Canvas position
                     positionX: Math.round(node.position.x),
                     positionY: Math.round(node.position.y),
                     // Default owner fields
                     ownerType: node.data.ownerType || null,
                     ownerId: node.data.owner_ID || null,
+                    approverType: node.data.approverType || null,
+                    approverId: node.data.approver_ID || null,
                     // I/O mapping content
                     inputsContent: inputs.length > 0 ? JSON.stringify(inputs) : null,
                     outputsContent: outputs.length > 0 ? JSON.stringify(outputs) : null,
@@ -405,6 +443,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                         return JSON.stringify(payload);
                     })(),
                     conditionExpr: node.data.conditionExpr ? JSON.stringify(node.data.conditionExpr) : null,
+                    // Email & API Configuration (Custom fields from HEAD)
+                    emailSubject: (node.data.emailSubject as string) || null,
+                    emailBody: (node.data.emailBody as string) || null,
+                    apiMethod: (node.data.apiMethod as string) || null,
+                    apiUrl: (node.data.apiUrl as string) || null,
+                    apiHeaders: node.data.apiHeaders ? JSON.stringify(node.data.apiHeaders) : null,
+                    apiBody: (node.data.apiBody as string) || null,
+                    apiAuthType: (node.data.apiAuthType as string) || null,
+                    apiAuthToken: (node.data.apiAuthToken as string) || null,
+                    apiAuthUser: (node.data.apiAuthUser as string) || null,
+                    apiAuthPass: (node.data.apiAuthPass as string) || null,
+                    apiResponseMapping: node.data.apiResponseMapping ? JSON.stringify(node.data.apiResponseMapping) : null,
                 };
 
                 if (originalNodeIds.has(node.id)) {
@@ -642,7 +692,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         };
     }),
 
-    addSchemaItem: (type, label) => set(state => {
+    addSchemaItem: (type, label, key) => set(state => {
         const { activeFormId, forms } = state;
         if (!activeFormId) return {};
 
@@ -651,6 +701,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             type,
             label,
             required: false,
+            key: key || undefined, // Local key
+            bindTo: key || undefined, // Global binding
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),
             ...(type === 'table' ? { columns: [] } : {}),
         } as UiCanvasItem;
@@ -674,8 +726,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             name,
             items: [],
             actions: [
-                { id: 'approve', label: 'Approve', variant: 'primary' },
-                { id: 'reject', label: 'Reject', variant: 'destructive' },
+                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
+                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
             ],
         };
         return {
@@ -754,6 +806,74 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         },
         isDirty: true,
     })),
+    updateForms: (forms) => set({ forms, isDirty: true }),
+
+    // Simulation Actions
+    startSimulation: () => {
+        const { workflow } = get();
+        const startNode = workflow.nodes.find(n => n.data.isStart || n.type === 'startNode');
+        if (!startNode) {
+            set({ error: 'Cannot start simulation: No start node found.' });
+            return;
+        }
+        set({
+            isSimulationMode: true,
+            simulationActiveNodeId: startNode.id,
+            simulationHistory: [startNode.id],
+            simulationVariables: {},
+            error: null
+        });
+    },
+
+    stopSimulation: () => set({
+        isSimulationMode: false,
+        simulationActiveNodeId: null,
+        simulationHistory: [],
+        simulationVariables: {}
+    }),
+
+    updateSimulationVariable: (key, value) => set(state => ({
+        simulationVariables: { ...state.simulationVariables, [key]: value }
+    })),
+
+    stepSimulation: () => set(state => {
+        const { workflow, simulationActiveNodeId, simulationVariables } = state;
+        if (!simulationActiveNodeId) return {};
+
+        const currentNode = workflow.nodes.find(n => n.id === simulationActiveNodeId);
+        if (!currentNode) return {};
+
+        // Find outgoing edges
+        const outgoingEdges = workflow.edges.filter(e => e.source === simulationActiveNodeId);
+
+        if (outgoingEdges.length === 0) {
+            // End of flow
+            return { simulationActiveNodeId: null };
+        }
+
+        let nextNodeId: string | null = null;
+
+        if (currentNode.type === 'conditionNode') {
+            // Condition Logic Traversal
+            const trueEdge = outgoingEdges.find(e => e.sourceHandle === 'true');
+            const falseEdge = outgoingEdges.find(e => e.sourceHandle === 'false');
+
+            // Simplified logic: Check if simulationVariables['condition_result'] is true
+            // In a real implementation, we would evaluate currentNode.data.conditionLogic
+            const result = simulationVariables[currentNode.id] === true;
+            nextNodeId = result ? (trueEdge?.target || null) : (falseEdge?.target || null);
+        } else {
+            // Sequential traversal (take the first available edge)
+            nextNodeId = outgoingEdges[0].target;
+        }
+
+        if (!nextNodeId) return { simulationActiveNodeId: null };
+
+        return {
+            simulationActiveNodeId: nextNodeId,
+            simulationHistory: [...state.simulationHistory, nextNodeId]
+        };
+    }),
 
     // ─── I/O Mapping Actions ─────────────────────────────────────────────
     updateNodeInputs: (nodeId, inputs) => set(state => ({

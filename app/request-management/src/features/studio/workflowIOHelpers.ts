@@ -74,6 +74,37 @@ export function getPredecessorOutputs(
 }
 
 /**
+ * Find all ancestor node IDs of a given node in the workflow graph.
+ * Uses BFS to traverse backwards through edges.
+ */
+export function findAllAncestors(
+    nodeId: string,
+    edges: UiWorkflowEdge[]
+): Set<string> {
+    const ancestors = new Set<string>();
+    const queue = [nodeId];
+    const visited = new Set<string>([nodeId]);
+
+    while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        // Find all edges pointing to this node
+        const parents = edges
+            .filter((e) => e.target === currentId)
+            .map((e) => e.source);
+
+        for (const parentId of parents) {
+            if (!visited.has(parentId)) {
+                visited.add(parentId);
+                ancestors.add(parentId);
+                queue.push(parentId);
+            }
+        }
+    }
+
+    return ancestors;
+}
+
+/**
  * Flatten predecessor output groups into a flat list suitable for the Input field picker.
  * Each field is keyed as "NodeLabel.fieldPath" to avoid collisions across nodes.
  */

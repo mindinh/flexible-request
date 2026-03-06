@@ -25,62 +25,8 @@ export class StepHandler {
      * This fires for both direct reads and $expand scenarios
      */
     private async afterReadSteps(results: any[]) {
-        if (!results || results.length === 0) return;
-
-        // Handle single result
-        const items = Array.isArray(results) ? results : [results];
-
-        const { ShadowUsers, ShadowGroups } = this.srv.entities;
-
-        // Collect all owner IDs
-        const userIds = new Set<string>();
-        const groupIds = new Set<string>();
-
-        for (const step of items) {
-            if (step.ownerId) {
-                if (step.ownerType === 'USER') {
-                    userIds.add(step.ownerId);
-                } else if (['GROUP', 'TEAM', 'ROLE', 'POSITION', 'DEPARTMENT'].includes(step.ownerType)) {
-                    groupIds.add(step.ownerId);
-                }
-            }
-        }
-
-        // Batch fetch names
-        const userMap = new Map<string, string>();
-        if (userIds.size > 0) {
-            try {
-                const users = await SELECT.from(ShadowUsers)
-                    .where({ ID: { in: [...userIds] } })
-                    .columns('ID', 'displayName', 'email');
-                users.forEach((u: any) => userMap.set(u.ID, u.displayName || u.email || u.ID));
-            } catch (e) {
-                console.warn('[StepHandler] Failed to fetch users:', e);
-            }
-        }
-
-        const groupMap = new Map<string, string>();
-        if (groupIds.size > 0) {
-            try {
-                const groups = await SELECT.from(ShadowGroups)
-                    .where({ ID: { in: [...groupIds] } })
-                    .columns('ID', 'name');
-                groups.forEach((g: any) => groupMap.set(g.ID, g.name || g.ID));
-            } catch (e) {
-                console.warn('[StepHandler] Failed to fetch groups:', e);
-            }
-        }
-
-        // Apply names to results
-        for (const step of items) {
-            if (step.ownerId) {
-                if (step.ownerType === 'USER') {
-                    step.ownerDisplayName = userMap.get(step.ownerId) || step.ownerId;
-                } else {
-                    step.ownerDisplayName = groupMap.get(step.ownerId) || step.ownerId;
-                }
-            }
-        }
+        // Redundant with SharedRequestTypeHandler which is registered in RequestTypeHandler
+        return;
     }
 
     /**

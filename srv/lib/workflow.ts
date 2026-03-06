@@ -16,6 +16,10 @@ interface RuntimeStep {
 type StepDefinitionWithOwner = StepDefinition & {
     ownerType?: string | null;
     ownerId?: string | null;
+    approverType?: string | null;
+    approverId?: string | null;
+    inputMapping?: string | null;
+    conditionLogic?: string | null;
     actionSubType?: string | null;
     stepType?: string | null;
 };
@@ -65,7 +69,7 @@ export class WorkflowEngine {
         // 2. Fetch all Step Definitions (include ownerType/ownerId for default assignment)
         const definitions = await SELECT.from(StepDefinitions)
             .where({ requestType_ID: request.requestType_ID })
-            .columns('*', 'ownerType', 'ownerId') as StepDefinitionWithOwner[];
+            .columns('*', 'ownerType', 'ownerId', 'approverType', 'approverId') as StepDefinitionWithOwner[];
         const validDefinitions = definitions.filter(d => d.ID);
 
         // 3. Fetch Existing Steps (include decisionAction for conditional branching)
@@ -97,7 +101,19 @@ export class WorkflowEngine {
                 continue;
             }
 
-            // Check dependencies
+            // 1. Get ALL StepDefinitions that could possibly follow this step
+            // 2. Filter them based on the specific ACTION taken in the completed predecessors
+            // This is a more complex multi-branching logic.
+
+            const completedSteps = await SELECT.from(Steps)
+                .where({ request_ID: requestId, status: { in: [Step.status.COMPLETED, Step.status.SKIPPED] } })
+                .columns('ID', 'stepDefinition_ID', 'modifiedBy_ID');
+
+            // Find the most recently completed step to determine the "action" context
+            // In a better design, we'd pass the action ID explicitly to advance(), 
+            // but for now we look at the last completed step's history to find the action label.
+            // Or better: StepDependencies has 'action' field. We match it.
+
             const predecessors = await SELECT.from(StepDependencies)
                 .where({ step_ID: defId })
                 .columns('dependsOn_ID', 'action') as (StepDependency & { action?: string | null })[];
@@ -170,15 +186,21 @@ export class WorkflowEngine {
             dueDate.setDate(dueDate.getDate() + slaDays);
 
             let initialStatus: string = Step.status.UPCOMING;
+            const isApprovalStep = def.stepType === 'action' && (def.actionSubType === 'approval' || def.actionSubType === 'userTask');
+            const isEndStep = def.stepType === 'end' || (def.stepType === 'action' && def.actionSubType === 'end');
+            const isConditionStep = def.stepType === 'condition';
 
             if (def.isStartStep) {
                 initialStatus = request.status === Request.status.DRAFT ? Step.status.STARTED : Step.status.IN_PROGRESS;
-            } else if (def.actionSubType === 'approval' || def.actionSubType === 'user_task') {
+            } else if (isApprovalStep || def.actionSubType === 'user_task') {
                 // Approval and User Task steps skip STARTED and go directly to
                 // IN_PROGRESS so approvals are resolved immediately.
                 // For user_task: the Approver (not Requestor) fills in the form
                 // and takes a decision, so the task must appear in their inbox.
                 initialStatus = Step.status.IN_PROGRESS;
+            } else if (isEndStep || isConditionStep) {
+                // Condition nodes also complete instantly upon activation
+                initialStatus = Step.status.COMPLETED;
             } else {
                 initialStatus = Step.status.STARTED;
             }
@@ -208,6 +230,14 @@ export class WorkflowEngine {
 
             // Ensure RequestData record exists for the new step to enable frontend data capture
             let initialPayload = '{}';
+
+            // Resolve Input Mappings if any
+            if (def.inputMapping && def.inputMapping !== '{}') {
+                const combinedData = await this.getRequestDataPayload(requestId);
+                initialPayload = this.resolveMapping(def.inputMapping, combinedData);
+                this.log.info(`[WorkflowEngine] Applied input mapping for step ${def.stepName}`);
+            }
+
             if (sourceRequestId && def.isStartStep) {
                 this.log.info(`[WorkflowEngine] Attempting to deep copy Step 1 data from source request ${sourceRequestId} to new request ${requestId}`);
 
@@ -296,6 +326,7 @@ export class WorkflowEngine {
                 const payload = {
                     stepId: newStepId,
                     requestId
+<<<<<<< HEAD
                 };
 
                 const req = (cds as any).context;
@@ -306,6 +337,24 @@ export class WorkflowEngine {
                 } else {
                     (cds as any).emit('sap.cre.StepActivated', payload);
                 }
+=======
+                });
+            } else if (isEndStep) {
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'AUTO_COMPLETE',
+                    fromValue: Step.status.UPCOMING,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null,
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: `Step "${def.stepName}" auto-completed (End Step)`
+                });
+
+                // Trigger final completion check
+                await this.advance(requestId, userUUID, sourceRequestId);
+>>>>>>> a267c5224a1b3be3c50640fa8bcba77e119e590f
             }
 
             // Handle End Nodes: auto-complete and check workflow completion
@@ -379,11 +428,22 @@ export class WorkflowEngine {
 
             // Create Approvals if step is in IN_PROGRESS (start step after submit, or approval step)
             if (initialStatus === Step.status.IN_PROGRESS && request.requestType_ID) {
-                const approvers = await this.approverResolver.resolveApprovers(
+                let approvers = await this.approverResolver.resolveApprovers(
                     defId,
                     request.requestType_ID,
                     requestData
                 );
+
+                // Fallback to fixed approver if no rules matched
+                if (approvers.length === 0 && def.approverId) {
+                    const displayName = await this.approverResolver.lookupDisplayName(def.approverId, def.approverType || 'USER');
+                    approvers = [{
+                        approverId: def.approverId,
+                        approverDisplayName: displayName,
+                        approverType: def.approverType || 'USER',
+                        ruleName: 'Fixed Approver'
+                    }];
+                }
 
                 if (approvers.length > 0) {
                     await this.createApprovals(requestId, newStepId, approvers, auditActor);
@@ -429,6 +489,27 @@ export class WorkflowEngine {
                     // Recurse
                     await this.advance(requestId, userUUID, sourceRequestId);
                 }
+            } else if (isConditionStep) {
+                // Instantly evaluate condition against current request payload
+                const combinedData = await this.getRequestDataPayload(requestId);
+                const conditionResult = this.evaluateConditionLogic(def.conditionLogic, combinedData);
+
+                this.log.info(`Condition Node "${def.stepName}" evaluated to ${conditionResult}`);
+
+                await INSERT.into(StepHistory).entries({
+                    step_ID: newStepId,
+                    action: 'CONDITION_EVAL',
+                    fromValue: Step.status.UPCOMING,
+                    toValue: Step.status.COMPLETED,
+                    actor_ID: null, // System action
+                    createdBy_ID: auditActor,
+                    modifiedBy_ID: auditActor,
+                    timestamp: new Date().toISOString(),
+                    comment: conditionResult ? 'true' : 'false'
+                });
+
+                // Immediately advance workflow to evaluate dependent edges
+                await this.advance(requestId, userUUID, sourceRequestId);
             }
         }
     }
@@ -459,7 +540,7 @@ export class WorkflowEngine {
         // stepsToActivate.length === 0).
 
         const allStepsTerminal = freshSteps.every((s) =>
-            s.status === Step.status.COMPLETED || s.status === Step.status.SKIPPED
+            s.status === Step.status.COMPLETED || s.status === Step.status.SKIPPED || s.status === Step.status.REJECTED
         );
 
         const anyStepsInProgress = freshSteps.some((s) =>
@@ -472,20 +553,41 @@ export class WorkflowEngine {
 
         if (allStepsTerminal && !anyStepsInProgress && freshSteps.length > 0) {
             this.log.info(`All steps completed for Request ${requestId}.`);
-            await UPDATE(Requests, requestId).with({
-                status: Request.status.COMPLETED,
-                modifiedBy_ID: userUUID
-            });
 
-            await INSERT.into(RequestHistory).entries({
-                request_ID: requestId,
-                action: 'STATUS_CHANGE',
-                actor_ID: null, // System action
-                createdBy_ID: userUUID,
-                modifiedBy_ID: userUUID,
-                timestamp: new Date().toISOString(),
-                comment: 'Request COMPLETED'
-            });
+            // Check if any step was COMPLETED/REJECTED via a "Reject" action or intent
+            const { StepApprovals } = this.db.entities;
+            const stepIds = freshSteps.map(s => s.ID);
+
+            // 1. Explicit Step Rejection Status
+            const hasRejectedStepStatus = freshSteps.some(s => s.status === Step.status.REJECTED);
+
+            // 2. Intent-based Rejection (decisionAction contains "reject")
+            const hasRejectionAction = freshSteps.some(s => s.decisionAction && /reject/i.test(s.decisionAction));
+
+            // 3. Any individual approval record was REJECTED
+            const rejectedApprovals = await SELECT.from(StepApprovals)
+                .where({ step_ID: { in: stepIds }, status: StepApproval.status.REJECTED });
+
+            const wasRejected = hasRejectedStepStatus || hasRejectionAction || rejectedApprovals.length > 0;
+
+            const finalStatus = wasRejected ? Request.status.REJECTED : Request.status.COMPLETED;
+
+            if (request.status !== finalStatus) {
+                await UPDATE(Requests, requestId).with({
+                    status: finalStatus,
+                    modifiedBy_ID: userUUID
+                });
+
+                await INSERT.into(RequestHistory).entries({
+                    request_ID: requestId,
+                    action: 'STATUS_CHANGE',
+                    actor_ID: null, // System action
+                    createdBy_ID: userUUID,
+                    modifiedBy_ID: userUUID,
+                    timestamp: new Date().toISOString(),
+                    comment: `Request ${finalStatus}`
+                });
+            }
         } else if (request.status === Request.status.SUBMITTED) {
             // Ensure IN_PROGRESS if submitted but not done
             await UPDATE(Requests, requestId).with({ status: Request.status.IN_PROGRESS });
@@ -502,7 +604,7 @@ export class WorkflowEngine {
      * aliased keys so both field-ID keys and bindTo keys are available.
      */
     public async getRequestDataPayload(requestId: string): Promise<Record<string, unknown>> {
-        const { Steps, RequestData, StepDefinitions: StepDefs } = this.db.entities;
+        const { Steps, RequestData, Requests, StepDefinitions: StepDefs } = this.db.entities;
 
         // 1. Get All Steps for Request (with their stepDefinition_ID for output mapping)
         const steps = await SELECT.from(Steps)
@@ -561,8 +663,93 @@ export class WorkflowEngine {
             }
         }
 
+        // 3. Inject System Fields for mapping support
+        const { ShadowUsers } = this.db.entities;
+        const request = await SELECT.one.from(Requests).where({ ID: requestId }).columns('displayId', 'title', 'createdBy_ID');
+        if (request) {
+            combinedData['__request_uuid'] = requestId;
+            combinedData['__request_displayId'] = request.displayId;
+            combinedData['__request_title'] = request.title;
+
+            if (request.createdBy_ID) {
+                const user = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+                combinedData['__requester_name'] = user?.displayName || user?.email || 'Requester';
+            }
+        }
+
         this.log.info(`[getRequestDataPayload] Final keys: ${Object.keys(combinedData).join(', ')}`);
         return combinedData;
+    }
+
+    /**
+     * Resolve and apply input mapping for a step
+     */
+    private resolveMapping(mappingStr: string | null | undefined, combinedData: Record<string, unknown>): string {
+        if (!mappingStr || mappingStr === '{}') return '{}';
+
+        try {
+            const mapping = JSON.parse(mappingStr);
+            const payload: Record<string, unknown> = {};
+
+            // Mapping format: { [targetFieldId]: { sourceStepId, sourceFieldId } }
+            for (const [targetKey, sourceInfo] of Object.entries(mapping)) {
+                if (sourceInfo && typeof sourceInfo === 'object') {
+                    const { sourceFieldId } = sourceInfo as any;
+                    if (sourceFieldId && combinedData[sourceFieldId] !== undefined) {
+                        payload[targetKey] = combinedData[sourceFieldId];
+                    }
+                }
+            }
+
+            return JSON.stringify(payload);
+        } catch (e) {
+            this.log.error(`Failed to resolve input mapping:`, e);
+            return '{}';
+        }
+    }
+
+    /**
+     * Evaluates condition rules against request data payload
+     */
+    private evaluateConditionLogic(logicStr: string | null | undefined, combinedData: Record<string, unknown>): boolean {
+        if (!logicStr || logicStr === '{}') return true; // Default true if no logic
+
+        try {
+            const logic = JSON.parse(logicStr) as { matchType: 'AND' | 'OR', rules: { fieldId: string, operator: string, value: string }[] };
+            if (!logic.rules || logic.rules.length === 0) return true;
+
+            const evaluateRule = (rule: { fieldId: string, operator: string, value: string }): boolean => {
+                const dataValue = combinedData[rule.fieldId];
+                if (dataValue === undefined || dataValue === null) return false;
+
+                const stringData = String(dataValue).toLowerCase();
+                const stringTarget = String(rule.value || '').toLowerCase();
+
+                switch (rule.operator) {
+                    case 'EQUALS':
+                        return stringData === stringTarget;
+                    case 'NOT_EQUALS':
+                        return stringData !== stringTarget;
+                    case 'CONTAINS':
+                        return stringData.includes(stringTarget);
+                    case 'GREATER_THAN':
+                        return Number(dataValue) > Number(rule.value);
+                    case 'LESS_THAN':
+                        return Number(dataValue) < Number(rule.value);
+                    default:
+                        return false;
+                }
+            };
+
+            if (logic.matchType === 'AND') {
+                return logic.rules.every(evaluateRule);
+            } else { // 'OR'
+                return logic.rules.some(evaluateRule);
+            }
+        } catch (e) {
+            this.log.error(`Failed to evaluate condition logic:`, e);
+            return false;
+        }
     }
 
     /**

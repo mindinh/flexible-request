@@ -444,7 +444,6 @@ export class NotificationHandler {
                     this.log.error(`[notification-handler] Email send failed for ${email} (approval=${approvalId}, step=${stepId}): ${emailErr.message}`);
                 }
             }
-
         } catch (error: any) {
             NotificationHandler.log.error(`[notification-handler] Failed to process notification (approval=${approvalId}, step=${stepId}, request=${requestId}):`, error.message);
         }

@@ -4,10 +4,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
 import { useEffect } from 'react';
-import { Copy, Trash2, Settings2, Plus, GripVertical, Database, Link2, Unlink } from 'lucide-react';
-import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiDataField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
+import {
+    Copy, Trash2, Settings2, Plus, GripVertical,
+    Type, Hash, List, CheckSquare, CircleDot, Mail, SlidersHorizontal,
+    DollarSign, Tag, Image, Clock, Paperclip, TextCursorInput
+} from 'lucide-react';
+import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
 import { useIntegrationsStore } from '../integrations/useIntegrationsStore';
-import { useStudioStore } from './useStudioStore';
 
 // Type guards
 function isUiSection(item: UiCanvasItem): item is UiSection {
@@ -39,92 +42,44 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     );
 }
 
-// ─── Schema Binding Selector (Prominent) ───
-function SchemaBindingSelector({ fieldItem, onUpdate }: {
-    fieldItem: UiFormField;
-    onUpdate: (updates: FieldUpdatePayload) => void;
-}) {
-    const { dataSchema } = useStudioStore();
 
-    // Flatten data fields for the dropdown (including nested)
-    const flattenFields = (fields: UiDataField[], prefix = ''): { key: string; label: string }[] => {
-        const result: { key: string; label: string }[] = [];
-        for (const field of fields) {
-            const fullKey = prefix ? `${prefix}.${field.key}` : field.key;
-            if (field.type === 'Object' && field.children?.length) {
-                result.push(...flattenFields(field.children, fullKey));
-            } else {
-                result.push({ key: fullKey, label: field.label });
-            }
-        }
-        return result;
-    };
-    const availableFields = flattenFields(dataSchema);
-    const isBound = !!fieldItem.bindTo;
 
-    if (availableFields.length === 0) {
-        return (
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <p className="text-xs text-amber-700 flex items-center gap-1.5">
-                    <Database size={12} />
-                    No data schema fields defined. Add fields in the <strong>Data Schema</strong> tab to enable binding.
-                </p>
-            </div>
-        );
-    }
+// ─── Control Type Selector ───
+const CONTROL_TYPES = [
+    { value: 'text', label: 'Input Field', icon: TextCursorInput },
+    { value: 'textarea', label: 'Text Area', icon: Type },
+    { value: 'number', label: 'Number', icon: Hash },
+    { value: 'currency', label: 'Currency', icon: DollarSign },
+    { value: 'email', label: 'Email', icon: Mail },
+    { value: 'slider', label: 'Slider', icon: SlidersHorizontal },
+    { value: 'label', label: 'Label', icon: Tag },
+    { value: 'select', label: 'Dropdown', icon: List },
+    { value: 'radio', label: 'Radio', icon: CircleDot },
+    { value: 'checkbox', label: 'Checkbox', icon: CheckSquare },
+    { value: 'date', label: 'Date & Time', icon: Clock },
+    { value: 'file', label: 'Attachment', icon: Paperclip },
+    { value: 'image', label: 'Image', icon: Image },
+];
 
+function ControlTypeSelector({ value, onChange }: { value: string; onChange: (val: string) => void }) {
     return (
-        <div className={`p-3 rounded-lg border transition-colors ${isBound ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-                {isBound ? (
-                    <Link2 size={12} className="text-emerald-600" />
-                ) : (
-                    <Unlink size={12} className="text-slate-400" />
-                )}
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Data Schema Binding
-                </span>
-                <span className="text-[10px] text-slate-400 ml-auto">Optional</span>
-            </div>
-            <Select
-                value={fieldItem.bindTo || '__none__'}
-                onValueChange={(val) => {
-                    if (val === '__none__') {
-                        onUpdate({ bindTo: undefined });
-                    } else {
-                        // Bind to the global schema field
-                        const schemaField = availableFields.find(f => f.key === val);
-                        const updates: FieldUpdatePayload = { bindTo: val };
-                        if (schemaField && !fieldItem.label) {
-                            updates.label = schemaField.label;
-                        }
-                        onUpdate(updates);
-                    }
-                }}
-            >
-                <SelectTrigger className={`w-full h-9 text-sm ${isBound ? 'border-emerald-300 bg-white' : ''}`}>
-                    <SelectValue placeholder="Not bound — select to bind…" />
+        <div className="space-y-1.5">
+            <SectionLabel>Control Type</SectionLabel>
+            <Select value={value} onValueChange={onChange}>
+                <SelectTrigger className="w-full h-9 text-sm">
+                    <SelectValue placeholder="Select control type..." />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="__none__">
-                        <span className="text-slate-400 italic">Not bound (local field)</span>
-                    </SelectItem>
-                    {availableFields.map(f => (
-                        <SelectItem key={f.key} value={f.key}>
-                            <span className="flex items-center gap-2">
-                                <span>{f.label}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">{f.key}</span>
-                            </span>
+                    {CONTROL_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                            <div className="flex items-center gap-2">
+                                <type.icon size={14} className="text-slate-400" />
+                                <span>{type.label}</span>
+                            </div>
                         </SelectItem>
                     ))}
                 </SelectContent>
             </Select>
-            {isBound && (
-                <p className="mt-1.5 text-[11px] text-emerald-600 flex items-center gap-1">
-                    <Link2 size={10} />
-                    Bound to global field <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded text-[10px]">{fieldItem.bindTo}</code>
-                </p>
-            )}
         </div>
     );
 }
@@ -411,13 +366,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                     </div>
                 )}
 
-                {/* ── DATA SCHEMA BINDING (prominent, for form fields) ── */}
-                {isField && (
-                    <SchemaBindingSelector
-                        fieldItem={fieldItem!}
-                        onUpdate={(updates) => onUpdate(selectedItem!.id, updates)}
-                    />
-                )}
+
 
                 {/* ── FIELD LABEL ── */}
                 <div className="space-y-1.5">
@@ -427,6 +376,14 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         onChange={(e) => onUpdate(selectedItem!.id, { label: e.target.value })}
                     />
                 </div>
+
+                {/* ── CONTROL TYPE (only for form fields) ── */}
+                {isField && (
+                    <ControlTypeSelector
+                        value={fieldItem!.type}
+                        onChange={(val) => onUpdate(selectedItem!.id, { type: val })}
+                    />
+                )}
 
                 {/* ── PLACEHOLDER ── */}
                 {isField && (

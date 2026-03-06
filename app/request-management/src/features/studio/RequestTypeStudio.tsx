@@ -18,9 +18,8 @@ import { SchemaPalette } from './SchemaPalette';
 import { SchemaPreviewTab } from './SchemaPreviewTab';
 import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
-
+import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
 import { EmailEditorTab } from './EmailEditorTab';
-
 
 
 
@@ -58,6 +57,8 @@ function StudioContent() {
         updateSchema,
         selectedSchemaFieldId,
         setSelectedSchemaFieldId,
+        selectedFooterActionId,
+        setSelectedFooterActionId,
         // Data Schema state
         selectedDataFieldId,
         setSelectedDataFieldId,
@@ -399,6 +400,16 @@ function StudioContent() {
                                 }}
                             />
                         </div>
+                    </RightPanel>
+                ) : activeTab === 'schema' && selectedFooterActionId ? (
+                    <RightPanel
+                        isOpen={!!selectedFooterActionId}
+                        onClose={() => setSelectedFooterActionId(null)}
+                        width={350}
+                        title="Action Properties"
+                        icon={<Settings2 size={16} />}
+                    >
+                        <FooterActionPropertiesContent />
                     </RightPanel>
                 ) : null
             }
