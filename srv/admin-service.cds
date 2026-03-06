@@ -100,17 +100,25 @@ service AdminService @(
     }]
     entity SamlGroupMappings as projection on db.SamlGroupMappings;
 
+    // Organization Hierarchies
+    @restrict: [{
+        grant: '*',
+        to   : 'admin'
+    }]
+    entity OrgHierarchies    as projection on db.OrgHierarchies;
+
     // === System Settings: Number Ranges ===
     @restrict: [{
         grant: '*',
         to   : 'admin'
     }]
-    entity NumberRanges      as projection on db.NumberRanges {
-        *,
-        requestType : redirected to RequestTypes
-    }
-    actions {
-        // Reset the counter back to startNumber
-        action resetRange();
-    };
+    entity NumberRanges      as
+        projection on db.NumberRanges {
+            *,
+            requestType : redirected to RequestTypes
+        }
+        actions {
+            // Reset the counter back to startNumber
+            action resetRange();
+        };
 }

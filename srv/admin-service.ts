@@ -4,6 +4,7 @@ import { RequestTypeHandler } from './handlers/admin/RequestTypeHandler';
 import { StepHandler } from './handlers/admin/StepHandler';
 import { IdentityHandler } from './handlers/admin/IdentityHandler';
 import { ApproverRulesHandler } from './handlers/admin/ApproverRulesHandler';
+import { OrgHierarchyHandler } from './handlers/admin/OrgHierarchyHandler';
 import { ManagedUserHandler } from './handlers/ManagedUserHandler';
 
 /**
@@ -29,6 +30,7 @@ export default class AdminService extends cds.ApplicationService {
         new StepHandler(this).register();
         new IdentityHandler(this).register();
         new ApproverRulesHandler(this).register();
+        new OrgHierarchyHandler(this).register();
 
         await super.init();
     }

@@ -293,10 +293,19 @@ export class WorkflowEngine {
                 });
 
                 // Emit notification event for data input (async)
-                (cds as any).emit('sap.cre.StepActivated', {
+                const payload = {
                     stepId: newStepId,
                     requestId
-                });
+                };
+
+                const req = (cds as any).context;
+                if (req) {
+                    req.on('succeeded', () => {
+                        (cds as any).emit('sap.cre.StepActivated', payload);
+                    });
+                } else {
+                    (cds as any).emit('sap.cre.StepActivated', payload);
+                }
             }
 
             // Handle End Nodes: auto-complete and check workflow completion
@@ -583,9 +592,10 @@ export class WorkflowEngine {
             });
 
             // Emit notification event (async, non-blocking)
-            // IMPORTANT: Pass the full approval data in the event payload to avoid
-            // a race condition where the handler queries the DB before this transaction commits.
-            (cds as any).emit('sap.cre.StepApprovalCreated', {
+            // IMPORTANT: Emit the event ONLY after the transaction succeeds (commits)
+            // to avoid race conditions where the handler queries uncommitted DB records.
+            // Also pass the full approval data to reduce DB lookups.
+            const payload = {
                 stepApprovalId: approvalId,
                 stepId,
                 requestId,
@@ -598,7 +608,16 @@ export class WorkflowEngine {
                     ruleName: approver.ruleName,
                     approverType: approver.approverType
                 }
-            });
+            };
+
+            const req = (cds as any).context;
+            if (req) {
+                req.on('succeeded', () => {
+                    (cds as any).emit('sap.cre.StepApprovalCreated', payload);
+                });
+            } else {
+                (cds as any).emit('sap.cre.StepApprovalCreated', payload);
+            }
         }
         this.log.info(`Created ${approvers.length} approval(s) for step ${stepId}`);
     }

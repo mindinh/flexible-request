@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { FormField, ConfirmDialog } from '@/components/studio';
 import { PrincipalSelect, type Principal } from '@/components/shared/PrincipalSelect';
+import { OrgHierarchySelect } from '@/components/shared/OrgHierarchySelect';
 import type { UiWorkflowNode, UiWorkflowEdge, UiNodeInput, UiNodeOutput } from './types';
 import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings } from './workflowIOHelpers';
 
@@ -726,8 +727,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         </div>
                                     )}
 
-                                    <PrincipalSelect
-                                        value={null}
+                                    <OrgHierarchySelect
                                         onChange={(principal) => {
                                             if (!principal) return;
                                             const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
