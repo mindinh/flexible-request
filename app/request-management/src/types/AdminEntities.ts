@@ -32,6 +32,7 @@ export interface AdminStepDefinition {
     // Input/Output mapping content (JSON)
     inputsContent?: string;
     outputsContent?: string;
+    inputMapping?: string;
     approversContent?: string;
     notificationsContent?: string;
     conditionExpr?: string; // JSON condition expression for condition nodes

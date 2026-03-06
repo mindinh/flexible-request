@@ -20,6 +20,7 @@ export interface Step {
     ownerId?: string;
     ownerType?: string;
     ownerDisplayName?: string;
+    decisionAction?: string;
     data?: {
         ID: string;
         payload?: string;

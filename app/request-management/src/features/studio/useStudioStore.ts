@@ -75,7 +75,7 @@ interface StudioState {
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
     updateWorkflow: (nodes: UiWorkflowNode[], edges: UiWorkflowEdge[]) => void;
     updateSchema: (items: UiCanvasItem[]) => void;
-    addSchemaItem: (type: string, label: string) => void;
+    addSchemaItem: (type: string, label: string, key?: string) => void;
     // Form CRUD
     addForm: (name: string) => void;
     deleteForm: (formId: string) => void;
@@ -235,6 +235,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             ) || [];
 
             const workflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
+            const startNode = workflow.nodes.find(n => n.data.isStart);
+            const startFormId = startNode?.data?.formId;
 
             // Load forms from formSchemasContent
             let forms: UiForm[] = [];
@@ -244,10 +246,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     // Add default actions to existing forms if they don't have any
                     forms = forms.map((f: any) => ({
                         ...f,
-                        footerActions: f.footerActions !== undefined ? f.footerActions : [
-                            { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
-                            { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
-                        ]
+                        actions: f.actions !== undefined ? f.actions : (f.footerActions !== undefined ? f.footerActions : (
+                            f.id === startFormId ? [] : [
+                                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
+                                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
+                            ]
+                        ))
                     }));
                 }
             } catch (e) {
@@ -410,6 +414,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     actionSubType: node.data.actionSubType || null,
                     formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
+                    inputMapping: (node.data.inputMapping as string) || null,
                     // Canvas position
                     positionX: Math.round(node.position.x),
                     positionY: Math.round(node.position.y),
@@ -687,7 +692,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         };
     }),
 
-    addSchemaItem: (type, label) => set(state => {
+    addSchemaItem: (type, label, key) => set(state => {
         const { activeFormId, forms } = state;
         if (!activeFormId) return {};
 
@@ -696,6 +701,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             type,
             label,
             required: false,
+            key: key || undefined, // Local key
+            bindTo: key || undefined, // Global binding
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),
             ...(type === 'table' ? { columns: [] } : {}),
         } as UiCanvasItem;

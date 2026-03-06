@@ -123,6 +123,8 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                     type: 'smoothstep',
                     animated: true,
                     style: { stroke: 'var(--brand-red)', strokeWidth: 2 },
+                    // Ensure no label is added
+                    label: undefined,
                 },
                 edges
             );

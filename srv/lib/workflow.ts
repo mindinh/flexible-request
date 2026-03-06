@@ -541,20 +541,23 @@ export class WorkflowEngine {
         if (allStepsTerminal && !anyStepsInProgress && freshSteps.length > 0) {
             this.log.info(`All steps completed for Request ${requestId}.`);
 
-            // Check if any step was COMPLETED via a "Reject" action
-            const { StepHistory } = this.db.entities;
-            const history = await SELECT.from(StepHistory)
-                .where({ step_ID: { in: existingSteps.map(s => s.ID) }, action: 'APPROVE' })
-                .columns('comment');
+            // Check if any step was COMPLETED/REJECTED via a "Reject" action or intent
+            const { StepApprovals } = this.db.entities;
+            const stepIds = freshSteps.map(s => s.ID);
 
-            const wasRejected = history.some(h =>
-                h.comment && h.comment.toLowerCase().includes('action: reject')
-            );
+            // 1. Explicit Step Rejection Status
+            const hasRejectedStepStatus = freshSteps.some(s => s.status === Step.status.REJECTED);
 
-            // Also check if any step is explicitly in REJECTED status
-            const hasRejectedStep = existingSteps.some(s => s.status === Step.status.REJECTED);
+            // 2. Intent-based Rejection (decisionAction contains "reject")
+            const hasRejectionAction = freshSteps.some(s => s.decisionAction && /reject/i.test(s.decisionAction));
 
-            const finalStatus = (wasRejected || hasRejectedStep) ? Request.status.REJECTED : Request.status.COMPLETED;
+            // 3. Any individual approval record was REJECTED
+            const rejectedApprovals = await SELECT.from(StepApprovals)
+                .where({ step_ID: { in: stepIds }, status: StepApproval.status.REJECTED });
+
+            const wasRejected = hasRejectedStepStatus || hasRejectionAction || rejectedApprovals.length > 0;
+
+            const finalStatus = wasRejected ? Request.status.REJECTED : Request.status.COMPLETED;
 
             if (request.status !== finalStatus) {
                 await UPDATE(Requests, requestId).with({

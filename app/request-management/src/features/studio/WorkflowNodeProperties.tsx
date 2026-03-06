@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, Bell, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Search, Link2, Users, MessageSquare, RefreshCw } from 'lucide-react';
+import { Trash2, Play, Flag, FileEdit, Mail, Shield, Bell, MessageSquare, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Search, Link2, Users, RefreshCw } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -17,7 +17,7 @@ import { MappingSelector } from './components/MappingSelector';
 import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
 import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeInput, UiNodeOutput } from './types';
-import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings } from './workflowIOHelpers';
+import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings, findAllAncestors } from './workflowIOHelpers';
 
 // System-level output fields available on every Start Node
 const SYSTEM_OUTPUT_FIELDS = [
@@ -313,7 +313,7 @@ function NodeIOSection({
     const nodeType = node.type || 'actionNode';
     const isStartNode = nodeType === 'startNode';
     const isFormSubmission = isStartNode && (node.data.triggerType as string || 'FORM_SUB') === 'FORM_SUB';
-    const isUserTask = nodeType === 'actionNode' && node.data.actionSubType === 'form';
+    const isUserTask = nodeType === 'actionNode' && (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask');
 
     const inputs = (node.data.inputs as UiNodeInput[] | undefined) ?? [];
     const outputs = (node.data.outputs as UiNodeOutput[] | undefined) ?? [];
@@ -342,10 +342,10 @@ function NodeIOSection({
     );
     const hasInvalidInputs = invalidInputs.length > 0;
 
-    // Show/hide input section (start node with form submission = no input)
-    const showInputs = !isStartNode;
-    // Show output section for start (form sub) and action nodes
-    const showOutputs = isFormSubmission || nodeType === 'actionNode';
+    // Show/hide input section (start node with form submission = no input, user task = shown in tab)
+    const showInputs = !isStartNode && !isUserTask;
+    // Show output section ONLY for action nodes that are NOT User Tasks (Start node outputs are separate, User Tasks have Field Mappings)
+    const showOutputs = nodeType === 'actionNode' && !isUserTask;
 
     // End nodes and condition nodes don't need I/O — guard AFTER all hooks
     if (nodeType === 'endNode' || nodeType === 'conditionNode') return null;
@@ -584,23 +584,30 @@ function EmailTemplateEditor({
 
     // Group variables by category
     const categorizedVariables = useMemo(() => {
-        const categories: Record<string, any[]> = {
+        const categories: Record<string, any> = {
             'Request Info': [],
             'Related Personnel': [],
-            'Form Data': []
+            'Form Data': {} // Nested Record<stepName, fields[]>
         };
 
-        // Add system fields to their categories
+        // 1. Add system fields to their fixed categories
         SYSTEM_OUTPUT_FIELDS.forEach(sf => {
-            if (categories[sf.category]) {
+            if (Array.isArray(categories[sf.category])) {
                 categories[sf.category].push({ id: sf.id, label: sf.label });
             }
         });
 
-        // Add form fields from available sources to 'Form Data'
+        // 2. Add form fields from available sources, grouped by their step name inside "Form Data"
         availableSources.forEach(s => {
+            // Skip internal system fields (already handled)
+            if (s.stepId === 'system') return;
+
             if (!s.fieldId.startsWith('__')) {
-                categories['Form Data'].push({ id: s.fieldId, label: s.fieldName });
+                const stepName = s.stepName || 'Unknown Step';
+                if (!categories['Form Data'][stepName]) {
+                    categories['Form Data'][stepName] = [];
+                }
+                categories['Form Data'][stepName].push({ id: s.fieldId, label: s.fieldName });
             }
         });
 
@@ -665,13 +672,48 @@ function EmailTemplateEditor({
                             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Available Data</h3>
 
                             <div className="space-y-6">
-                                {Object.entries(categorizedVariables).map(([category, fields]) => (
-                                    fields.length > 0 && (
+                                {Object.entries(categorizedVariables).map(([category, content]) => {
+                                    // Special rendering for Form Data (nested)
+                                    if (category === 'Form Data') {
+                                        const stepGroups = content as Record<string, any[]>;
+                                        if (Object.keys(stepGroups).length === 0) return null;
+                                        return (
+                                            <div key={category} className="space-y-4">
+                                                <div className="flex items-center gap-2 text-slate-600">
+                                                    <Layers size={12} />
+                                                    <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
+                                                </div>
+                                                <div className="space-y-5 pl-2 border-l-2 border-slate-100 ml-1.5">
+                                                    {Object.entries(stepGroups).map(([stepName, fields]) => (
+                                                        <div key={stepName} className="space-y-2">
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight px-1">{stepName}</div>
+                                                            <div className="grid gap-1.5">
+                                                                {fields.map(f => (
+                                                                    <button
+                                                                        key={f.id}
+                                                                        onClick={() => insertVariable(f.id)}
+                                                                        title={`Click to insert {{${f.id}}}`}
+                                                                        className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-amber-400 hover:shadow-sm transition-all text-left"
+                                                                    >
+                                                                        <span className="text-xs font-medium text-slate-700 group-hover:text-amber-600 truncate">{f.label}</span>
+                                                                        <Play size={8} className="text-slate-300 group-hover:text-amber-400" />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Flat rendering for System Categories
+                                    const fields = content as any[];
+                                    return fields.length > 0 && (
                                         <div key={category} className="space-y-2">
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 {category === 'Request Info' && <Database size={12} />}
                                                 {category === 'Related Personnel' && <Shield size={12} />}
-                                                {category === 'Form Data' && <Layers size={12} />}
                                                 <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
                                             </div>
                                             <div className="grid gap-1.5">
@@ -688,8 +730,8 @@ function EmailTemplateEditor({
                                                 ))}
                                             </div>
                                         </div>
-                                    )
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -1322,7 +1364,6 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         selectForm,
         setActiveTab,
         setIsFormEditorOpen,
-        setIsEmailEditorOpen,
     } = useStudioStore();
 
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1332,6 +1373,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     const nodeType = node.type || 'actionNode';
     const subType = node.data?.actionSubType as string | undefined;
     const triggerType = (node.data?.triggerType as string) || 'FORM_SUB';
+
+    const isUserTask = subType === 'user_task' || subType === 'userTask' || subType === 'form';
+    const isApiCall = subType === 'api_call' || subType === 'apiCall';
+    const isApproval = subType === 'approval';
 
     // --- Data Resolvers for IO Mapping ---
 
@@ -1395,50 +1440,71 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         return fields;
     }, [node.data?.formId, forms, node.data.isStart, node.type, triggerType, node.data.apiPayload]);
 
-    // 2. Get available source fields from PREVIOUS steps
+    // 2. Get available source fields from ALL previous steps (Ancestors)
     const availableSources = useMemo(() => {
         const sources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string }> = [];
 
-        // Find Workflow Start node (always a source)
-        const startNode = allNodes.find(n => n.data.isStart || n.type === 'startNode');
-        if (startNode) {
-            // System-level fields (always available)
-            SYSTEM_OUTPUT_FIELDS.forEach(sf => {
-                sources.push({
-                    stepId: startNode.id,
-                    stepName: 'System',
-                    fieldId: sf.id,
-                    fieldName: sf.label
-                });
+        // 1. Always add System Fields
+        SYSTEM_OUTPUT_FIELDS.forEach(sf => {
+            sources.push({
+                stepId: 'system',
+                stepName: 'System',
+                fieldId: sf.id,
+                fieldName: sf.label
             });
+        });
 
-            // Form fields
-            const startForm = forms.find(f => f.id === startNode.data.formId);
-            if (startForm) {
-                startForm.items.forEach(item => {
+        // 2. Find all ancestor nodes
+        const ancestorIds = findAllAncestors(node.id, edges);
+
+        ancestorIds.forEach(id => {
+            const ancestor = allNodes.find(n => n.id === id);
+            if (!ancestor) return;
+
+            const stepName = (ancestor.data.label as string) || 'Untitled Step';
+
+            // Form fields (for Start / User Task / Approval)
+            const formId = ancestor.data.formId as string | undefined;
+            const form = formId ? forms.find(f => f.id === formId) : null;
+
+            if (form) {
+                form.items.forEach(item => {
                     if (item.type === 'section') {
                         (item as UiSection).fields.forEach(f => sources.push({
-                            stepId: startNode.id,
-                            stepName: startNode.data.label as string,
+                            stepId: id,
+                            stepName,
                             fieldId: f.id,
                             fieldName: f.label
                         }));
                     } else if (item.type !== 'table') {
                         const f = item as UiFormField;
                         sources.push({
-                            stepId: startNode.id,
-                            stepName: startNode.data.label as string,
+                            stepId: id,
+                            stepName,
                             fieldId: f.id,
                             fieldName: f.label
                         });
                     }
                 });
             }
-        }
-        return sources;
-    }, [allNodes, forms]);
 
-    // 3. Handle Mapping Updates
+            // API Outputs (specifically for API Call nodes)
+            const outputs = (ancestor.data.outputs as UiNodeOutput[] | undefined) ?? [];
+            outputs.forEach(opt => {
+                sources.push({
+                    stepId: id,
+                    stepName,
+                    fieldId: opt.sourcePath,
+                    fieldName: opt.alias || opt.sourcePath
+                });
+            });
+        });
+
+        return sources;
+    }, [allNodes, edges, node.id, forms]);
+
+
+    // 4. Handle Mapping Updates
     const inputMapping = useMemo(() => {
         try {
             return JSON.parse((node.data.inputMapping as string) || '{}');
@@ -1663,10 +1729,9 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">System</p>
                                     )}
                                     {targetFields.filter(f => f.id.startsWith('__')).map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 bg-blue-50/50 rounded border border-blue-100">
+                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-blue-100 bg-blue-50/50">
                                             <Database size={12} className="text-blue-400" />
                                             <span className="text-xs font-medium text-blue-700">{f.label}</span>
-                                            <span className="text-[10px] text-blue-400 ml-auto font-mono">{f.id}</span>
                                         </div>
                                     ))}
                                 </>
@@ -1679,10 +1744,9 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-1">Form Fields</p>
                                     )}
                                     {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded border border-slate-100">
+                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
                                             <Database size={12} className="text-slate-400" />
                                             <span className="text-xs font-medium text-slate-600">{f.label}</span>
-                                            <span className="text-[10px] text-slate-400 ml-auto font-mono">{f.id}</span>
                                         </div>
                                     ))}
                                     {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
@@ -1698,10 +1762,9 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         <p className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider mt-1">API Variables</p>
                                     )}
                                     {targetFields.filter(f => (f as any).type === 'api').map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 bg-emerald-50/50 rounded border border-emerald-100">
-                                            <GitBranch size={12} className="text-emerald-500" />
+                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-emerald-100 bg-emerald-50/50">
+                                            <Database size={12} className="text-emerald-500" />
                                             <span className="text-xs font-medium text-emerald-700">{f.label}</span>
-                                            <span className="text-[10px] text-emerald-400 ml-auto font-mono">{f.id}</span>
                                         </div>
                                     ))}
                                     {targetFields.filter(f => (f as any).type === 'api').length === 0 && (
@@ -1718,105 +1781,109 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             {nodeType === 'actionNode' && (
                 <>
                     {/* ─── Task Form Configuration ──────────── */}
-                    <Card className="p-4 space-y-3">
-                        <Label variant="section">Task Form</Label>
-                        {currentForm ? (
-                            <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
-                        )}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleEditFormLayout}
-                            className="w-full gap-1.5"
-                        >
-                            <ExternalLink size={14} />
-                            {currentForm ? 'Open Task Editor' : 'Create & Edit Task Form'}
-                        </Button>
-                        <p className="text-[11px] text-slate-400 italic">
-                            Configure the task form layout in the Task Editor
-                        </p>
-                    </Card>
+                    {!isUserTask && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">Task Form</Label>
+                            {currentForm ? (
+                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleEditFormLayout}
+                                className="w-full gap-1.5"
+                            >
+                                <ExternalLink size={14} />
+                                {currentForm ? 'Open Task Editor' : 'Create & Edit Task Form'}
+                            </Button>
+                            <p className="text-[11px] text-slate-400 italic">
+                                Configure the task form layout in the Task Editor
+                            </p>
+                        </Card>
+                    )}
 
                     {/* ─── Approvers Card ────────────────────── */}
-                    <Card className="p-4 space-y-3">
-                        <Label variant="section">Approvers</Label>
-                        <p className="text-[11px] text-slate-400">
-                            Select individual users or groups who can approve this task.
-                        </p>
+                    {!isUserTask && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">Approvers</Label>
+                            <p className="text-[11px] text-slate-400">
+                                Select individual users or groups who can approve this task.
+                            </p>
 
-                        {/* List of current approvers */}
-                        {(() => {
-                            const approvers = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
-                            return (
-                                <>
-                                    {approvers.length > 0 && (
-                                        <div className="space-y-1.5">
-                                            {approvers.map((approver, idx) => {
-                                                const ApproverIcon = approver.type === 'USER' ? FileEdit : Users;
-                                                return (
-                                                    <div
-                                                        key={approver.id + '-' + idx}
-                                                        className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/80 group"
-                                                    >
-                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${approver.type === 'USER' ? 'bg-blue-100' : 'bg-violet-100'
-                                                            }`}>
-                                                            <ApproverIcon size={14} className={
-                                                                approver.type === 'USER' ? 'text-blue-600' : 'text-violet-600'
-                                                            } />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <span className="text-sm font-medium text-slate-700 truncate block">
-                                                                {approver.displayName}
-                                                            </span>
-                                                            <span className="text-[10px] text-slate-400 uppercase">{approver.type}</span>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => {
-                                                                const newApprovers = approvers.filter((_, i) => i !== idx);
-                                                                updateNodeData(node.id, { approvers: newApprovers });
-                                                            }}
-                                                            className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-50"
+                            {/* List of current approvers */}
+                            {(() => {
+                                const approvers = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
+                                return (
+                                    <>
+                                        {approvers.length > 0 && (
+                                            <div className="space-y-1.5">
+                                                {approvers.map((approver, idx) => {
+                                                    const ApproverIcon = approver.type === 'USER' ? FileEdit : Users;
+                                                    return (
+                                                        <div
+                                                            key={approver.id + '-' + idx}
+                                                            className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/80 group"
                                                         >
-                                                            <X size={14} />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
+                                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${approver.type === 'USER' ? 'bg-blue-100' : 'bg-violet-100'
+                                                                }`}>
+                                                                <ApproverIcon size={14} className={
+                                                                    approver.type === 'USER' ? 'text-blue-600' : 'text-violet-600'
+                                                                } />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <span className="text-sm font-medium text-slate-700 truncate block">
+                                                                    {approver.displayName}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 uppercase">{approver.type}</span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newApprovers = approvers.filter((_, i) => i !== idx);
+                                                                    updateNodeData(node.id, { approvers: newApprovers });
+                                                                }}
+                                                                className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-50"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
 
-                                    <PrincipalSelect
-                                        value={null}
-                                        onChange={(principal) => {
-                                            if (!principal) return;
-                                            const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
-                                            // Avoid duplicates
-                                            if (existing.some(a => a.id === principal.id && a.type === principal.type)) return;
-                                            updateNodeData(node.id, {
-                                                approvers: [...existing, {
-                                                    id: principal.id,
-                                                    type: principal.type,
-                                                    displayName: principal.displayName,
-                                                }],
-                                            });
-                                        }}
-                                        placeholder="Add approver..."
-                                        excludeIds={
-                                            ((node.data.approvers as Array<{ id: string }>) || []).map(a => a.id)
-                                        }
-                                    />
-                                </>
-                            );
-                        })()}
-                    </Card>
+                                        <PrincipalSelect
+                                            value={null}
+                                            onChange={(principal) => {
+                                                if (!principal) return;
+                                                const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
+                                                // Avoid duplicates
+                                                if (existing.some(a => a.id === principal.id && a.type === principal.type)) return;
+                                                updateNodeData(node.id, {
+                                                    approvers: [...existing, {
+                                                        id: principal.id,
+                                                        type: principal.type,
+                                                        displayName: principal.displayName,
+                                                    }],
+                                                });
+                                            }}
+                                            placeholder="Add approver..."
+                                            excludeIds={
+                                                ((node.data.approvers as Array<{ id: string }>) || []).map(a => a.id)
+                                            }
+                                        />
+                                    </>
+                                );
+                            })()}
+                        </Card>
+                    )}
 
                     {/* ─── API CALL SUB-TYPE ───────────────────── */}
-                    {subType === 'apiCall' && (
+                    {isApiCall && (
                         <Card className="p-4 space-y-4">
                             <div className="flex items-center justify-between">
                                 <Label variant="section">API Configuration</Label>
@@ -1883,11 +1950,14 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── APPROVAL / USER TASK SUB-TYPE ──────────────────── */}
-                    {(subType === 'approval' || subType === 'userTask') && (
+                    {(isApproval || isUserTask) && (
                         <Tabs defaultValue="general" className="w-full">
-                            <TabsList className="grid w-full grid-cols-2 mb-4 bg-slate-100/50 p-1 rounded-lg">
+                            <TabsList className={`grid w-full ${isUserTask ? 'grid-cols-3' : 'grid-cols-2'} mb-4 bg-slate-100/50 p-1 rounded-lg`}>
                                 <TabsTrigger value="general" className="text-xs py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">General</TabsTrigger>
                                 <TabsTrigger value="mapping" className="text-xs py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Input</TabsTrigger>
+                                {isUserTask && (
+                                    <TabsTrigger value="output" className="text-xs py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Output</TabsTrigger>
+                                )}
                             </TabsList>
 
                             <TabsContent value="general" className="space-y-4 focus-visible:outline-none">
@@ -1932,7 +2002,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     />
                                 </Card>
 
-                                {subType === 'userTask' && (
+                                {isUserTask && (
                                     <Card className="p-4 space-y-3">
                                         <Label variant="section">Task Form</Label>
                                         <div className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50/50">
@@ -1956,7 +2026,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     </Card>
                                 )}
 
-                                {subType === 'userTask' && (
+                                {isUserTask && (
                                     <Card className="p-4 space-y-4">
                                         <Label variant="section">Notifications</Label>
                                         <p className="text-[11px] text-slate-400 -mt-1">
@@ -1965,21 +2035,21 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         <div className="grid grid-cols-3 gap-3">
                                             {[
                                                 { id: 'email', icon: Mail, label: 'EMAIL' },
-                                                { id: 'bell', icon: Shield, label: 'BELL' },
-                                                { id: 'teams', icon: Layers, label: 'TEAMS' },
+                                                { id: 'bell', icon: Bell, label: 'BELL' },
+                                                { id: 'teams', icon: MessageSquare, label: 'TEAMS' },
                                             ].map((channel) => {
-                                                const notifications = (node.data.notifications as string[]) || ['bell'];
-                                                const isActive = notifications.includes(channel.id);
+                                                const notificationTypes = (node.data.notificationTypes as string[]) || ['bell'];
+                                                const isActive = notificationTypes.includes(channel.id);
                                                 const ChannelIcon = channel.icon;
                                                 return (
                                                     <button
                                                         key={channel.id}
                                                         onClick={() => {
-                                                            const current = (node.data.notifications as string[]) || ['bell'];
+                                                            const current = (node.data.notificationTypes as string[]) || ['bell'];
                                                             const next = current.includes(channel.id)
                                                                 ? current.filter(c => c !== channel.id)
                                                                 : [...current, channel.id];
-                                                            updateNodeData(node.id, { notifications: next });
+                                                            updateNodeData(node.id, { notificationTypes: next });
                                                         }}
                                                         className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isActive
                                                             ? 'border-amber-400 bg-white shadow-sm'
@@ -1996,7 +2066,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         </div>
 
                                         {/* Edit Body Content button — only visible when EMAIL is enabled */}
-                                        {((node.data.notifications as string[]) || []).includes('email') && (
+                                        {((node.data.notificationTypes as string[]) || []).includes('email') && (
                                             <EmailTemplateEditor
                                                 subject={(node.data.emailSubject as string) || ''}
                                                 body={(node.data.emailBody as string) || ''}
@@ -2074,7 +2144,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         <Label variant="section">Field Mappings</Label>
                                         <Button variant="ghost" size="sm" onClick={handleEditFormLayout} className="text-primary h-7 text-[10px] px-2 gap-1 font-semibold border-slate-200">
                                             <FileEdit size={12} />
-                                            Edit {subType === 'userTask' ? 'Task' : 'Approval'} Form
+                                            Edit {isUserTask ? 'Task' : 'Approval'} Form
                                         </Button>
                                     </div>
 
@@ -2096,17 +2166,44 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         </div>
                                     )}
 
-                                    <div className="text-[11px] text-slate-400 italic bg-blue-50/30 p-3 rounded-xl border border-blue-100/50 flex gap-2">
-                                        <Database size={12} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                                        <span>Mapped fields will automatically pre-fill with values captured from previous steps when the {subType === 'userTask' ? 'user' : 'approver'} opens the task.</span>
-                                    </div>
+                                    {/* Info box removed for User Tasks as per request */}
+                                    {!isUserTask && (
+                                        <div className="text-[11px] text-slate-400 italic bg-blue-50/30 p-3 rounded-xl border border-blue-100/50 flex gap-2">
+                                            <Database size={12} className="text-blue-400 flex-shrink-0 mt-0.5" />
+                                            <span>Mapped fields will automatically pre-fill with values captured from previous steps when the {isUserTask ? 'user' : 'approver'} opens the task.</span>
+                                        </div>
+                                    )}
                                 </Card>
                             </TabsContent>
+
+                            {isUserTask && (
+                                <TabsContent value="output" className="space-y-4 focus-visible:outline-none">
+                                    <Card className="p-4 space-y-4">
+                                        <Label variant="section">Output Fields</Label>
+                                        <p className="text-[11px] text-slate-400 -mt-1">
+                                            These fields from the Task Form will be available as outputs for subsequent steps.
+                                        </p>
+                                        <div className="space-y-2">
+                                            {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
+                                                <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
+                                                    <Database size={12} className="text-slate-400" />
+                                                    <span className="text-xs font-medium text-slate-600">{f.label}</span>
+                                                </div>
+                                            ))}
+                                            {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
+                                                <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">
+                                                    <p className="text-xs text-slate-400 italic">No fields defined for this form.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Card>
+                                </TabsContent>
+                            )}
                         </Tabs>
                     )}
 
                     {/* ─── Shared: SLA + Owner (Visible for all node types EXCEPT UserTask/Approval where it's moved to General Tab) ────────────────── */}
-                    {!(subType === 'approval' || subType === 'userTask') && (
+                    {!(isApproval || isUserTask) && (
                         <>
                             <Card className="p-4 space-y-4">
                                 <FormField label="SLA" hint="Time limit in days">

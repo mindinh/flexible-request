@@ -57,6 +57,7 @@ entity StepDefinitions : cuid, managedWithUser {
     schemaContent        : LargeString; // Form schema JSON (each step has its own schema)
     inputsContent        : LargeString; // JSON: Array<{ sourcePath, alias?, type? }>
     outputsContent       : LargeString; // JSON: Array<{ sourcePath, alias?, type?, derivedFrom? }>
+    inputMapping         : LargeString; // JSON: Map of field ID to source {stepId, fieldId}
     approversContent     : LargeString; // JSON: Array<{ id, type, displayName }>
     notificationsContent : LargeString; // JSON: { channels: string[], emailConfig?: {...} }
     conditionExpr        : LargeString; // JSON condition expression for condition nodes (AND/OR/NOT groups)

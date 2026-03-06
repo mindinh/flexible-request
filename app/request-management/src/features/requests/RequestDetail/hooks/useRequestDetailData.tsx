@@ -337,10 +337,19 @@ export function useRequestDetailData(id: string | undefined) {
                     );
                 } else if (statusUpper === 'COMPLETED') {
                     if (completedApprovals.length > 0) {
+                        const isTechnicalReject = completedApprovals.some(a => a.status === 'REJECTED');
+                        const isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
+                        const isRejected = isTechnicalReject || isBranchReject;
+
                         const approverName = completedApprovals[0].decidedByDisplayName ||
                             completedApprovals[0].approverDisplayName ||
                             completedApprovals[0].approver;
-                        statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
+
+                        if (isRejected) {
+                            statusBadge = <span className="text-rose-600 font-medium">Rejected by {approverName}</span>;
+                        } else {
+                            statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
+                        }
                     } else if (hasData) {
                         statusBadge = <span className="text-emerald-600 font-medium">Completed</span>;
                     } else {
@@ -466,7 +475,7 @@ export function useRequestDetailData(id: string | undefined) {
                     const forms = JSON.parse(request.requestType.formSchemasContent);
                     const form = forms.find((f: any) => f.id === stepDef.formId);
                     const actions = form?.actions || [];
-                    if (actions.length > 0) {
+                    if (actions.length > 0 && !stepDef.isStartStep) {
                         const decisionAction = (runtimeStep as any)?.decisionAction;
                         if (decisionAction && status === 'COMPLETED') {
                             // Show the decision that was actually taken
@@ -497,7 +506,9 @@ export function useRequestDetailData(id: string | undefined) {
                         approvers: [{
                             name: resolvePrincipalName(approval.approver, approval.approverDisplayName) || 'Unknown Approver',
                             type: (approval.approverType || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION',
-                            status: approval.status as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
+                            status: (approval.status === 'APPROVED' && (/reject/i.test(runtimeStep?.decisionAction || ''))
+                                ? 'REJECTED'
+                                : approval.status) as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
                             comment: approval.comment,
                             timestamp: approval.decisionAt,
                             decidedBy: approval.decidedByDisplayName

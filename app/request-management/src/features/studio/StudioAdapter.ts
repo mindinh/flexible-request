@@ -136,7 +136,7 @@ export const StudioAdapter = {
                     syncTrigger: step.syncTrigger as SyncTrigger || 'NONE',
                     actionSubType: step.actionSubType || undefined,
                     formId: step.formId || undefined,
-                    inputMapping: (step as any).inputMapping || '{}',
+                    inputMapping: step.inputMapping || '{}',
                     // Default owner fields
                     owner_ID: step.ownerId,
                     ownerType: step.ownerType,
@@ -188,7 +188,7 @@ export const StudioAdapter = {
                             source: pred.dependsOn_ID,
                             target: step.ID,
                             type: 'smoothstep',
-                            ...(action ? { sourceHandle: action, label: action } : {}),
+                            ...(action ? { sourceHandle: action } : {}),
                         });
                     }
                 });

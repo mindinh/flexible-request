@@ -45,20 +45,31 @@ export function MappingSelector({ availableSources, value, onChange, label }: Ma
                             No Mapping (Manual Entry)
                         </div>
                     </SelectItem>
-                    {availableSources.map((source) => (
-                        <SelectItem
-                            key={`${source.stepId}#${source.fieldId}`}
-                            value={`${source.stepId}#${source.fieldId}`}
-                            className="text-xs"
-                        >
-                            <div className="flex flex-col">
-                                <span className="font-medium text-slate-700">{source.fieldName}</span>
-                                <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                                    <Database size={10} />
-                                    From: {source.stepName}
-                                </span>
+
+                    {Object.entries(
+                        availableSources.reduce((acc, source) => {
+                            if (!acc[source.stepName]) acc[source.stepName] = [];
+                            acc[source.stepName].push(source);
+                            return acc;
+                        }, {} as Record<string, MappingSource[]>)
+                    ).map(([stepName, sources]) => (
+                        <div key={stepName} className="space-y-1 py-1">
+                            <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50">
+                                {stepName}
                             </div>
-                        </SelectItem>
+                            {sources.map((source) => (
+                                <SelectItem
+                                    key={`${source.stepId}#${source.fieldId}`}
+                                    value={`${source.stepId}#${source.fieldId}`}
+                                    className="text-xs pl-4"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Database size={10} className="text-slate-400" />
+                                        <span className="font-medium text-slate-700">{source.fieldName}</span>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </div>
                     ))}
                 </SelectContent>
             </Select>

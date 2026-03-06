@@ -108,7 +108,7 @@ export function WorkflowPreviewPanel({
 
         // Resolve form actions for this step (decision branching badges)
         const formActions = resolveFormActions(step.formId, formSchemasContent);
-        const branchLabel = formActions.length > 0
+        const branchLabel = (formActions.length > 0 && !step.isStartStep)
             ? `Decisions: ${formActions.map(a => a.label).join(' / ')}`
             : undefined;
 

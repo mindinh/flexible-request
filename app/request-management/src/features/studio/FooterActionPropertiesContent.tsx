@@ -23,7 +23,7 @@ export function FooterActionPropertiesContent() {
     } = useStudioStore();
 
     const activeForm = forms.find(f => f.id === activeFormId);
-    const action = activeForm?.footerActions?.find(a => a.id === selectedFooterActionId);
+    const action = activeForm?.actions?.find(a => a.id === selectedFooterActionId);
 
     if (!action || !activeForm) {
         return (
@@ -35,15 +35,15 @@ export function FooterActionPropertiesContent() {
     }
 
     const updateAction = (updates: Partial<UiFormAction>) => {
-        const newActions = activeForm.footerActions?.map(a =>
+        const newActions = activeForm.actions?.map(a =>
             a.id === selectedFooterActionId ? { ...a, ...updates } : a
         );
-        updateForms(forms.map(f => f.id === activeFormId ? { ...f, footerActions: newActions } : f));
+        updateForms(forms.map(f => f.id === activeFormId ? { ...f, actions: newActions } : f));
     };
 
     const deleteAction = () => {
-        const newActions = activeForm.footerActions?.filter(a => a.id !== selectedFooterActionId);
-        updateForms(forms.map(f => f.id === activeFormId ? { ...f, footerActions: newActions } : f));
+        const newActions = activeForm.actions?.filter(a => a.id !== selectedFooterActionId);
+        updateForms(forms.map(f => f.id === activeFormId ? { ...f, actions: newActions } : f));
         setSelectedFooterActionId(null);
     };
 

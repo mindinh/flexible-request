@@ -646,6 +646,14 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         )
     );
 
+    // Check if the active form belongs to a simple user task
+    const isUserTaskForm = Boolean(
+        activeFormId &&
+        workflow.nodes.some(
+            (n) => (n.data.subType === 'user_task' || n.data.actionSubType === 'user_task' || n.data.actionSubType === 'form') && n.data.formId === activeFormId
+        )
+    );
+
     const currentSchema = schema;
     const updateCurrentSchema = updateSchema;
 
@@ -703,6 +711,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
             label,
             required: false,
             key: key || undefined,
+            bindTo: key || undefined,
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),
             ...(type === 'table' ? { columns: [] } : {}),
         } as UiCanvasItem;
@@ -737,6 +746,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
             label: fieldLabel,
             required: false,
             key: key || undefined,
+            bindTo: key || undefined,
             colSpan: defaultColSpan as 3 | 6 | 9 | 12,
         };
 
@@ -774,6 +784,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
             type: fieldType as any,
             label: fieldLabel,
             key: key || undefined,
+            bindTo: key || undefined,
         };
 
         const newItems = items.map(item => {
@@ -1112,7 +1123,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                             try {
                                                 const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                                 if (data.type && data.label) {
-                                                    addItem(data.type, data.label);
+                                                    addItem(data.type, data.label, data.dataFieldKey);
                                                 }
                                             } catch {
                                                 // ignore
@@ -1134,88 +1145,93 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                     <div>
                                                         <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
                                                         <p className="text-xs text-blue-600 mt-0.5">
-                                                            Start node forms use the default "Submit Request" action. Custom branching actions are only available on approval and user task steps.
+                                                            This step uses a standard submission action. Custom decision buttons are typically added for Approval steps to enable workflow branching.
                                                         </p>
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <FooterActionsEditor
-                                                    actions={activeForm.actions || []}
-                                                    onChange={(actions) => {
-                                                        if (activeFormId) {
-                                                            updateFormActions(activeFormId, actions);
-                                                        }
-                                                    }}
-                                                />
+                                                /* Hide technical list for User Tasks to avoid redundancy with the interactive buttons below */
+                                                !isUserTaskForm && (
+                                                    <FooterActionsEditor
+                                                        actions={activeForm.actions || []}
+                                                        onChange={(actions) => {
+                                                            if (activeFormId) {
+                                                                updateFormActions(activeFormId, actions);
+                                                            }
+                                                        }}
+                                                    />
+                                                )
                                             )}
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* In-place Form Footer Actions Editor */}
-                            <div className="mt-6 pt-6 border-t border-slate-200">
-                                <div className="flex items-center justify-end gap-3 min-h-[44px]">
-                                    <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 text-primary hover:text-primary hover:bg-primary/5 gap-1.5 font-medium"
-                                            onClick={() => {
-                                                if (!activeFormId) return;
-                                                const newActions = [...(activeForm?.actions || [])];
-                                                const newId = `action-${Date.now()}`;
-                                                newActions.unshift({
-                                                    id: newId,
-                                                    label: 'New Action',
-                                                    variant: 'primary'
-                                                });
-                                                updateForms(forms.map(f => f.id === activeFormId ? { ...f, actions: newActions } : f));
-                                                // Automatically select the new button
-                                                setSelectedFooterActionId(newId);
-                                            }}
-                                        >
-                                            <Plus size={16} />
-                                            Add Button
-                                        </Button>
-                                    </div>
+                            {/* In-place Form Footer Actions Editor (Show for everything except Start Nodes) */}
+                            {!isStartNodeForm && (
+                                <div className="mt-6 pt-6 border-t border-slate-200">
+                                    <div className="flex items-center justify-end gap-3 min-h-[44px]">
+                                        <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-primary hover:text-primary hover:bg-primary/5 gap-1.5 font-medium"
+                                                onClick={() => {
+                                                    if (!activeFormId) return;
+                                                    const newActions = [...(activeForm?.actions || [])];
+                                                    const newId = `action-${Date.now()}`;
+                                                    newActions.unshift({
+                                                        id: newId,
+                                                        label: 'New Action',
+                                                        variant: 'primary'
+                                                    });
+                                                    updateForms(forms.map(f => f.id === activeFormId ? { ...f, actions: newActions } : f));
+                                                    // Automatically select the new button
+                                                    setSelectedFooterActionId(newId);
+                                                }}
+                                            >
+                                                <Plus size={16} />
+                                                Add Button
+                                            </Button>
+                                        </div>
 
-                                    <div className="flex items-center gap-2">
-                                        {activeForm?.actions?.map((action: UiFormAction) => (
-                                            <div key={action.id} className="relative">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedFooterActionId(action.id);
-                                                    }}
-                                                    className={cn(
-                                                        "h-8 px-4 font-medium min-w-[80px] transition-all",
-                                                        action.variant === 'success' && "bg-green-50 text-green-600 hover:bg-green-100 border-green-200",
-                                                        action.variant === 'danger' && "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200",
-                                                        (action.variant === 'primary' || !action.variant) && "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200",
-                                                        action.variant === 'outline' && "bg-white text-slate-600 hover:bg-slate-50 border-slate-200",
-                                                        action.variant === 'ghost' && "bg-transparent text-slate-500 hover:bg-slate-100 border-transparent",
-                                                        action.variant === 'secondary' && "bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200",
-                                                        action.variant === 'warning' && "bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-200",
-                                                        selectedFooterActionId === action.id && "ring-2 ring-primary ring-offset-2 scale-105"
-                                                    )}
-                                                >
-                                                    {action.label}
-                                                </Button>
-                                            </div>
-                                        ))}
+                                        <div className="flex items-center gap-2">
+                                            {activeForm?.actions?.map((action: UiFormAction) => (
+                                                <div key={action.id} className="relative">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedFooterActionId(action.id);
+                                                        }}
+                                                        className={cn(
+                                                            "h-8 px-4 font-medium min-w-[80px] transition-all",
+                                                            action.variant === 'success' && "bg-green-50 text-green-600 hover:bg-green-100 border-green-200",
+                                                            action.variant === 'danger' && "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200",
+                                                            (action.variant === 'primary' || !action.variant) && "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200",
+                                                            action.variant === 'outline' && "bg-white text-slate-600 hover:bg-slate-50 border-slate-200",
+                                                            action.variant === 'ghost' && "bg-transparent text-slate-500 hover:bg-slate-100 border-transparent",
+                                                            action.variant === 'secondary' && "bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200",
+                                                            action.variant === 'warning' && "bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-200",
+                                                            selectedFooterActionId === action.id && "ring-2 ring-primary ring-offset-2 scale-105"
+                                                        )}
+                                                    >
+                                                        {action.label}
+                                                    </Button>
+                                                </div>
+                                            ))}
 
-                                        {(!activeForm?.actions || activeForm.actions.length === 0) && (
-                                            <div className="flex gap-2 opacity-40 grayscale pointer-events-none">
-                                                <Button size="sm" variant="outline" className="h-8 px-4 bg-green-50 text-green-600 border-green-200">Approve</Button>
-                                                <Button size="sm" variant="outline" className="h-8 px-4 bg-rose-50 text-rose-600 border-rose-200">Reject</Button>
-                                            </div>
-                                        )}
+                                            {(!activeForm?.actions || activeForm.actions.length === 0) && (
+                                                <div className="flex gap-2 opacity-40 grayscale pointer-events-none">
+                                                    <Button size="sm" variant="outline" className="h-8 px-4 bg-green-50 text-green-600 border-green-200">Approve</Button>
+                                                    <Button size="sm" variant="outline" className="h-8 px-4 bg-rose-50 text-rose-600 border-rose-200">Reject</Button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 )}
