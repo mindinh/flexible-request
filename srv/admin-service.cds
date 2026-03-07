@@ -123,6 +123,13 @@ service AdminService @(
             action resetRange();
         };
 
+    // === Value Help Configuration ===
+    @restrict: [{
+        grant: '*',
+        to   : 'admin'
+    }]
+    entity ValueHelpList     as projection on db.ValueHelpList;
+
     /**
      * Test an external API call from the backend to avoid CORS issues.
      * Returns { status: number, body: any } as a JSON string.

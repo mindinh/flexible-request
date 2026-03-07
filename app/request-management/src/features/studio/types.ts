@@ -39,6 +39,7 @@ export interface ValueHelpConfig {
     items?: ValueHelpItem[];
     // For Reference (Managed List)
     listCode?: string;
+    objectType?: string;
     // For Dynamic (API / OData Entity)
     source?: {
         apiConfigId: string;   // Reference to an API Connection from the Integrations store

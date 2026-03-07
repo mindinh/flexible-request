@@ -3,14 +3,15 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
     Copy, Trash2, Settings2, Plus, GripVertical,
     Type, Hash, List, CheckSquare, CircleDot, Mail, SlidersHorizontal,
-    DollarSign, Tag, Image, Clock, Paperclip, TextCursorInput
+    DollarSign, Tag, Image, Clock, Paperclip, TextCursorInput, Loader2
 } from 'lucide-react';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField, FieldConstraints, ValueHelpConfig, ValueHelpItem } from './types';
 import { useIntegrationsStore } from '../integrations/useIntegrationsStore';
+import { useStudioStore } from './useStudioStore';
 
 // Type guards
 function isUiSection(item: UiCanvasItem): item is UiSection {
@@ -256,6 +257,85 @@ function ApiConfigPane({
     );
 }
 
+// ─── Value Help Reference Config ───
+function ValueHelpConfigPane({
+    listCode,
+    onChange,
+}: {
+    listCode?: string;
+    onChange: (listCode: string, objectType: string) => void;
+}) {
+    const requestTypeId = useStudioStore((s) => s.requestTypeId);
+    const [definitions, setDefinitions] = useState<Array<{ ID: string; valueHelpID: string; description?: string }>>([]);
+    const [loading, setLoading] = useState(false);
+
+    const fetchDefinitions = useCallback(async () => {
+        if (!requestTypeId) return;
+        setLoading(true);
+        try {
+            const res = await fetch(
+                `/admin/ValueHelpList?$filter=objectType eq '${requestTypeId}'&$orderby=valueHelpID`
+            );
+            const json = await res.json();
+            setDefinitions(json.value || []);
+        } catch {
+            console.error('Failed to fetch value help definitions');
+        } finally {
+            setLoading(false);
+        }
+    }, [requestTypeId]);
+
+    useEffect(() => { fetchDefinitions(); }, [fetchDefinitions]);
+
+    if (!requestTypeId) {
+        return (
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                <p className="text-xs text-amber-600">Save the request type first to use Value Help definitions.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <SectionLabel>Value Help Definition</SectionLabel>
+            {loading ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
+                    <Loader2 size={14} className="animate-spin" />
+                    Loading definitions…
+                </div>
+            ) : definitions.length === 0 ? (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                    <p className="text-xs text-amber-600">
+                        No value help definitions found.{' '}
+                        Create one in the <span className="font-medium">Value Help</span> tab first.
+                    </p>
+                </div>
+            ) : (
+                <Select
+                    value={listCode || undefined}
+                    onValueChange={(val) => onChange(val, requestTypeId)}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a definition…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {definitions.map((def) => (
+                            <SelectItem key={def.ID} value={def.valueHelpID}>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium">{def.valueHelpID}</span>
+                                    {def.description && (
+                                        <span className="text-xs text-slate-400 truncate">— {def.description}</span>
+                                    )}
+                                </div>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+        </div>
+    );
+}
+
 interface FieldPropertiesContentProps {
     schema: UiCanvasItem[];
     selectedFieldId: string;
@@ -403,24 +483,30 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         <div className="space-y-1.5">
                             <SectionLabel>Data Source</SectionLabel>
                             <div className="flex p-0.5 bg-slate-100 rounded-lg">
-                                {(['Static', 'API'] as const).map((mode) => (
-                                    <button
-                                        key={mode}
-                                        onClick={() => {
-                                            const type = mode === 'API' ? 'Dynamic' : 'Static';
-                                            onUpdate(selectedItem!.id, {
-                                                valueHelp: { ...(fieldItem?.valueHelp || {}), type: type as any }
-                                            });
-                                        }}
-                                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${(mode === 'Static' && dataSourceType === 'Static') ||
-                                            (mode === 'API' && dataSourceType !== 'Static')
-                                            ? 'bg-white shadow-sm text-slate-800'
-                                            : 'text-slate-500 hover:text-slate-700'
-                                            }`}
-                                    >
-                                        {mode}
-                                    </button>
-                                ))}
+                                {(['Static', 'API', 'Value Help'] as const).map((mode) => {
+                                    const typeMap = { 'Static': 'Static', 'API': 'Dynamic', 'Value Help': 'Reference' } as const;
+                                    const isActive = (
+                                        (mode === 'Static' && dataSourceType === 'Static') ||
+                                        (mode === 'API' && dataSourceType === 'Dynamic') ||
+                                        (mode === 'Value Help' && dataSourceType === 'Reference')
+                                    );
+                                    return (
+                                        <button
+                                            key={mode}
+                                            onClick={() => {
+                                                onUpdate(selectedItem!.id, {
+                                                    valueHelp: { ...(fieldItem?.valueHelp || {}), type: typeMap[mode] as any }
+                                                });
+                                            }}
+                                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${isActive
+                                                ? 'bg-white shadow-sm text-slate-800'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                                }`}
+                                        >
+                                            {mode}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -444,7 +530,7 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                         )}
 
                         {/* ── API Configuration ── */}
-                        {dataSourceType !== 'Static' && (
+                        {dataSourceType === 'Dynamic' && (
                             <ApiConfigPane
                                 source={fieldItem?.valueHelp?.source}
                                 onChange={(source) => {
@@ -458,8 +544,69 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                                 }}
                             />
                         )}
+
+                        {/* ── Value Help Reference ── */}
+                        {dataSourceType === 'Reference' && (
+                            <ValueHelpConfigPane
+                                listCode={fieldItem?.valueHelp?.listCode}
+                                onChange={(listCode, objectType) => {
+                                    onUpdate(selectedItem!.id, {
+                                        valueHelp: {
+                                            ...(fieldItem?.valueHelp || {}),
+                                            type: 'Reference',
+                                            listCode,
+                                            objectType,
+                                        }
+                                    });
+                                }}
+                            />
+                        )}
                     </>
                 )}
+
+                {/* ── VALUE HELP (non-select qualifying fields) ── */}
+                {isField && !isSelectType && ['text', 'email', 'currency'].includes(selectedItem.type) && (() => {
+                    const hasVH = fieldItem?.valueHelp?.type === 'Reference';
+                    return (
+                        <div className="space-y-1.5">
+                            <SectionLabel>Value Help</SectionLabel>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        if (hasVH) {
+                                            // Disable: clear value help config
+                                            onUpdate(selectedItem!.id, { valueHelp: undefined as any });
+                                        } else {
+                                            // Enable: set type to Reference
+                                            onUpdate(selectedItem!.id, {
+                                                valueHelp: { ...(fieldItem?.valueHelp || {}), type: 'Reference' as any }
+                                            });
+                                        }
+                                    }}
+                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${hasVH ? 'bg-primary' : 'bg-slate-200'}`}
+                                >
+                                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${hasVH ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                                </button>
+                                <span className="text-xs text-slate-600">Enable F4 Browse</span>
+                            </div>
+                            {hasVH && (
+                                <ValueHelpConfigPane
+                                    listCode={fieldItem?.valueHelp?.listCode}
+                                    onChange={(listCode, objectType) => {
+                                        onUpdate(selectedItem!.id, {
+                                            valueHelp: {
+                                                ...(fieldItem?.valueHelp || {}),
+                                                type: 'Reference',
+                                                listCode,
+                                                objectType,
+                                            }
+                                        });
+                                    }}
+                                />
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* ── FIELD STATE ── */}
                 {isField && (

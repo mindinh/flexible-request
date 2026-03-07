@@ -20,6 +20,7 @@ import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
 import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
 import { EmailEditorTab } from './EmailEditorTab';
+import { ValueHelpManager } from '../../components/valuehelp';
 
 
 
@@ -29,6 +30,7 @@ const BASE_TABS: TabDef[] = [
     { id: 'data-schema', label: 'Data Schema' },
     { id: 'workflow', label: 'Workflow' },
     { id: 'statuses', label: 'Statuses' },
+    { id: 'value-help', label: 'Value Help' },
 ];
 
 function StudioContent() {
@@ -138,6 +140,12 @@ function StudioContent() {
                 return <EmailEditorTab />;
             case 'statuses':
                 return <StatusActionsTab />;
+            case 'value-help':
+                return (
+                    <div className="p-6 h-full overflow-y-auto">
+                        <ValueHelpManager objectType={requestTypeId || ''} serviceUrl="/admin" />
+                    </div>
+                );
             default:
                 return null;
         }

@@ -137,12 +137,20 @@ service RequestService @(
     @readonly
     entity SupportTypes          as projection on db.SupportTypes;
 
+    // === Value Help (ReadOnly for runtime lookups) ===
+    @readonly
+    entity ValueHelpList         as projection on db.ValueHelpList;
+
     // ------------------------------------------------------------------------
     // Unbound Functions
     // ------------------------------------------------------------------------
 
     // Returns unified audit log combining RequestHistory + StepHistory
     function getAuditLog(requestId: UUID) returns array of AuditLogEntry;
+
+    // Value Help runtime functions
+    function getValueHelp(objectType: String, valueHelpID: String, filter: String, dependsOnValue: String) returns LargeString;
+    function getValueHelpSearch(objectType: String, valueHelpID: String, filters: String, columns: String, top: Integer, skip: Integer) returns LargeString;
 
     // Return type for getAuditLog function
     type AuditLogEntry {
