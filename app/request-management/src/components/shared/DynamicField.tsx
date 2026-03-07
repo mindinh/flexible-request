@@ -5,6 +5,8 @@ import { Input, TextArea, Select, SelectContent, SelectItem, SelectTrigger, Sele
 import { Checkbox } from '../../components/ui/Checkbox';
 import { Label } from '../../components/ui/label';
 import { useIntegrationsStore } from '../../features/integrations/useIntegrationsStore';
+import ValueHelpComboBox from '../../components/valuehelp/components/ValueHelpComboBox';
+import ValueHelpSearchInput from '../../components/valuehelp/components/ValueHelpSearchInput';
 import axios from 'axios';
 
 export interface SchemaField {
@@ -22,6 +24,8 @@ export interface SchemaField {
     options?: Array<{ value: string; label: string }>;
     valueHelp?: {
         type?: 'Static' | 'Reference' | 'Dynamic';
+        listCode?: string;
+        objectType?: string;
         items?: Array<{ key: string; label: string }>;
         source?: {
             apiConfigId: string;
@@ -170,6 +174,27 @@ export function DynamicField({
     // Fetch dynamic options when needed
     const { options: dynamicOptions, isLoading: dynamicLoading, isDynamic } = useDynamicOptions(field);
 
+    // ── Value Help early return ──
+    // For qualifying non-select fields, render ValueHelpSearchInput (F4 browse)
+    const VH_QUALIFYING = ['text', 'email', 'currency'];
+    if (
+        VH_QUALIFYING.includes(controlType) &&
+        field.valueHelp?.type === 'Reference' &&
+        field.valueHelp?.listCode &&
+        field.valueHelp?.objectType
+    ) {
+        return (
+            <ValueHelpSearchInput
+                objectType={field.valueHelp.objectType}
+                valueHelpID={field.valueHelp.listCode}
+                value={value || ''}
+                onChange={(val) => onChange(val)}
+                disabled={isDisabled}
+                placeholder={field.placeholder || `Search ${field.label}…`}
+            />
+        );
+    }
+
     switch (controlType) {
         case 'text':
         case 'email':
@@ -225,6 +250,25 @@ export function DynamicField({
             );
         case 'select':
         case 'dropdown': {
+            // If the field is bound to a Value Help Reference definition,
+            // render the ValueHelpComboBox instead of a plain dropdown.
+            if (
+                field.valueHelp?.type === 'Reference' &&
+                field.valueHelp?.listCode &&
+                field.valueHelp?.objectType
+            ) {
+                return (
+                    <ValueHelpComboBox
+                        objectType={field.valueHelp.objectType}
+                        valueHelpID={field.valueHelp.listCode}
+                        value={value || ''}
+                        onChange={(val) => onChange(val)}
+                        disabled={isDisabled}
+                        placeholder={field.placeholder || `Search ${field.label}…`}
+                    />
+                );
+            }
+
             // Merge static + dynamic options
             const staticOptions = getFieldOptions(field);
             const allOptions = isDynamic ? [...staticOptions, ...dynamicOptions] : staticOptions;

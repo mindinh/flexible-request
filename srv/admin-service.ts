@@ -7,6 +7,7 @@ import { ApproverRulesHandler } from './handlers/admin/ApproverRulesHandler';
 import { OrgHierarchyHandler } from './handlers/admin/OrgHierarchyHandler';
 import { ManagedUserHandler } from './handlers/ManagedUserHandler';
 import { ApiHandler } from './handlers/admin/ApiHandler';
+import { ValueHelpAdminHandler } from './handlers/admin/ValueHelpAdminHandler';
 
 /**
  * AdminService - Configuration management for Request Types and Workflows.
@@ -34,6 +35,7 @@ export default class AdminService extends cds.ApplicationService {
         new ApproverRulesHandler(this).register();
         new OrgHierarchyHandler(this).register();
         new ApiHandler(this).register();
+        new ValueHelpAdminHandler(this).register();
 
         await super.init();
     }

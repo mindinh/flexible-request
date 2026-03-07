@@ -23,6 +23,8 @@ export interface SchemaField {
     options?: Array<{ value: string; label: string }>;
     valueHelp?: {
         type?: 'Static' | 'Reference' | 'Dynamic';
+        listCode?: string;
+        objectType?: string;
         items?: Array<{ key: string; label: string }>;
         source?: {
             apiConfigId: string;

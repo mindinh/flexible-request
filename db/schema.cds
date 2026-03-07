@@ -19,6 +19,9 @@ using {sap.cre.Notifications} from './schema/notifications';
 // Import system settings schema (NumberRanges)
 using {sap.cre.NumberRanges} from './schema/settings';
 
+// Import value help schema
+using {sap.cre.ValueHelpList} from './schema/valuehelp';
+
 // ----------------------------------------------------------------------------
 // Configuration Entities (Blueprints)
 // ----------------------------------------------------------------------------
