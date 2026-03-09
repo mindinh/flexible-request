@@ -110,9 +110,10 @@ entity StepDefinitions : cuid, managedWithUser {
  * A step can only start when ALL its predecessors are COMPLETED.
  */
 entity StepDependencies : cuid {
-    step      : Association to StepDefinitions; // This step...
-    dependsOn : Association to StepDefinitions; // ...waits for this step to complete
-    action    : String; // If set, only activates when predecessor completes with this action (e.g. 'approve', 'reject')
+    step                 : Association to StepDefinitions; // This step...
+    dependsOn            : Association to StepDefinitions; // ...waits for this step to complete
+    action               : String; // If set, only activates when predecessor completes with this action (e.g. 'approve', 'reject')
+    statusConfigContent  : LargeString; // JSON: EdgeStatusConfig for Status Flow visualization
 }
 
 /**

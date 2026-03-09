@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, Loader2, AlertTriangle, Settings2, Type } from 'lucide-react';
+import { Save, Loader2, AlertTriangle, Settings2, Type, ArrowRight } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { StudioLayout } from '../../layouts/StudioLayout';
-import { StudioHeader, TabNavigation, LeftPanel, RightPanel, StudioToastProvider, useStudioToast } from '../../components/studio';
+import { StudioHeader, TabNavigation, RightPanel, StudioToastProvider, useStudioToast } from '../../components/studio';
 import { WorkflowTab } from './WorkflowTab';
 import { SchemaTab } from './SchemaTab';
 import { DataSchemaTab } from './DataSchemaTab';
@@ -14,10 +14,11 @@ import { motion } from 'framer-motion';
 import type { UiCanvasItem, UiFormField } from './types';
 
 import { FieldPropertiesContent } from './FieldPropertiesContent';
-import { SchemaPalette } from './SchemaPalette';
+
 import { SchemaPreviewTab } from './SchemaPreviewTab';
-import { WorkflowPalette } from './WorkflowPalette';
+
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
+import { WorkflowEdgeProperties } from './WorkflowEdgeProperties';
 import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
 import { EmailEditorTab } from './EmailEditorTab';
 import { StatusFlowTab } from './StatusFlowTab';
@@ -56,6 +57,8 @@ function StudioContent() {
         updateMetadata,
         activeStepId,
         setActiveStepId,
+        activeEdgeId,
+        setActiveEdgeId,
         // Schema state
         schema,
         updateSchema,
@@ -284,29 +287,7 @@ function StudioContent() {
                     }
                 />
             }
-            leftPanel={activeTab === 'schema' ? (collapsed) => (
-                <LeftPanel
-                    steps={[]}
-                    activeStepId={null}
-                    onStepSelect={() => { }}
-                    onAddStep={() => { }}
-                    isCollapsed={collapsed}
-                    hideSteps
-                >
-                    <SchemaPalette isCollapsed={collapsed} />
-                </LeftPanel>
-            ) : activeTab === 'workflow' ? (collapsed) => (
-                <LeftPanel
-                    steps={[]}
-                    activeStepId={null}
-                    onStepSelect={() => { }}
-                    onAddStep={() => { }}
-                    isCollapsed={collapsed}
-                    hideSteps
-                >
-                    <WorkflowPalette isCollapsed={collapsed} />
-                </LeftPanel>
-            ) : (activeTab === 'data-schema' || activeTab === 'statuses') ? undefined : undefined}
+            leftPanel={undefined}
             rightPanel={
                 activeTab === 'workflow' && activeStepId ? (() => {
                     const selectedNode = workflow.nodes.find(n => n.id === activeStepId);
@@ -323,6 +304,23 @@ function StudioContent() {
                                 node={selectedNode}
                                 allNodes={workflow.nodes}
                                 edges={workflow.edges}
+                            />
+                        </RightPanel>
+                    );
+                })() : activeTab === 'workflow' && activeEdgeId ? (() => {
+                    const selectedEdge = workflow.edges.find(e => e.id === activeEdgeId);
+                    if (!selectedEdge) return null;
+                    return (
+                        <RightPanel
+                            isOpen={!!activeEdgeId}
+                            onClose={() => setActiveEdgeId(null)}
+                            width={350}
+                            title="Transition Properties"
+                            icon={<ArrowRight size={16} />}
+                        >
+                            <WorkflowEdgeProperties
+                                edge={selectedEdge}
+                                allNodes={workflow.nodes}
                             />
                         </RightPanel>
                     );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStudioStore } from './useStudioStore';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiForm, UiFormAction } from './types';
 import { Card } from '@/components/ui/Card';
@@ -8,16 +8,63 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info, Check
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
 import { FooterActionsEditor } from './FooterActionsEditor';
+import { ResizableLeftPanel } from '../../components/studio';
+import { SchemaPalette } from './SchemaPalette';
 
 // ─── Drag context: shared drag state for swap logic ───
 const DRAG_TYPE_FIELD = 'schema-field';
 const DRAG_TYPE_COLUMN = 'schema-column';
 const DRAG_TYPE_ITEM = 'schema-item';
+
+// ─── Strip `id` recursively from form schema items for clean JSON display ───
+function stripFormIds(items: UiCanvasItem[]): unknown[] {
+    return items.map(item => {
+        const { id: _id, ...rest } = item as any;
+        const clean: Record<string, unknown> = { ...rest };
+        // Handle section fields
+        if (item.type === 'section' && 'fields' in item) {
+            clean.fields = (item as UiSection).fields.map(({ id: _fid, ...fRest }) => ({ ...fRest }));
+        }
+        // Handle table columns
+        if (item.type === 'table' && 'columns' in item) {
+            clean.columns = (item as UiTableField).columns.map(({ id: _cid, ...cRest }) => ({ ...cRest }));
+        }
+        return clean;
+    });
+}
+
+// ─── Inject `id` into items that don't have one ───
+function injectFormIds(parsed: unknown[], existingItems: UiCanvasItem[]): UiCanvasItem[] {
+    return (parsed as any[]).map((raw, idx) => {
+        const existing = existingItems.find(e => e.type === raw.type && (e as any).label === raw.label) ||
+            (idx < existingItems.length ? existingItems[idx] : null);
+        const result = { ...raw, id: raw.id || existing?.id || `${raw.type || 'item'}-${Date.now()}-${idx}` };
+        // Inject IDs for section fields
+        if (raw.type === 'section' && Array.isArray(raw.fields)) {
+            const existingSection = existing as UiSection | null;
+            result.fields = raw.fields.map((f: any, fi: number) => {
+                const existingField = existingSection?.fields?.find(ef => ef.type === f.type && ef.label === f.label) ||
+                    (existingSection?.fields?.[fi] ?? null);
+                return { ...f, id: f.id || existingField?.id || `${f.type || 'field'}-${Date.now()}-${fi}` };
+            });
+        }
+        // Inject IDs for table columns
+        if (raw.type === 'table' && Array.isArray(raw.columns)) {
+            const existingTable = existing as UiTableField | null;
+            result.columns = raw.columns.map((c: any, ci: number) => {
+                const existingCol = existingTable?.columns?.find(ec => ec.type === c.type && ec.label === c.label) ||
+                    (existingTable?.columns?.[ci] ?? null);
+                return { ...c, id: c.id || existingCol?.id || `col-${Date.now()}-${ci}` };
+            });
+        }
+        return result;
+    });
+}
 
 
 // ─── Field Preview Component ───
@@ -669,6 +716,8 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
     const [jsonError, setJsonError] = useState<string | null>(null);
     const jsonTextareaRef = useRef<HTMLTextAreaElement>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const isJsonFocusedRef = useRef(false);
 
     // Form creation/editing state
     const [isEditingName, setIsEditingName] = useState(false);
@@ -676,7 +725,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
 
     const activeForm = forms.find(f => f.id === activeFormId);
 
-    const handleJsonChange = (text: string) => {
+    const handleJsonChange = useCallback((text: string) => {
         setJsonText(text);
         try {
             const parsed = JSON.parse(text);
@@ -685,20 +734,49 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                 return;
             }
             setJsonError(null);
-            setItems(parsed);
-            updateCurrentSchema(parsed);
+            const withIds = injectFormIds(parsed, items);
+            setItems(withIds);
+            updateCurrentSchema(withIds);
         } catch (e: any) {
             setJsonError(e.message);
         }
-    };
+    }, [items, updateCurrentSchema]);
 
-    // When switching to JSON mode, sync the text
+    // When switching to JSON mode, sync the text (strip IDs for clean display)
     useEffect(() => {
-        if (viewMode === 'json') {
-            setJsonText(JSON.stringify(items, null, 2));
+        if (viewMode === 'json' && !isJsonFocusedRef.current) {
+            setJsonText(JSON.stringify(stripFormIds(items), null, 2));
             setJsonError(null);
         }
-    }, [viewMode]);
+    }, [viewMode, items]);
+
+    const handleJsonFocus = useCallback(() => {
+        isJsonFocusedRef.current = true;
+    }, []);
+
+    const handleJsonBlur = useCallback(() => {
+        isJsonFocusedRef.current = false;
+        // Re-sync clean display from current items on blur
+        setJsonText(JSON.stringify(stripFormIds(items), null, 2));
+    }, [items]);
+
+    // Copy JSON to clipboard
+    const handleCopyJson = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(jsonText);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = jsonText;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    }, [jsonText]);
 
     useEffect(() => {
         setItems(currentSchema);
@@ -900,7 +978,13 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
     }
 
     return (
-        <div className="flex h-full w-full bg-slate-100 overflow-hidden">
+        <div className="flex h-full w-full overflow-hidden">
+            {/* Resizable palette panel */}
+            <ResizableLeftPanel defaultWidth={200} minWidth={140} maxWidth={360} collapsedWidth={56}>
+                {(isCollapsed) => <SchemaPalette isCollapsed={isCollapsed} />}
+            </ResizableLeftPanel>
+
+        <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
             {/* Canvas Area - Full Width (palette moved to sidebar) */}
             <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Top Toolbar: Form Name + View Toggle + Preview */}
@@ -977,7 +1061,32 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                 {viewMode === 'json' ? (
                     /* JSON Editor */
                     <div className="flex-1 px-6 pb-6 overflow-hidden flex flex-col">
-                        <div className="flex-1 flex rounded-lg overflow-hidden border-2 border-slate-700 bg-[#1e1e2e]"
+                        {/* Editor Header — red theme */}
+                        <div className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg border-2 border-b-0 border-primary/30 bg-primary/5">
+                            <Code2 size={14} className="text-primary" />
+                            <span className="text-xs font-medium text-slate-700">Form JSON</span>
+                            <div className="flex-1" />
+                            {/* Copy button */}
+                            <button
+                                onClick={handleCopyJson}
+                                className={cn(
+                                    'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all',
+                                    copied
+                                        ? 'bg-green-100 text-green-600'
+                                        : 'text-slate-500 hover:text-primary hover:bg-primary/10'
+                                )}
+                                title="Copy JSON"
+                            >
+                                {copied ? <Check size={12} /> : <Copy size={12} />}
+                                {copied ? 'Copied' : 'Copy'}
+                            </button>
+                            {jsonError ? (
+                                <Badge variant="destructive" className="text-[10px] h-5">Error</Badge>
+                            ) : (
+                                <Badge className="text-[10px] h-5 bg-green-100 text-green-600 border-green-200">Valid</Badge>
+                            )}
+                        </div>
+                        <div className="flex-1 flex rounded-b-lg overflow-hidden border-2 border-primary/30 bg-[#1e1e2e]"
                             style={{ minHeight: 0 }}>
                             {/* Line Number Gutter */}
                             <div
@@ -999,6 +1108,8 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                 ref={jsonTextareaRef}
                                 value={jsonText}
                                 onChange={(e) => handleJsonChange(e.target.value)}
+                                onFocus={handleJsonFocus}
+                                onBlur={handleJsonBlur}
                                 className={cn(
                                     'flex-1 px-4 py-3 font-mono text-xs leading-6 bg-transparent text-[#a6e3a1] resize-none focus:outline-none',
                                     'placeholder:text-slate-600 caret-[#f5c2e7]'
@@ -1011,11 +1122,6 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                             <div className="mt-2 flex items-center gap-2 text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg border border-red-200">
                                 <AlertTriangle size={14} />
                                 {jsonError}
-                            </div>
-                        )}
-                        {!jsonError && jsonText && (
-                            <div className="mt-2 flex items-center gap-2 text-green-600 text-xs bg-green-50 px-3 py-2 rounded-lg border border-green-200">
-                                ✓ Valid JSON · {items.length} item{items.length !== 1 ? 's' : ''}
                             </div>
                         )}
                     </div>
@@ -1322,6 +1428,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                     </div>
                 </div>
             )}
+        </div>
         </div>
     );
 }

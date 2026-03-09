@@ -96,13 +96,27 @@ export const AdminService = {
     /**
      * Create a Step Dependency (predecessor relationship)
      */
-    async createStepDependency(stepId: string, dependsOnId: string, action?: string): Promise<any> {
+    async createStepDependency(stepId: string, dependsOnId: string, action?: string, statusConfigContent?: string): Promise<any> {
         const payload: Record<string, string> = { dependsOn_ID: dependsOnId };
         if (action) {
             payload.action = action;
         }
+        if (statusConfigContent) {
+            payload.statusConfigContent = statusConfigContent;
+        }
         const response = await api.post(
             `${API_BASE}/StepDefinitions(ID='${stepId}',IsActiveEntity=false)/predecessors`,
+            payload
+        );
+        return response.data;
+    },
+
+    /**
+     * Update a Step Dependency (e.g. change statusConfigContent)
+     */
+    async updateStepDependency(dependencyId: string, payload: Record<string, string | undefined>): Promise<any> {
+        const response = await api.patch(
+            `${API_BASE}/StepDependencies(ID='${dependencyId}',IsActiveEntity=false)`,
             payload
         );
         return response.data;

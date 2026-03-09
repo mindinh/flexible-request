@@ -16,6 +16,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
 import { Wand2, Play, Pause, X, ChevronRight, RotateCcw, Send, FileEdit } from 'lucide-react';
+import { ResizableLeftPanel } from '../../components/studio';
+import { WorkflowPalette } from './WorkflowPalette';
 import dagre from 'dagre';
 import { useStudioStore } from './useStudioStore';
 import { Button } from '../../components/ui/Button';
@@ -97,6 +99,8 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         selectSimulationBranch,
         deleteStep
     } = useStudioStore();
+    const setActiveEdgeId = useStudioStore(s => s.setActiveEdgeId);
+    const activeEdgeId = useStudioStore(s => s.activeEdgeId);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const { screenToFlowPosition } = useReactFlow();
 
@@ -168,7 +172,16 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     // Handle pane click → deselect
     const onPaneClick = useCallback(() => {
         onNodeSelect?.(null);
-    }, [onNodeSelect]);
+        setActiveEdgeId(null);
+    }, [onNodeSelect, setActiveEdgeId]);
+
+    // Handle edge click → select for properties panel
+    const onEdgeClick = useCallback(
+        (_: React.MouseEvent, edge: Edge) => {
+            setActiveEdgeId(edge.id);
+        },
+        [setActiveEdgeId]
+    );
 
     // Handle edge deletion
     const onEdgesDelete = useCallback(
@@ -261,12 +274,20 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     }, [nodes, edges, setNodes, setEdges, updateWorkflow]);
 
     return (
-        <motion.div
-            ref={reactFlowWrapper}
+        <div className="flex h-full w-full" style={{ height: 'calc(100vh - 250px)' }}>
+            {/* Resizable palette panel */}
+            <ResizableLeftPanel defaultWidth={200} minWidth={140} maxWidth={360} collapsedWidth={56}>
+                {(isCollapsed) => <WorkflowPalette isCollapsed={isCollapsed} />}
+            </ResizableLeftPanel>
+
+            {/* Canvas area */}
+            <motion.div
+                ref={reactFlowWrapper}
+                className="flex-1 min-w-0"
             style={{
-                height: 'calc(100vh - 250px)',
+                height: '100%',
                 backgroundColor: 'white',
-                borderRadius: '14px',
+                borderRadius: '0 14px 14px 0',
                 border: '1px solid #e2e8f0',
                 overflow: 'hidden',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
@@ -280,17 +301,40 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                     className: isSimulationMode && simulationHistory.includes(n.id) ? 'bg-emerald-50 border-emerald-500' : '',
                     selected: n.selected || (isSimulationMode && n.id === simulationActiveNodeId),
                 }))}
-                edges={edges.map(e => ({
-                    ...e,
-                    animated: isSimulationMode ? simulationHistory.includes(e.source) && simulationHistory.includes(e.target) : e.animated,
-                    style: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
-                        ? { stroke: '#10b981', strokeWidth: 3 }
-                        : e.style
-                }))}
+                edges={edges.map(e => {
+                    // Derive label from statusConfig if available
+                    const statusName = (e as any).data?.statusConfig?.statusName;
+                    const statusColor = (e as any).data?.statusConfig?.statusColor;
+                    const baseLabel = statusName || (e as any).label || undefined;
+                    
+                    return {
+                        ...e,
+                        label: baseLabel,
+                        animated: isSimulationMode ? simulationHistory.includes(e.source) && simulationHistory.includes(e.target) : e.animated,
+                        style: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
+                            ? { stroke: '#10b981', strokeWidth: 3 }
+                            : statusColor
+                                ? { stroke: statusColor, strokeWidth: 2 }
+                                : e.style,
+                        labelStyle: statusName ? {
+                            fontSize: 10,
+                            fontWeight: 700,
+                            fill: statusColor || 'var(--brand-red)',
+                        } : undefined,
+                        labelBgStyle: statusName ? {
+                            fill: '#ffffff',
+                            stroke: statusColor || '#e2e8f0',
+                            strokeWidth: 1,
+                        } : undefined,
+                        labelBgPadding: statusName ? [4, 6] as [number, number] : undefined,
+                        labelBgBorderRadius: statusName ? 6 : undefined,
+                    };
+                })}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
+                onEdgeClick={onEdgeClick}
                 onPaneClick={onPaneClick}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
@@ -602,6 +646,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                 <Background color="#e2e8f0" gap={24} size={1} />
             </ReactFlow >
         </motion.div >
+        </div>
     );
 }
 

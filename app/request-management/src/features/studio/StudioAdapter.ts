@@ -192,12 +192,14 @@ export const StudioAdapter = {
                 step.predecessors.forEach(pred => {
                     if (pred.dependsOn_ID) {
                         const action = (pred as any).action as string | undefined;
+                        const statusConfig = parseJson<any>(pred.statusConfigContent, undefined);
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
                             type: 'smoothstep',
                             ...(action ? { sourceHandle: action } : {}),
+                            ...(statusConfig ? { data: { statusConfig } } : {}),
                         });
                     }
                 });

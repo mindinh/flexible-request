@@ -40,6 +40,7 @@ interface StudioState {
     isDirty: boolean;
     error: string | null;
     activeStepId: string | null;
+    activeEdgeId: string | null;
     selectedSchemaFieldId: string | null;
     selectedFooterActionId: string | null;
     selectedRuleId: string | null;
@@ -91,6 +92,7 @@ interface StudioState {
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
     updateStatusFlow: (model: StatusFlowModel) => void;
     setActiveStepId: (id: string | null) => void;
+    setActiveEdgeId: (id: string | null) => void;
     setSelectedSchemaFieldId: (id: string | null) => void;
     setSelectedFooterActionId: (id: string | null) => void;
     setSelectedRuleId: (id: string | null) => void;
@@ -138,6 +140,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     isDirty: false,
     error: null,
     activeStepId: null,
+    activeEdgeId: null,
     selectedSchemaFieldId: null,
     selectedFooterActionId: null,
     selectedRuleId: null,
@@ -165,7 +168,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
     // Auto-close editors when switching to a base tab
     setActiveTab: (tab) => {
-        const BASE_TABS = ['data-schema', 'workflow', 'statuses', 'status-flow'];
+        const BASE_TABS = ['data-schema', 'workflow', 'value-help', 'statuses', 'status-flow'];
         if (BASE_TABS.includes(tab)) {
             set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false });
         } else {
@@ -174,8 +177,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     },
     setDirty: (dirty) => set({ isDirty: dirty }),
     setActiveStepId: (id) => {
-        // Clear selected rule when changing steps (rules are step-specific)
-        set({ activeStepId: id, selectedSchemaFieldId: null, selectedRuleId: null });
+        // Clear selected rule and edge when changing steps
+        set({ activeStepId: id, activeEdgeId: null, selectedSchemaFieldId: null, selectedRuleId: null });
+    },
+    setActiveEdgeId: (id) => {
+        // Clear active step when selecting an edge
+        set({ activeEdgeId: id, activeStepId: id ? null : get().activeStepId });
     },
     setSelectedSchemaFieldId: (id) => set({ selectedSchemaFieldId: id, selectedFooterActionId: null }),
     setSelectedFooterActionId: (id) => set({ selectedFooterActionId: id, selectedSchemaFieldId: null }),
@@ -552,7 +559,28 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             for (const edge of edgesToCreate) {
                 // edge.source is the predecessor (dependsOn)
                 // edge.target is the step that depends on source
-                await AdminService.createStepDependency(edge.target, edge.source, edge.sourceHandle as string | undefined);
+                const statusConfigContent = edge.data?.statusConfig ? JSON.stringify(edge.data.statusConfig) : undefined;
+                await AdminService.createStepDependency(edge.target, edge.source, edge.sourceHandle as string | undefined, statusConfigContent);
+            }
+
+            // Find edges to UPDATE (in both original and current, but statusConfig changed)
+            const originalEdgeMap = new Map(originalEdges.map(e => [edgeKey(e.source, e.target, e.sourceHandle as string | undefined), e]));
+            const edgesToUpdate = workflow.edges.filter(e => {
+                const key = edgeKey(e.source, e.target, e.sourceHandle as string | undefined);
+                const orig = originalEdgeMap.get(key);
+                if (!orig) return false; // new edge, handled by CREATE
+                const currentConfig = e.data?.statusConfig ? JSON.stringify(e.data.statusConfig) : '';
+                const origConfig = orig.data?.statusConfig ? JSON.stringify(orig.data.statusConfig) : '';
+                return currentConfig !== origConfig;
+            });
+            console.log("Updating dependencies (statusConfig)...", edgesToUpdate.length);
+            for (const edge of edgesToUpdate) {
+                const key = edgeKey(edge.source, edge.target, edge.sourceHandle as string | undefined);
+                const orig = originalEdgeMap.get(key);
+                if (orig?.id) {
+                    const statusConfigContent = edge.data?.statusConfig ? JSON.stringify(edge.data.statusConfig) : '';
+                    await AdminService.updateStepDependency(orig.id, { statusConfigContent });
+                }
             }
 
             // 3. Save Form Schemas at Request Type level
