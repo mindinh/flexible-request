@@ -527,21 +527,26 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
 
             // 2.5. Manage Step Dependencies (edges/predecessors)
-            // Compare current edges with original to determine adds/deletes
+            // Compare current edges with original to determine adds/deletes/updates
             const { originalEdges } = get();
 
-            // Helper to create edge key for comparison - include offsets to detect wiggle changes
+            // Helper to create edge key for comparison - include offsets and statusConfig to detect changes
             const edgeKey = (e: any) => {
                 const offsets = e.data?.offsets || [0, 0, 0];
-                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${JSON.stringify(offsets)}`;
+                const statusJson = e.data?.statusConfig ? JSON.stringify(e.data.statusConfig) : '';
+                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${JSON.stringify(offsets)}|${statusJson}`;
             };
 
-            // Build sets for comparison
-            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e)));
-            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e)));
+            // Identity key (without offsets/statusConfig) to match edges for updates
+            const edgeIdentity = (e: any) => `${e.source}|${e.target}|${e.sourceHandle || ''}`;
 
-            // Find edges to DELETE (in original but not in current)
-            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e)));
+
+            // Build identity maps for update detection
+            const originalByIdentity = new Map(originalEdges.map(e => [edgeIdentity(e), e]));
+
+            // Find edges to DELETE (in original but not in current by identity)
+            const currentIdentities = new Set(workflow.edges.map(e => edgeIdentity(e)));
+            const edgesToDelete = originalEdges.filter(e => !currentIdentities.has(edgeIdentity(e)));
             console.log("Deleting dependencies...", edgesToDelete.length);
             for (const edge of edgesToDelete) {
                 if (edge.id) {
@@ -549,8 +554,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 }
             }
 
-            // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
+            // Find edges to CREATE (in current but identity not in original)
+            const edgesToCreate = workflow.edges.filter(e => !originalByIdentity.has(edgeIdentity(e)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // Metadata Encoding for persistence
@@ -560,7 +565,37 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     ? `${baseAction}|${JSON.stringify({ o: offsets })}`
                     : baseAction;
 
-                await AdminService.createStepDependency(edge.target, edge.source, encodedAction);
+                // Serialize statusConfig for backend
+                const statusConfig = (edge.data as any)?.statusConfig;
+                const statusConfigContent = statusConfig ? JSON.stringify(statusConfig) : undefined;
+
+                await AdminService.createStepDependency(edge.target, edge.source, encodedAction, statusConfigContent);
+            }
+
+            // Find edges to UPDATE (same identity but different key = offsets or statusConfig changed)
+            const edgesToUpdate = workflow.edges.filter(e => {
+                const orig = originalByIdentity.get(edgeIdentity(e));
+                if (!orig) return false; // new edge, handled above
+                return edgeKey(e) !== edgeKey(orig);
+            });
+            console.log("Updating dependencies...", edgesToUpdate.length);
+            for (const edge of edgesToUpdate) {
+                const orig = originalByIdentity.get(edgeIdentity(edge));
+                if (!orig?.id) continue;
+
+                const offsets = (edge.data as any)?.offsets as number[] | undefined;
+                const baseAction = (edge.sourceHandle as string) || '';
+                const encodedAction = (offsets && offsets.some(v => v !== 0))
+                    ? `${baseAction}|${JSON.stringify({ o: offsets })}`
+                    : baseAction;
+
+                const statusConfig = (edge.data as any)?.statusConfig;
+                const statusConfigContent = statusConfig ? JSON.stringify(statusConfig) : undefined;
+
+                await AdminService.updateStepDependency(orig.id, {
+                    action: encodedAction || undefined,
+                    statusConfigContent,
+                });
             }
 
             // 3. Save Form Schemas at Request Type level

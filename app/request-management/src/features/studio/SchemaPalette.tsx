@@ -1,9 +1,21 @@
 import { cn } from '@/lib/utils';
 import {
-    LayoutGrid, Table, Rows3, ScrollText, Database
+    LayoutGrid, Table, Rows3, ScrollText, Database,
+    Type, Hash, ToggleLeft, Calendar, Box
 } from 'lucide-react';
 import type { SimpleDataType } from './types';
 import { useStudioStore } from './useStudioStore';
+
+function getSchemaFieldIcon(schemaType: SimpleDataType) {
+    switch (schemaType) {
+        case 'String': return Type;
+        case 'Number': return Hash;
+        case 'Boolean': return ToggleLeft;
+        case 'DateTime': return Calendar;
+        case 'Object': return Box;
+        default: return Database;
+    }
+}
 
 // Form element definitions grouped by category (matching reference design)
 
@@ -138,7 +150,7 @@ export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
                                     key={field.key}
                                     type={mappedType}
                                     label={field.label}
-                                    icon={Database}
+                                    icon={getSchemaFieldIcon(field.type)}
                                     isCollapsed={isCollapsed}
                                     dataFieldKey={field.key}
                                     onClick={() => handleAdd(mappedType, field.label, field.key)}

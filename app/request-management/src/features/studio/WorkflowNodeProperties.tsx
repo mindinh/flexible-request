@@ -151,9 +151,10 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
                     return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
                 case 'apiCall':
                 case 'api_call':
-                    return { icon: Globe, color: '#0ea5e9', label: 'Background Step' };
+                case 'background_task':
+                    return { icon: Globe, color: '#0ea5e9', label: 'Background Task' };
                 case 'formula':
-                    return { icon: Calculator, color: 'var(--brand-red)', label: 'Formula' };
+                    return { icon: Calculator, color: 'var(--brand-red)', label: 'Background Task' };
                 default:
                     return { icon: FileEdit, color: 'var(--brand-red)', label: 'Action Step' };
             }
@@ -2103,8 +2104,13 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     const triggerType = (node.data?.triggerType as string) || 'FORM_SUB';
 
     const isUserTask = subType === 'user_task' || subType === 'userTask' || subType === 'form';
-    const isApiCall = subType === 'api_call' || subType === 'apiCall';
-    const isFormula = subType === 'formula';
+    const isBackgroundTask = subType === 'background_task' || subType === 'api_call' || subType === 'apiCall' || subType === 'formula';
+    // For background_task, determine the active mode from node data (default: api_call)
+    const backgroundTaskMode = isBackgroundTask
+        ? ((node.data.backgroundTaskMode as string) || (subType === 'formula' ? 'formula' : 'api_call'))
+        : null;
+    const isApiCall = backgroundTaskMode === 'api_call';
+    const isFormula = backgroundTaskMode === 'formula';
     const isApproval = subType === 'approval';
 
     // --- Data Resolvers for IO Mapping ---
@@ -2663,112 +2669,139 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                         </Card>
                     )}
 
-                    {/* ─── API CALL SUB-TYPE ───────────────────── */}
-                    {isApiCall && (
-                        <Card className="p-4 space-y-4">
-                            <div className="flex items-center justify-between">
-                                <Label variant="section">API Configuration</Label>
-                                {(node.data.apiMethod && node.data.apiUrl) && (
-                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
-                                        <span className="text-[10px] font-bold text-emerald-600">{(node.data.apiMethod as string)}</span>
-                                        <div className="w-1 h-1 rounded-full bg-emerald-300" />
-                                        <span className="text-[10px] font-medium text-emerald-600/70 truncate max-w-[120px]">
-                                            {(node.data.apiUrl as string).replace(/^https?:\/\//, '')}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
+                    {/* ─── BACKGROUND TASK (API Call / Formula) ───────── */}
+                    {isBackgroundTask && (
+                        <>
+                            {/* Task Mode Selector */}
+                            <Card className="p-4 space-y-3">
+                                <Label variant="section">Background Task Type</Label>
+                                <p className="text-[11px] text-slate-400 -mt-1">
+                                    Choose the type of automated processing for this step.
+                                </p>
+                                <Select
+                                    value={backgroundTaskMode || 'api_call'}
+                                    onValueChange={(val) => updateNodeData(node.id, {
+                                        backgroundTaskMode: val,
+                                        actionSubType: 'background_task',
+                                    })}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select task type..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="api_call">🌐 API Call</SelectItem>
+                                        <SelectItem value="formula">🧮 Formula</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </Card>
 
-                            <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
-                                Configure the external API endpoint and request parameters for this automated step.
-                            </p>
-
-                            <ApiConfigurationDialog
-                                open={isApiSettingsOpen}
-                                onOpenChange={setIsApiSettingsOpen}
-                                method={(node.data.apiMethod as string) || 'GET'}
-                                url={(node.data.apiUrl as string) || ''}
-                                headers={(node.data.apiHeaders as any[]) || []}
-                                body={(node.data.apiBody as string) || ''}
-                                authType={(node.data.apiAuthType as string) || 'none'}
-                                authToken={(node.data.apiAuthToken as string) || ''}
-                                authUser={(node.data.apiAuthUser as string) || ''}
-                                authPass={(node.data.apiAuthPass as string) || ''}
-                                responseMapping={(node.data.apiResponseMapping as any[]) || []}
-                                onSave={(data) => {
-                                    updateNodeData(node.id, {
-                                        apiMethod: data.method,
-                                        apiUrl: data.url,
-                                        apiHeaders: data.headers,
-                                        apiBody: data.body,
-                                        apiAuthType: data.authType,
-                                        apiAuthToken: data.authToken,
-                                        apiAuthUser: data.authUser,
-                                        apiAuthPass: data.authPass,
-                                        apiResponseMapping: data.responseMapping,
-                                    });
-                                }}
-                            />
-
-                            <Button
-                                variant="outline"
-                                onClick={() => setIsApiSettingsOpen(true)}
-                                className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
-                            >
-                                <Globe size={16} />
-                                Configure Background Step
-                            </Button>
-
-                            {!(node.data.apiMethod && node.data.apiUrl) && (
-                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
-                                    <Info size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                                    <p className="text-[10px] text-amber-700 font-medium">
-                                        Method and URL are required for the workflow to execute this step correctly.
-                                    </p>
-                                </div>
-                            )}
-                        </Card>
-                    )}
-
-                    {/* ─── FORMULA SUB-TYPE ───────────────────── */}
-                    {isFormula && (
-                        <Card className="p-4 space-y-4">
-                            <Label variant="section">Formula Configuration</Label>
-                            <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
-                                Calculate values dynamically based on outputs of previous steps.
-                            </p>
-                            <FormulaEditor
-                                formulas={(node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: crypto.randomUUID(), resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : [])}
-                                onSave={(formulas) => updateNodeData(node.id, { formulas })}
-                                availableSources={availableSources}
-                            />
-
-                        </Card>
-                    )}
-
-                    {/* ─── FORMULA OUTPUTS CARD ───────────────────── */}
-                    {isFormula && (
-                        (() => {
-                            const currentFormulas = (node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: 'legacy', resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : []);
-                            if (currentFormulas.length === 0) return null;
-                            return (
-                                <Card className="p-4 space-y-3 mt-4">
-                                    <div className="flex flex-col">
-                                        <Label variant="section">Outputs</Label>
-                                        <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Formula Results</p>
-                                        {currentFormulas.map(f => (
-                                            <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
-                                                <Database size={12} className="text-slate-400" />
-                                                <span className="text-xs font-medium text-slate-600">{f.resultName || 'Unnamed Variable'}</span>
+                            {/* API Call Configuration */}
+                            {isApiCall && (
+                                <Card className="p-4 space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label variant="section">API Configuration</Label>
+                                        {(node.data.apiMethod && node.data.apiUrl) && (
+                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
+                                                <span className="text-[10px] font-bold text-emerald-600">{(node.data.apiMethod as string)}</span>
+                                                <div className="w-1 h-1 rounded-full bg-emerald-300" />
+                                                <span className="text-[10px] font-medium text-emerald-600/70 truncate max-w-[120px]">
+                                                    {(node.data.apiUrl as string).replace(/^https?:\/\//, '')}
+                                                </span>
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
+
+                                    <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                        Configure the external API endpoint and request parameters for this automated step.
+                                    </p>
+
+                                    <ApiConfigurationDialog
+                                        open={isApiSettingsOpen}
+                                        onOpenChange={setIsApiSettingsOpen}
+                                        method={(node.data.apiMethod as string) || 'GET'}
+                                        url={(node.data.apiUrl as string) || ''}
+                                        headers={(node.data.apiHeaders as any[]) || []}
+                                        body={(node.data.apiBody as string) || ''}
+                                        authType={(node.data.apiAuthType as string) || 'none'}
+                                        authToken={(node.data.apiAuthToken as string) || ''}
+                                        authUser={(node.data.apiAuthUser as string) || ''}
+                                        authPass={(node.data.apiAuthPass as string) || ''}
+                                        responseMapping={(node.data.apiResponseMapping as any[]) || []}
+                                        onSave={(data) => {
+                                            updateNodeData(node.id, {
+                                                apiMethod: data.method,
+                                                apiUrl: data.url,
+                                                apiHeaders: data.headers,
+                                                apiBody: data.body,
+                                                apiAuthType: data.authType,
+                                                apiAuthToken: data.authToken,
+                                                apiAuthUser: data.authUser,
+                                                apiAuthPass: data.authPass,
+                                                apiResponseMapping: data.responseMapping,
+                                            });
+                                        }}
+                                    />
+
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsApiSettingsOpen(true)}
+                                        className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
+                                    >
+                                        <Globe size={16} />
+                                        Configure API Call
+                                    </Button>
+
+                                    {!(node.data.apiMethod && node.data.apiUrl) && (
+                                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
+                                            <Info size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                            <p className="text-[10px] text-amber-700 font-medium">
+                                                Method and URL are required for the workflow to execute this step correctly.
+                                            </p>
+                                        </div>
+                                    )}
                                 </Card>
-                            );
-                        })()
+                            )}
+
+                            {/* Formula Configuration */}
+                            {isFormula && (
+                                <Card className="p-4 space-y-4">
+                                    <Label variant="section">Formula Configuration</Label>
+                                    <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                        Calculate values dynamically based on outputs of previous steps.
+                                    </p>
+                                    <FormulaEditor
+                                        formulas={(node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: crypto.randomUUID(), resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : [])}
+                                        onSave={(formulas) => updateNodeData(node.id, { formulas })}
+                                        availableSources={availableSources}
+                                    />
+                                </Card>
+                            )}
+
+                            {/* Formula Outputs Card */}
+                            {isFormula && (
+                                (() => {
+                                    const currentFormulas = (node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: 'legacy', resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : []);
+                                    if (currentFormulas.length === 0) return null;
+                                    return (
+                                        <Card className="p-4 space-y-3">
+                                            <div className="flex flex-col">
+                                                <Label variant="section">Outputs</Label>
+                                                <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Formula Results</p>
+                                                {currentFormulas.map(f => (
+                                                    <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
+                                                        <Database size={12} className="text-slate-400" />
+                                                        <span className="text-xs font-medium text-slate-600">{f.resultName || 'Unnamed Variable'}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </Card>
+                                    );
+                                })()
+                            )}
+                        </>
                     )}
 
                     {/* ─── APPROVAL / USER TASK SUB-TYPE ──────────────────── */}
