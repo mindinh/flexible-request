@@ -10,11 +10,13 @@ import type {
     UiStatusNode,
     UiStatusEdge,
     UiNodeInput,
-    UiNodeOutput
+    UiNodeOutput,
+    StatusFlowModel
 } from './types';
 import { StudioAdapter } from './StudioAdapter';
 import { AdminService } from '../../services/AdminService';
 import { syncOutputsFromForm } from './workflowIOHelpers';
+import { generateStatusFlow } from './statusFlowGenerator';
 
 interface StudioState {
     // Data
@@ -29,6 +31,7 @@ interface StudioState {
     schema: UiCanvasItem[]; // Current active form's items (derived)
     rules: UiRule[];
     statusNetwork: { nodes: UiStatusNode[], edges: UiStatusEdge[] };
+    statusFlow: StatusFlowModel;
 
     // UI State
     activeTab: string;
@@ -84,6 +87,7 @@ interface StudioState {
     updateFormActions: (formId: string, actions: import('./types').UiFormAction[]) => void;
     updateRules: (rules: UiRule[]) => void;
     updateStatusNetwork: (nodes: UiStatusNode[], edges: UiStatusEdge[]) => void;
+    updateStatusFlow: (model: StatusFlowModel) => void;
     setActiveStepId: (id: string | null) => void;
     setSelectedSchemaFieldId: (id: string | null) => void;
     setSelectedFooterActionId: (id: string | null) => void;
@@ -121,6 +125,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     schema: [], // Active form's items
     rules: [],
     statusNetwork: { nodes: [], edges: [] },
+    statusFlow: { title: '', lanes: [], phases: [], transitions: [] },
 
     activeTab: 'workflow',
     isLoading: false,
@@ -153,7 +158,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
     // Auto-close editors when switching to a base tab
     setActiveTab: (tab) => {
-        const BASE_TABS = ['data-schema', 'workflow', 'statuses'];
+        const BASE_TABS = ['data-schema', 'workflow', 'statuses', 'status-flow'];
         if (BASE_TABS.includes(tab)) {
             set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false });
         } else {
@@ -292,6 +297,9 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Status Network
             const statusNetwork = StudioAdapter.toUiStatusNetwork(fullDraft.statusNetwork);
 
+            // Status Flow – Auto-generate from workflow (read-only derived)
+            const statusFlow = generateStatusFlow(workflow.nodes, workflow.edges, forms);
+
             // Data Schema
             let dataSchema: UiDataField[] = [];
             try {
@@ -314,6 +322,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 schema,
                 activeStepId,
                 statusNetwork,
+                statusFlow,
                 dataSchema,
                 isDirty: false,
                 isLoading: false
@@ -384,10 +393,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             await AdminService.updateRequestType(requestTypeId, metadataPayload);
 
             // 1.1 Save Data Schema at request type level
-            const { dataSchema } = get();
+            const { dataSchema, statusFlow } = get();
             const dataSchemaContent = dataSchema.length > 0 ? JSON.stringify(dataSchema) : undefined;
             console.log("Saving data schema...", dataSchemaContent?.substring(0, 50));
             await AdminService.updateRequestType(requestTypeId, { dataSchemaContent });
+
+            // 1.2 Save Status Flow at request type level
+            const statusFlowContent = (statusFlow.phases.length > 0)
+                ? JSON.stringify(statusFlow)
+                : undefined;
+            console.log("Saving status flow...", statusFlowContent?.substring(0, 50));
+            await AdminService.updateRequestType(requestTypeId, { statusFlowContent });
 
             // 2. Create/Update Steps - diff against original nodes
             const { originalNodes } = get();
@@ -677,9 +693,13 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         };
     }),
 
-    updateWorkflow: (nodes, edges) => set({
-        workflow: { nodes, edges },
-        isDirty: true
+    updateWorkflow: (nodes, edges) => set(state => {
+        const statusFlow = generateStatusFlow(nodes, edges, state.forms);
+        return {
+            workflow: { nodes, edges },
+            statusFlow,
+            isDirty: true,
+        };
     }),
 
     updateSchema: (items) => set(state => {
@@ -793,6 +813,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     updateStatusNetwork: (nodes, edges) => set({
         statusNetwork: { nodes, edges },
         isDirty: true
+    }),
+
+    updateStatusFlow: (model) => set({
+        statusFlow: model,
+        // Not marked dirty – Status Flow is auto-derived, always regenerated on save
     }),
 
     updateNodeData: (nodeId, data) => set(state => ({

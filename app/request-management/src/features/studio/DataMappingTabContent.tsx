@@ -17,6 +17,11 @@ function flattenDataFields(
     for (const field of fields) {
         const fullKey = prefix ? `${prefix}.${field.key}` : field.key;
         if (field.type === 'Object' && field.children?.length) {
+            if (field.isList) {
+                // Expose the list itself as an array-type target for table binding
+                result.push({ key: fullKey, label: field.label, type: 'array' });
+            }
+            // Also flatten children for column-level mapping
             result.push(...flattenDataFields(field.children, fullKey));
         } else {
             result.push({ key: fullKey, label: field.label, type: field.type });

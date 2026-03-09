@@ -446,6 +446,98 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                     </div>
                 )}
 
+                {/* ── Table Data Binding (only for tables) ── */}
+                {isTable && (() => {
+                    const dataSchema = useStudioStore.getState().dataSchema;
+                    const listFields = dataSchema.filter(f => f.type === 'Object' && f.isList);
+                    const tableItem = selectedItem as UiTableField;
+
+                    /** Map Data Schema type → form control type */
+                    const dataTypeToControl: Record<string, string> = {
+                        String: 'text',
+                        Number: 'number',
+                        Boolean: 'checkbox',
+                        DateTime: 'date',
+                        Object: 'text',
+                    };
+
+                    const handleBindChange = (val: string) => {
+                        if (val === '__none__') {
+                            // Unbind: clear bindTo and columns
+                            onUpdate(tableItem.id, { bindTo: undefined, columns: [] } as any);
+                            return;
+                        }
+
+                        // Find the selected Data Schema list object
+                        const listObj = listFields.find(f => f.key === val);
+                        const children = listObj?.children || [];
+
+                        // Auto-derive columns from the object's children
+                        const derivedColumns = children.map(child => ({
+                            id: `col-${child.key}-${Date.now()}`,
+                            type: dataTypeToControl[child.type] || 'text',
+                            label: child.label,
+                            key: child.key,
+                            bindTo: child.key,
+                            required: child.required || false,
+                        }));
+
+                        onUpdate(tableItem.id, {
+                            bindTo: val,
+                            columns: derivedColumns,
+                        } as any);
+                    };
+
+                    // Resolve the bound object for showing column info
+                    const boundObj = listFields.find(f => f.key === tableItem.bindTo);
+
+                    return (
+                        <div className="space-y-1.5">
+                            <SectionLabel>Data Binding</SectionLabel>
+                            {listFields.length === 0 ? (
+                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                                    <p className="text-xs text-amber-600">
+                                        No list-type Object fields in the Data Schema.
+                                        Create an Object field with <span className="font-medium">Is List</span> enabled in the Data Schema tab.
+                                    </p>
+                                </div>
+                            ) : (
+                                <Select
+                                    value={tableItem.bindTo || '__none__'}
+                                    onValueChange={handleBindChange}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a list field..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none__">
+                                            <span className="text-slate-400 italic">None (unbound)</span>
+                                        </SelectItem>
+                                        {listFields.map((f) => (
+                                            <SelectItem key={f.id} value={f.key}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{f.label}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-600 font-medium">
+                                                        {f.key}[]
+                                                    </span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {tableItem.bindTo && (
+                                <p className="text-[11px] text-slate-500">
+                                    Table rows will map to items in <code className="font-mono text-violet-600">{tableItem.bindTo}[]</code>
+                                    {boundObj?.children?.length && (
+                                        <> — <strong>{boundObj.children.length}</strong> columns synced</>
+                                    )}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })()}
+
 
 
                 {/* ── FIELD LABEL ── */}

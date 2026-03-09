@@ -146,8 +146,20 @@ export function syncOutputsFromForm(items: UiCanvasItem[]): UiNodeOutput[] {
         if (item.type === 'section' && 'fields' in item) {
             result.push(...syncOutputsFromForm(item.fields as unknown as UiCanvasItem[]));
         } else if (item.type === 'table' && 'columns' in item) {
-            const columns = (item as UiCanvasItem & { columns: UiCanvasItem[] }).columns;
-            result.push(...syncOutputsFromForm(columns));
+            const tableItem = item as UiCanvasItem & { columns: UiCanvasItem[]; bindTo?: string };
+            if (tableItem.bindTo) {
+                // Bound table → emit the table itself as an array output
+                result.push({
+                    sourcePath: tableItem.bindTo,
+                    alias: item.label || undefined,
+                    type: 'array',
+                    derivedFrom: 'formLayout',
+                    bindTo: tableItem.bindTo,
+                });
+            } else {
+                // Unbound table → flatten columns as before (backward compatible)
+                result.push(...syncOutputsFromForm(tableItem.columns));
+            }
         } else if (!LAYOUT_ONLY_TYPES.has(item.type)) {
             // Include ALL data-carrying fields as outputs (bound or unbound)
             const field = item as UiCanvasItem & { key?: string; dataType?: string; bindTo?: string };

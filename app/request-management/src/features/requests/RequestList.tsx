@@ -42,6 +42,7 @@ import { RequestStatus, RequestPriority } from '../../types';
 import type { Request, RequestType } from '../../types';
 import { REQUEST_STATUS_CONFIG, PRIORITY_CONFIG } from '../../config';
 import { useAuth } from '../../lib/auth-context';
+import { resolveBusinessStatus } from '../../lib/statusFlowResolver';
 
 // ─────────────────────────────────────────────────────────────
 // Stat Card
@@ -133,7 +134,25 @@ const STATUS_LABEL: Record<string, string> = {
     WITHDRAWN: 'Withdrawn',
 };
 
-function StatusChip({ status }: { status?: string }) {
+function StatusChip({ status, statusFlowContent, currentStepDefId, stepStatus }: {
+    status?: string;
+    statusFlowContent?: string | null;
+    currentStepDefId?: string | null;
+    stepStatus?: string | null;
+}) {
+    // Try to resolve business-friendly status from Status Flow
+    const resolved = resolveBusinessStatus(statusFlowContent, status || '', currentStepDefId, stepStatus);
+    if (resolved) {
+        return (
+            <span
+                className="px-2.5 py-1 rounded-md text-xs font-semibold border"
+                style={{ color: resolved.color, backgroundColor: resolved.bgColor, borderColor: resolved.borderColor }}
+            >
+                {resolved.label}
+            </span>
+        );
+    }
+    // Fallback to hardcoded
     const cls = STATUS_CHIP[status || ''] || STATUS_CHIP.DRAFT;
     const lbl = STATUS_LABEL[status || ''] || status || '-';
     return (
@@ -727,7 +746,10 @@ export const RequestList = () => {
                                                 ) : '-'}
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap">
-                                                <StatusChip status={row.status ?? undefined} />
+                                                <StatusChip
+                                                    status={row.status ?? undefined}
+                                                    statusFlowContent={(row as any).requestType?.statusFlowContent}
+                                                />
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <span className="text-slate-700 font-medium">{currentStep}</span>

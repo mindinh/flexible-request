@@ -107,6 +107,7 @@ export interface RequestTypeConfig {
     icon?: string;
     steps?: StepDefinition[];
     formSchemasContent?: string;
+    statusFlowContent?: string;
     IsActiveEntity?: boolean;
 }
 
