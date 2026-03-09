@@ -69,6 +69,7 @@ export interface AdminStepDependency {
     step_ID?: string;
     dependsOn_ID?: string;
     action?: string; // If set, only activates when predecessor completes with this action
+    statusConfigContent?: string; // JSON: EdgeStatusConfig for Status Flow visualization
 }
 
 export interface AdminStatusNetwork {

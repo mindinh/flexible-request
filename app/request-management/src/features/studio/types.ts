@@ -206,6 +206,14 @@ export interface UiWorkflowNode {
     [key: string]: unknown;
 }
 
+/** Status configuration stored on a workflow edge (transition) */
+export interface EdgeStatusConfig {
+    statusName: string;
+    statusColor: string;       // Hex color (e.g. '#22c55e')
+    statusType: 'OVERALL_REQUEST' | 'STEP_STATUS' | 'STEP_OWNER' | 'APPROVAL';
+    description?: string;
+}
+
 export interface UiWorkflowEdge {
     id: string;
     source: string;
@@ -213,6 +221,9 @@ export interface UiWorkflowEdge {
     type?: string;
     sourceHandle?: string;  // Maps to UiFormAction.id for conditional branching
     label?: string;         // Edge label (e.g. 'Approve')
+    data?: {
+        statusConfig?: EdgeStatusConfig;
+    };
     [key: string]: unknown;
 }
 

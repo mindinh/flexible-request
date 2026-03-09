@@ -3,6 +3,7 @@ export { StudioHeader } from './StudioHeader';
 export { TabNavigation } from './TabNavigation';
 export { LeftPanel } from './LeftPanel';
 export { RightPanel, FormField, StepDetailsPanel } from './RightPanel';
+export { ResizableLeftPanel } from './ResizableLeftPanel';
 export {
     StudioToastProvider,
     useStudioToast,
