@@ -1,478 +1,303 @@
-# Workflow → Status Flow Transformation Algorithm
+# Additional Rules for Status Flow Generation
 
-This section defines the algorithm that converts a **Workflow Definition Graph** into a **Status Flow visualization**.
+This document defines additional behavior for generating **Status Flow** from **Workflow Builder**.
 
-The goal is to produce a **lane-based lifecycle view** derived entirely from workflow structure.
+The goal is to ensure that:
+
+* Data Entry lanes always have consistent statuses.
+* Reverse transitions such as **Sent Back** are correctly visualized in Status Flow.
 
 ---
 
-# 1. Input Model
+# 1. Data Entry Lane Default Status Flow
 
-Workflow steps follow this structure:
+For any **Data Entry step** (usually owned by the Requestor / Creator), the Status Flow must always contain the following statuses in order:
 
 ```
-stepId
-stepName
-actionSubType
-formActions
-assignee
-predecessors
+Draft
+   ↓
+In Progress
+   ↓
+Completed
 ```
+
+These statuses represent the lifecycle of a **data entry step**.
+
+---
+
+## 1.1 Draft Status
+
+Initial status when the request is first created.
 
 Example:
 
 ```
-Start
- ↓
+Status: Draft
+Lane: Data Entry
+```
+
+Transition:
+
+```
+Action: Save as Draft
+```
+
+Flow:
+
+```
+Draft → Save as Draft → In Progress
+```
+
+---
+
+## 1.2 In Progress Status
+
+Represents the user currently filling or editing the form.
+
+Example:
+
+```
+Status: In Progress
+Lane: Data Entry
+```
+
+Transition to next step is triggered by:
+
+```
+Action: Submit
+```
+
+Important:
+
+The **Submit action must be taken from the Workflow definition**.
+
+Example mapping:
+
+```
+In Progress → Submit → Completed
+```
+
+---
+
+## 1.3 Completed Status
+
+Represents the step finishing successfully.
+
+Example:
+
+```
+Status: Completed
+Lane: Data Entry
+```
+
+This status should be **configured from the Workflow transition**.
+
+Example:
+
+Workflow transition:
+
+```
+Input Data → User Task
+Action: Submit
+Status: Completed
+```
+
+Status Flow representation:
+
+```
+Draft
+   ↓ Save as Draft
+In Progress
+   ↓ Submit
+Completed
+```
+
+---
+
+# 2. Reverse Transitions (Sent Back)
+
+Workflow may contain transitions where a node **returns to a previous step**.
+
+Example:
+
+```
+Approval Step → Data Entry Step
+Action: Sent Back
+```
+
+This must be visualized in **Status Flow**.
+
+---
+
+## 2.1 Reverse Edge Behavior
+
+When a workflow transition goes **back to a previous step**, the Status Flow must draw a **reverse connection**.
+
+Example:
+
+```
+Approval → Sent Back → Data Entry
+```
+
+The edge should clearly point **backwards**.
+
+---
+
+# 3. Mapping Reverse Transitions to Statuses
+
+Reverse transitions must connect to specific **entry statuses** depending on the target step type.
+
+---
+
+## 3.1 If Target Step is Data Entry
+
+Reverse transitions should connect to:
+
+```
+In Progress
+```
+
+Reason:
+
+When a request is sent back to Data Entry, the user must edit the form again.
+
+Example:
+
+Workflow:
+
+```
+Approval Step
+   ↓ Sent Back
 Input Data
- ↓
-Input Data 2
- ↓
-Please Approve
- ↓
-End
+```
+
+Status Flow:
+
+```
+Approval Pending
+   ↓ Sent Back
+Data Entry → In Progress
 ```
 
 ---
 
-# 2. Step Classification
+## 3.2 If Target Step is Approval
 
-Each workflow step must be classified before rendering.
-
-### Step Type Detection
+Reverse transitions should connect to:
 
 ```
-function detectStepType(step):
+Pending
 ```
 
-Rule priority:
+Reason:
 
-1️⃣ Start Step
-
-```
-step.type == start
-```
-
-Result:
-
-```
-REQUESTOR_STEP
-```
-
----
-
-2️⃣ Data Entry Step
-
-```
-step.actionSubType == user_task
-AND formActions contain Submit/Save/Continue
-```
-
-Result:
-
-```
-DATA_ENTRY_STEP
-```
-
----
-
-3️⃣ Approval Step
-
-```
-formActions contain:
-Approve
-Reject
-```
-
-Result:
-
-```
-APPROVAL_STEP
-```
-
----
-
-4️⃣ System Step (fallback)
-
-```
-SYSTEM_STEP
-```
-
----
-
-# 3. Workflow Ordering
-
-The workflow graph must be sorted to ensure correct status ordering.
-
-Algorithm:
-
-```
-topologicalSort(workflowGraph)
-```
-
-Result:
-
-```
-orderedSteps[]
-```
+When an approval step receives a returned request, the approval process restarts.
 
 Example:
 
-```
-1 Start
-2 Input Data
-3 Input Data 2
-4 Please Approve
-5 End
-```
-
----
-
-# 4. Lane Generation
-
-Each lane represents a **unique actor role in the workflow**.
-
-Algorithm:
+Workflow:
 
 ```
-for step in orderedSteps:
-    actor = detectActor(step)
-    if actor not in lanes:
-        createLane(actor)
+Manager Approval
+   ↓ Sent Back
+Finance Approval
 ```
 
-Actor detection:
+Status Flow:
 
 ```
-if stepType == REQUESTOR_STEP
-    actor = Requestor
-
-if stepType == DATA_ENTRY_STEP
-    actor = step.assignee
-
-if stepType == APPROVAL_STEP
-    actor = step.approverDisplayName
-```
-
-Example result:
-
-```
-Lane 1 Requestor
-Lane 2 Giang
-Lane 3 Nhan
-Lane 4 Bob Finance
+Manager Approved
+   ↓ Sent Back
+Finance Approval → Pending
 ```
 
 ---
 
-# 5. Data Entry Block Detection
+# 4. Visual Representation in Status Flow
 
-Sequential data entry steps must be grouped logically.
+Reverse transitions must remain clear and readable.
+
+Recommended visual rules:
+
+* Use **curved edges** for backward connections.
+* Use **clear arrow heads**.
+* Label edges with the action name.
+
+Example edge label:
+
+```
+Sent Back
+```
+
+---
+
+# 5. Generation Logic
+
+When generating Status Flow from Workflow transitions:
 
 Algorithm:
 
 ```
-dataEntryBlock = []
+For each workflow transition:
 
-for step in orderedSteps:
+IF action == "Sent Back":
 
-    if stepType == DATA_ENTRY_STEP
-        add step to dataEntryBlock
+    determine target step type
 
-    else
-        close current block
+    IF target step type == Data Entry:
+        connect edge to "In Progress" status
+
+    IF target step type == Approval:
+        connect edge to "Pending" status
+
+ELSE:
+
+    render normal forward transition
 ```
+
+---
+
+# 6. Example Final Flow
 
 Example workflow:
 
 ```
-Input Data
-Input Data 2
-Input Data 3
+Input Data → Submit → User Task
+User Task → Approve → End
+User Task → Sent Back → Input Data
 ```
 
-Detected block:
+Generated Status Flow:
 
 ```
-DATA_ENTRY_BLOCK
-  Input Data
-  Input Data 2
-  Input Data 3
-```
+Data Entry Lane
 
-This block belongs to **Step Owner lanes**.
-
----
-
-# 6. Requestor Data Entry Handling
-
-If Requestor owns multiple data entry steps:
-
-```
-Start
- ↓
-Draft Step 1
- ↓
-Draft Step 2
-```
-
-Display in Requestor lane:
-
-```
-Draft – Step 1
-Draft – Step 2
-```
-
-Do NOT collapse into one step.
-
----
-
-# 7. Overall Status Generation
-
-Overall Status represents **workflow stages**.
-
-Stage detection:
-
-```
-stage changes when actor changes
-```
-
-Example:
-
-```
-Requestor → Step Owner → Approver
-```
-
-Generated stages:
-
-```
 Draft
-Processing
-Under Review
-Final Approval
-Completed
-```
-
-Rule:
-
-```
-one overall status per lane
-```
-
----
-
-# 8. Individual Status Generation
-
-Individual statuses are derived from:
-
-```
-workflow step states
-workflow actions
-```
-
-Example:
-
-Data Entry Step:
-
-```
-Started
+   ↓ Save as Draft
 In Progress
+   ↓ Submit
 Completed
-```
 
-Approval Step:
+Approval Lane
 
-```
 Pending
-Reviewing
+   ↓ Approve
 Approved
-Rejected
-```
 
-No hardcoded statuses allowed.
+Reverse Flow
 
----
-
-# 9. Status Mapping Logic
-
-Status generation rules:
-
-Data Entry Step:
-
-```
-Draft
-Started
+Pending
+   ↓ Sent Back
 In Progress
-Completed
-```
-
-Approval Step:
-
-```
-Pending
-Reviewing
-Approved
-Rejected
-```
-
-Terminal Step:
-
-```
-Completed
-Rejected
 ```
 
 ---
 
-# 10. Status Card Construction
+# 7. Expected Result
 
-Each lane contains **cards**.
+Status Flow should clearly show:
 
-Structure:
-
-```
-Lane
- ├ Overall Status
- │
- └ Status Card
-      ├ Individual Status
-      ├ Individual Status
-      └ Individual Status
-```
-
-Example:
-
-```
-Step Owner
-
-Processing
-
-Started
-In Progress
-Completed
-```
-
----
-
-# 11. Transition Rendering
-
-Transitions represent **state movement between statuses**.
-
-Rule:
-
-```
-edges must follow workflow direction
-```
-
-Allowed:
-
-```
-Lane A → Lane B
-Lane B → Lane C
-```
-
-Not allowed:
-
-```
-Lane B → Lane A
-```
-
-Rejected requests must terminate.
-
-```
-Rejected → End
-```
-
----
-
-# 12. Legend Generation
-
-Legend must be generated dynamically.
-
-Source data:
-
-```
-lanes
-workflow actions
-generated statuses
-```
-
-Example legend:
-
-User Roles
-
-```
-Requestor
-Step Owner
-Approver
-```
-
-Actions
-
-```
-Submit
-Approve
-Reject
-Return
-```
-
-Statuses
-
-```
-Draft
-Pending
-Approved
-Rejected
-Completed
-```
-
----
-
-# 13. Rendering Order
-
-Final rendering order:
-
-```
-1 generate lanes
-2 generate overall statuses
-3 generate individual statuses
-4 generate transitions
-5 generate legend
-```
-
----
-
-# 14. Validation Rules
-
-Before rendering, validate workflow.
-
-Checks:
-
-```
-every step has actor
-every step has type
-workflow has start
-workflow has terminal state
-```
-
-Fallback:
-
-```
-unknown actor → Generic Step Owner
-unknown step → Generic Step
-```
-
----
-
-# 15. Final Rendering Output
-
-The final Status Flow must:
-
-✓ derive lanes from workflow actors
-✓ group sequential data entry steps
-✓ generate statuses dynamically
-✓ maintain UI structure
-✓ avoid reverse transitions
-✓ remain read-only
-
-The Status Flow acts as a **visual lifecycle representation of the workflow execution**.
+* Normal forward progression
+* Data Entry lifecycle
+* Reverse flows caused by **Sent Back**
+* Correct entry status depending on step type

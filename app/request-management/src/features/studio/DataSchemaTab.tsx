@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import {
     Plus, Search, Code2, LayoutList, AlertTriangle,
     ChevronRight, ChevronDown, Type, Hash, ToggleLeft,
-    Calendar, Braces
+    Calendar, Braces, Copy, Check, Trash2
 } from 'lucide-react';
 
 // ─── Type icon/label mapping ───
@@ -37,6 +37,43 @@ function createSkeletonField(parentFields: UiDataField[]): UiDataField {
         type: 'String',
         required: false,
     };
+}
+
+// ─── Strip `id` from fields recursively for display ───
+function stripIds(fields: UiDataField[]): Omit<UiDataField, 'id'>[] {
+    return fields.map(({ id: _id, children, ...rest }) => {
+        const clean: Record<string, unknown> = { ...rest };
+        if (children && children.length > 0) {
+            clean.children = stripIds(children);
+        }
+        return clean as Omit<UiDataField, 'id'>;
+    });
+}
+
+// ─── Inject `id` into fields that don't have one, preserving existing IDs ───
+function injectIds(fields: unknown[], existingFields: UiDataField[]): UiDataField[] {
+    return fields.map((raw, idx) => {
+        const field = raw as Record<string, unknown>;
+        // Try to match to existing field by key (or by index as fallback)
+        const existingMatch = existingFields.find(ef => ef.key === field.key) ||
+            (idx < existingFields.length ? existingFields[idx] : null);
+
+        const result: UiDataField = {
+            id: (field.id as string) || existingMatch?.id || genId(),
+            key: (field.key as string) || `field_${idx + 1}`,
+            label: (field.label as string) ?? '',
+            type: (field.type as SimpleDataType) || 'String',
+            required: (field.required as boolean) ?? false,
+            sampleValue: field.sampleValue as string | undefined,
+            isList: field.isList as boolean | undefined,
+        };
+
+        if (Array.isArray(field.children) && field.children.length > 0) {
+            result.children = injectIds(field.children, existingMatch?.children || []);
+        }
+
+        return result;
+    });
 }
 
 // ─── Recursive helper: update a field anywhere in the tree ───
@@ -73,15 +110,21 @@ function addChildToField(fields: UiDataField[], parentId: string, child: UiDataF
     });
 }
 
+// ─── Recursive delete helper ───
+function deleteFieldFromTree(fields: UiDataField[], id: string): UiDataField[] {
+    return updateFieldInTree(fields, id, () => null);
+}
+
 // ─── Tree Row Component ───
 function FieldTreeRow({
-    field, depth, selectedId, onSelect, onAddChild
+    field, depth, selectedId, onSelect, onAddChild, onDelete
 }: {
     field: UiDataField;
     depth: number;
     selectedId: string | null;
     onSelect: (id: string) => void;
     onAddChild: (parentId: string) => void;
+    onDelete: (id: string) => void;
 }) {
     const [expanded, setExpanded] = useState(true);
     const hasChildren = field.type === 'Object' && field.children && field.children.length > 0;
@@ -139,14 +182,23 @@ function FieldTreeRow({
                 </td>
                 {/* Actions */}
                 <td className="py-2.5 pl-3 pr-4 text-right">
-                    <Button
-                        variant="link"
-                        size="sm"
-                        className="h-6 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity p-0"
-                        onClick={(e) => { e.stopPropagation(); onAddChild(field.id); }}
-                    >
-                        New Child
-                    </Button>
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                            variant="link"
+                            size="sm"
+                            className="h-6 text-xs text-primary p-0"
+                            onClick={(e) => { e.stopPropagation(); onAddChild(field.id); }}
+                        >
+                            New Child
+                        </Button>
+                        <button
+                            className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                            title="Delete field"
+                            onClick={(e) => { e.stopPropagation(); onDelete(field.id); }}
+                        >
+                            <Trash2 size={13} />
+                        </button>
+                    </div>
                 </td>
             </tr>
             {/* Render children */}
@@ -158,6 +210,7 @@ function FieldTreeRow({
                     selectedId={selectedId}
                     onSelect={onSelect}
                     onAddChild={onAddChild}
+                    onDelete={onDelete}
                 />
             ))}
         </>
@@ -178,11 +231,15 @@ export function DataSchemaTab() {
     const jsonTextareaRef = useRef<HTMLTextAreaElement>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [showJson, setShowJson] = useState(true);
+    const [copied, setCopied] = useState(false);
+    const isJsonFocusedRef = useRef(false);
 
-    // Sync JSON text from store
+    // Sync JSON text from store — only when user is NOT editing the textarea
     useEffect(() => {
-        setJsonText(JSON.stringify(dataSchema, null, 2));
-        setJsonError(null);
+        if (!isJsonFocusedRef.current) {
+            setJsonText(JSON.stringify(stripIds(dataSchema), null, 2));
+            setJsonError(null);
+        }
     }, [dataSchema]);
 
     const handleJsonChange = useCallback((text: string) => {
@@ -194,11 +251,42 @@ export function DataSchemaTab() {
                 return;
             }
             setJsonError(null);
-            updateDataSchema(parsed);
+            // Inject IDs for items that don't have one, preserving existing by key match
+            const withIds = injectIds(parsed, dataSchema);
+            updateDataSchema(withIds);
         } catch (e) {
             setJsonError((e as Error).message);
         }
-    }, [updateDataSchema]);
+    }, [updateDataSchema, dataSchema]);
+
+    const handleJsonFocus = useCallback(() => {
+        isJsonFocusedRef.current = true;
+    }, []);
+
+    const handleJsonBlur = useCallback(() => {
+        isJsonFocusedRef.current = false;
+        // Re-sync clean display from store on blur
+        setJsonText(JSON.stringify(stripIds(dataSchema), null, 2));
+    }, [dataSchema]);
+
+    // Copy JSON to clipboard
+    const handleCopyJson = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(jsonText);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Fallback for older browsers
+            const ta = document.createElement('textarea');
+            ta.value = jsonText;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    }, [jsonText]);
 
     // Add a top-level skeleton field and select it
     const handleAddField = () => {
@@ -214,6 +302,16 @@ export function DataSchemaTab() {
         const child = createSkeletonField(siblings);
         updateDataSchema(addChildToField(dataSchema, parentId, child));
         setSelectedDataFieldId(child.id);
+    };
+
+    // Delete a field by ID
+    const handleDeleteField = (id: string) => {
+        const updated = deleteFieldFromTree(dataSchema, id);
+        updateDataSchema(updated);
+        // If the deleted field was selected, clear the selection
+        if (selectedDataFieldId === id) {
+            setSelectedDataFieldId(null);
+        }
     };
 
     // Count all fields recursively
@@ -316,6 +414,7 @@ export function DataSchemaTab() {
                                             selectedDataFieldId === id ? null : id
                                         )}
                                         onAddChild={handleAddChild}
+                                        onDelete={handleDeleteField}
                                     />
                                 ))}
                             </tbody>
@@ -332,6 +431,20 @@ export function DataSchemaTab() {
                         <Code2 size={14} className="text-slate-400" />
                         <span className="text-xs font-medium text-slate-300">JSON Schema</span>
                         <div className="flex-1" />
+                        {/* Copy button */}
+                        <button
+                            onClick={handleCopyJson}
+                            className={cn(
+                                'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all',
+                                copied
+                                    ? 'bg-green-500/20 text-green-400'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+                            )}
+                            title="Copy JSON"
+                        >
+                            {copied ? <Check size={12} /> : <Copy size={12} />}
+                            {copied ? 'Copied' : 'Copy'}
+                        </button>
                         {jsonError ? (
                             <Badge variant="destructive" className="text-[10px] h-5">Error</Badge>
                         ) : (
@@ -360,6 +473,8 @@ export function DataSchemaTab() {
                             ref={jsonTextareaRef}
                             value={jsonText}
                             onChange={(e) => handleJsonChange(e.target.value)}
+                            onFocus={handleJsonFocus}
+                            onBlur={handleJsonBlur}
                             className="flex-1 px-3 py-3 font-mono text-xs leading-6 bg-transparent text-[#a6e3a1] resize-none focus:outline-none placeholder:text-slate-600 caret-[#f5c2e7]"
                             spellCheck={false}
                             placeholder="[]"
