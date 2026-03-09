@@ -59,6 +59,7 @@ export interface SchemaTable {
     type: 'table';
     id: string;
     label: string;
+    bindTo?: string; // Data Schema field key for array binding
     columns: SchemaField[];
     headerActions?: {
         downloadTemplate?: boolean;

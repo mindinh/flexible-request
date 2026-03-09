@@ -103,6 +103,7 @@ export interface UiTableField {
     id: string;
     type: 'table';
     label: string;
+    bindTo?: string; // Data Schema field key (Object with isList=true) for array binding
     columns: UiFormField[];
     // Header Actions
     headerActions?: {
@@ -173,6 +174,7 @@ export interface UiWorkflowNodeData {
     syncTrigger?: SyncTrigger; // When to sync data to external system
     formId?: string;            // Reference to a UiForm for this step
     actionSubType?: string;     // 'form' | 'email' | 'approval' (for action nodes)
+    taskType?: 'dataEntry' | 'approval'; // For User Tasks: determines action palette in Status Flow
     triggerType?: string;       // 'FORM_SUB' | 'API_TRIGGER' (for start nodes)
     inputs?: UiNodeInput[];     // Data Schema fields consumed by this step
     outputs?: UiNodeOutput[];   // Data Schema fields produced by this step
@@ -260,4 +262,60 @@ export interface UiDataField {
     isList?: boolean;
     sampleValue?: string;
     children?: UiDataField[];
+}
+
+// --- Status Flow (Business Visualization) ---
+
+/** An individual status chip inside a Phase Block */
+export interface IndividualStatus {
+    id: string;
+    label: string;
+    description?: string;
+    color: string;       // Text color
+    bgColor: string;     // Background
+    borderColor: string; // Border
+}
+
+/** A Phase Block – a card containing grouped individual statuses */
+export interface StatusFlowPhase {
+    id: string;
+    phaseNumber: number;       // e.g. 1, 2, 3 … (displayed as numbered circle)
+    label: string;             // e.g. "Draft: Create PO Request", "In Processing: Procurement"
+    laneIndex: number;         // Column index (0 = first lane)
+    statuses: IndividualStatus[];
+    sourceStepIds: string[];   // Workflow step IDs that contributed to this phase
+}
+
+/** A lane / column header – derived from the workflow */
+export interface StatusFlowLane {
+    id: string;
+    label: string;            // e.g. "Creator", "Step Owner", "Approver L1"
+    subtitle?: string;        // e.g. "Requester", "Procurement Processing"
+    roleType: 'requestor' | 'stepOwner' | 'approver';
+    sourceNodeId?: string;
+}
+
+/** A forward transition between two phase blocks */
+export interface StatusFlowTransition {
+    id: string;
+    from: string;             // → StatusFlowPhase.id
+    to: string;               // → StatusFlowPhase.id
+    action: string;           // Label on the connector (e.g. "Submit", "Approved")
+}
+
+/** Root model for the Status Flow visualization */
+export interface StatusFlowModel {
+    title?: string;
+    lanes: StatusFlowLane[];
+    phases: StatusFlowPhase[];
+    transitions: StatusFlowTransition[];
+    /** STATUS LIBRARY – fixed categories for the legend panel */
+    statusLibrary?: {
+        overallRequestStatus: IndividualStatus[];
+        stepStatus: IndividualStatus[];
+        stepOwnerStatus: IndividualStatus[];
+        approvalStatus: IndividualStatus[];
+    };
+    /** Actions derived from workflow form actions + edge labels */
+    workflowActions?: string[];
 }

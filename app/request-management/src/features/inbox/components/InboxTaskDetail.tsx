@@ -707,6 +707,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                             showCompletion={true}
                             isSimulation={false}
                             variant="preview"
+                            statusFlowContent={(request?.requestType as any)?.statusFlowContent}
                         />
                     </div>
                 ) : (

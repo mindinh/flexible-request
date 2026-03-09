@@ -127,8 +127,9 @@ export function DynamicFormSection({
                 return;
             }
 
-            const currentRows = (formData[table.id] as unknown[]) || [];
-            onFieldChange(table.id, [...currentRows, ...tableData]);
+            const uploadDataKey = table.bindTo || table.id;
+            const currentRows = (formData[uploadDataKey] as unknown[]) || [];
+            onFieldChange(uploadDataKey, [...currentRows, ...tableData]);
             globalEvents.emit(EVENT_TYPES.SHOW_SUCCESS, 'Table data uploaded successfully');
 
             // Reset input
@@ -208,6 +209,8 @@ export function DynamicFormSection({
                 // Handle table type
                 if (item.type === 'table') {
                     const table = item as SchemaTable;
+                    // Use bindTo key if table is bound to a Data Schema list, otherwise fallback to table.id
+                    const dataKey = table.bindTo || table.id;
                     return (
                         <motion.div
                             key={table.id}
@@ -229,14 +232,14 @@ export function DynamicFormSection({
                                                 size="sm"
                                                 className="h-8 text-xs bg-white hover:bg-slate-50"
                                                 onClick={() => {
-                                                    const currentRows = (formData[table.id] as any[]) || [];
+                                                    const currentRows = (formData[dataKey] as any[]) || [];
                                                     const newRow: any = {
                                                         id: `row-${Date.now()}`,
                                                     };
                                                     table.columns.forEach(col => {
                                                         newRow[col.id] = '';
                                                     });
-                                                    onFieldChange(table.id, [...currentRows, newRow]);
+                                                    onFieldChange(dataKey, [...currentRows, newRow]);
                                                 }}
                                             >
                                                 <Plus size={14} className="mr-2" />
@@ -251,7 +254,7 @@ export function DynamicFormSection({
                                                 className="h-8 text-xs bg-white hover:bg-slate-50"
                                                 disabled={!rowSelections[table.id]?.length}
                                                 onClick={() => {
-                                                    const currentRows = (formData[table.id] as any[]) || [];
+                                                    const currentRows = (formData[dataKey] as any[]) || [];
                                                     const selectedIds = rowSelections[table.id] || [];
                                                     const rowsToDuplicate = currentRows.filter((r: any) => selectedIds.includes(r.id));
 
@@ -260,7 +263,7 @@ export function DynamicFormSection({
                                                         id: `row-${Date.now()}-copy-${index}`
                                                     }));
 
-                                                    onFieldChange(table.id, [...currentRows, ...newRows]);
+                                                    onFieldChange(dataKey, [...currentRows, ...newRows]);
                                                     setRowSelections({ ...rowSelections, [table.id]: [] });
                                                 }}
                                             >
@@ -313,10 +316,10 @@ export function DynamicFormSection({
                                                 className="h-8 text-xs bg-white hover:bg-red-50"
                                                 disabled={!rowSelections[table.id]?.length}
                                                 onClick={() => {
-                                                    const currentRows = (formData[table.id] as any[]) || [];
+                                                    const currentRows = (formData[dataKey] as any[]) || [];
                                                     const selectedIds = rowSelections[table.id] || [];
                                                     const remainingRows = currentRows.filter((r: any) => !selectedIds.includes(r.id));
-                                                    onFieldChange(table.id, remainingRows);
+                                                    onFieldChange(dataKey, remainingRows);
                                                     setRowSelections({ ...rowSelections, [table.id]: [] });
                                                 }}
                                             >
@@ -334,8 +337,8 @@ export function DynamicFormSection({
                                             ...col,
                                             controlType: col.controlType || col.type || 'text'
                                         }))}
-                                        value={(formData[table.id] as any[]) || []}
-                                        onChange={(rows) => onFieldChange(table.id, rows)}
+                                        value={(formData[dataKey] as any[]) || []}
+                                        onChange={(rows) => onFieldChange(dataKey, rows)}
                                         hideAddButton={true}
                                         selectedIds={rowSelections[table.id] || []}
                                         onSelectionChange={(ids) => setRowSelections({ ...rowSelections, [table.id]: ids })}

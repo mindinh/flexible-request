@@ -424,6 +424,7 @@ export function RequestDetail() {
                             showCompletion={true}
                             onStepClick={() => { }} // Globally disable interaction as requested
                             selectedStepId={undefined} // No step selection in detail view
+                            statusFlowContent={(request?.requestType as any)?.statusFlowContent}
                         />
 
                         <RecentActivityCard

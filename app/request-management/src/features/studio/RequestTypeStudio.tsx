@@ -8,7 +8,7 @@ import { WorkflowTab } from './WorkflowTab';
 import { SchemaTab } from './SchemaTab';
 import { DataSchemaTab } from './DataSchemaTab';
 import { DataFieldPropertiesContent } from './DataFieldPropertiesContent';
-import { StatusActionsTab } from './StatusActionsTab';
+
 import { useStudioStore } from './useStudioStore';
 import { motion } from 'framer-motion';
 import type { UiCanvasItem, UiFormField } from './types';
@@ -20,7 +20,9 @@ import { WorkflowPalette } from './WorkflowPalette';
 import { WorkflowNodeProperties } from './WorkflowNodeProperties';
 import { FooterActionPropertiesContent } from './FooterActionPropertiesContent';
 import { EmailEditorTab } from './EmailEditorTab';
+import { StatusFlowTab } from './StatusFlowTab';
 import { ValueHelpManager } from '../../components/valuehelp';
+import { api } from '../../lib/api';
 
 
 
@@ -29,8 +31,8 @@ interface TabDef { id: string; label: string; closeable?: boolean; indent?: bool
 const BASE_TABS: TabDef[] = [
     { id: 'data-schema', label: 'Data Schema' },
     { id: 'workflow', label: 'Workflow' },
-    { id: 'statuses', label: 'Statuses' },
     { id: 'value-help', label: 'Value Help' },
+    { id: 'status-flow', label: 'Status Flow' },
 ];
 
 function StudioContent() {
@@ -138,12 +140,13 @@ function StudioContent() {
                 return <SchemaPreviewTab formId={previewFormId} />;
             case 'email-editor':
                 return <EmailEditorTab />;
-            case 'statuses':
-                return <StatusActionsTab />;
+
+            case 'status-flow':
+                return <StatusFlowTab />;
             case 'value-help':
                 return (
                     <div className="p-6 h-full overflow-y-auto">
-                        <ValueHelpManager objectType={requestTypeId || ''} serviceUrl="/admin" />
+                        <ValueHelpManager objectType={requestTypeId || ''} serviceUrl="/admin" httpClient={api} />
                     </div>
                 );
             default:

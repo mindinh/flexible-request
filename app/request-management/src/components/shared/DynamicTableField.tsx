@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/TextArea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
+import { DynamicField } from './DynamicField';
 import type { SchemaField } from '../../lib/schemaParser';
 
 interface TableRow {
@@ -80,6 +81,19 @@ export function DynamicTableField({
         const cellValue = row[column.id] ?? '';
         const controlType = column.controlType || (column as any).type || 'text';
         const isDisabled = disabled || !!(column as any).readOnly || !!(column as any).disabled;
+
+        // ── Delegate to DynamicField when column has value help config ──
+        // DynamicField already handles ValueHelpComboBox, ValueHelpSearchInput, etc.
+        if (column.valueHelp?.type === 'Reference' && column.valueHelp?.listCode && column.valueHelp?.objectType) {
+            return (
+                <DynamicField
+                    field={column as any}
+                    value={cellValue}
+                    onChange={(val) => updateCell(row.id, column.id, val)}
+                    disabled={isDisabled}
+                />
+            );
+        }
 
         switch (controlType) {
             case 'number':
