@@ -6,6 +6,7 @@ export interface AdminRequestType {
     icon?: string;
     dataSchemaContent?: string; // Centralized data schema JSON
     formSchemasContent?: string; // Named form layouts JSON
+    statusFlowContent?: string;  // Status Flow JSON (business visualization)
     steps?: AdminStepDefinition[];
     statusNetwork?: AdminStatusNetwork[];
     IsActiveEntity?: boolean;

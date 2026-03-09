@@ -16,9 +16,11 @@ import { useState, useMemo } from 'react';
 import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { RequestService } from '../../services/RequestService';
 import type { } from '../../types';
+import type { RequestType } from '../../types';
 import { InboxTaskDetail } from './components/InboxTaskDetail';
 import { getPriorityConfig } from '../../config';
 import { useAuth } from '../../lib/auth-context';
+import { resolveBusinessStatus, type ResolvedStatus } from '../../lib/statusFlowResolver';
 
 
 interface InboxItem {
@@ -60,6 +62,7 @@ interface UnifiedTask {
     claimedByMe?: boolean;
     assignedTo?: string;
     assignedType?: string;
+    businessStatus?: ResolvedStatus | null;
 }
 
 /**
@@ -105,6 +108,21 @@ export const Inbox = () => {
         queryFn: () => RequestService.getTeamApprovals(),
         enabled: activeTab === 'team-tasks',
     });
+
+    // Fetch request types for Status Flow lookup
+    const { data: requestTypes = [] } = useQuery<RequestType[]>({
+        queryKey: ['requestTypes'],
+        queryFn: RequestService.getRequestTypes,
+    });
+
+    // Build a lookup map: requestType title → statusFlowContent
+    const statusFlowByType = useMemo(() => {
+        const map = new Map<string, string | null>();
+        for (const rt of requestTypes) {
+            if (rt.title) map.set(rt.title, (rt as any).statusFlowContent || null);
+        }
+        return map;
+    }, [requestTypes]);
 
 
     // ─── Mutations ────────────────────────────────────────────
@@ -156,8 +174,12 @@ export const Inbox = () => {
                 claimedByMe: item.claimedByUserId === currentUserId || (item.assignedType !== 'USER' && !!item.claimedBy),
                 assignedTo: item.assignedTo,
                 assignedType: item.assignedType,
+                businessStatus: resolveBusinessStatus(
+                    statusFlowByType.get(item.requestType) || null,
+                    item.status || '',
+                ),
             })),
-        [myApprovals, currentUserId],
+        [myApprovals, currentUserId, statusFlowByType],
     );
 
     const teamTasks: UnifiedTask[] = useMemo(
@@ -179,8 +201,12 @@ export const Inbox = () => {
                 claimedByMe: false,
                 assignedTo: item.assignedTo,
                 assignedType: item.assignedType,
+                businessStatus: resolveBusinessStatus(
+                    statusFlowByType.get(item.requestType) || null,
+                    item.status || '',
+                ),
             })),
-        [teamApprovals],
+        [teamApprovals, statusFlowByType],
     );
 
     // ─── Active list based on tab, sorted most recent first ──
@@ -494,6 +520,18 @@ function TaskCard({ task, isSelected, onSelect, onClaimTask, onForceRelease, onD
                                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full shrink-0">
                                     <Lock className="w-3 h-3" />
                                     Locked
+                                </span>
+                            )}
+                            {task.businessStatus && !isClaimedByMe && !isLocked && (
+                                <span
+                                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0"
+                                    style={{
+                                        color: task.businessStatus.color,
+                                        backgroundColor: task.businessStatus.bgColor,
+                                        borderColor: task.businessStatus.borderColor,
+                                    }}
+                                >
+                                    {task.businessStatus.label}
                                 </span>
                             )}
                         </div>

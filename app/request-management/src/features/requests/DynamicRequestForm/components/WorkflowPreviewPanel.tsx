@@ -24,6 +24,8 @@ interface WorkflowPreviewPanelProps {
     stepOwners?: Record<string, StepOwnerAssignment>;
     /** JSON string of form schemas — used to resolve decision actions per step */
     formSchemasContent?: string;
+    /** StatusFlowContent JSON string for resolving business status labels */
+    statusFlowContent?: string | null;
 }
 
 /**
@@ -67,7 +69,8 @@ export function WorkflowPreviewPanel({
     steps,
     resolvedApprovers,
     stepOwners = {},
-    formSchemasContent
+    formSchemasContent,
+    statusFlowContent
 }: WorkflowPreviewPanelProps) {
     // Steps are now pre-sorted topologically by the data hooks.
     // Just filter out End nodes for a cleaner UI.
@@ -129,6 +132,7 @@ export function WorkflowPreviewPanel({
             <WorkflowTimeline
                 steps={workflowSteps}
                 variant="preview"
+                statusFlowContent={statusFlowContent}
             />
 
 

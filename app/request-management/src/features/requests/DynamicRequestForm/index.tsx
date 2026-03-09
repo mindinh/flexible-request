@@ -225,6 +225,7 @@ export function DynamicRequestForm() {
                         resolvedApprovers={resolvedApprovers}
                         stepOwners={stepOwners}
                         formSchemasContent={requestType?.formSchemasContent}
+                        statusFlowContent={(requestType as any)?.statusFlowContent}
                     />
                 </div>
             </div>

@@ -36,6 +36,7 @@ entity RequestTypes : cuid, managedWithUser {
     icon               : String default 'workflow'; // Icon identifier (e.g., 'plane', 'cart', 'key')
     dataSchemaContent  : LargeString; // Centralized data schema JSON (field definitions)
     formSchemasContent : LargeString; // Named form layouts JSON: [{ id, name, items }]
+    statusFlowContent  : LargeString; // Status Flow JSON: { actors, actions, statuses, nodes, transitions }
     steps              : Composition of many StepDefinitions
                              on steps.requestType = $self;
     statusNetwork      : Composition of many StatusNetwork

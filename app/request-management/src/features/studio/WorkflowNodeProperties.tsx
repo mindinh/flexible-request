@@ -2535,6 +2535,32 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             {/* ── ACTION NODE (User Task) ───────────────────── */}
             {nodeType === 'actionNode' && (
                 <>
+                    {/* ─── Task Type Selector (Status Flow REQ 1) ── */}
+                    {(isUserTask || isApproval) && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">Task Type</Label>
+                            <p className="text-[11px] text-slate-400">
+                                Determines the role swimlane and available actions in the Status Flow.
+                            </p>
+                            <Select
+                                value={(node.data.taskType as string) || (isApproval ? 'approval' : 'dataEntry')}
+                                onValueChange={(val) => updateNodeData(node.id, {
+                                    taskType: val,
+                                    // Persist via actionSubType (the DB-backed field)
+                                    actionSubType: val === 'approval' ? 'approval' : 'user_task',
+                                })}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select task type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="dataEntry">📝 Data Entry</SelectItem>
+                                    <SelectItem value="approval">🛡️ Approval</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </Card>
+                    )}
+
                     {/* ─── Task Form Configuration ──────────── */}
                     {(!isUserTask && !isFormula) && (
                         <Card className="p-4 space-y-3">

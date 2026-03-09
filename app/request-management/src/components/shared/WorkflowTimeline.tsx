@@ -1,6 +1,7 @@
 import { Check, X, Loader2, Share2, Clock, Hourglass, Circle, ChevronDown, User, Users, GitBranch } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from '../ui';
+import { resolveStepBusinessStatus } from '../../lib/statusFlowResolver';
 
 export type WorkflowStepStatus = 'COMPLETED' | 'IN_PROGRESS' | 'STARTED' | 'IN_CLARIFICATION' | 'UPCOMING' | 'PENDING' | 'REJECTED' | 'SKIPPED';
 
@@ -23,6 +24,8 @@ export interface WorkflowTimelineStep {
     title: string;
     subtitle?: React.ReactNode;
     status: WorkflowStepStatus;
+    /** StepDefinition ID — used for Status Flow label resolution */
+    stepDefId?: string;
     slaDays?: number;
     /** Display name of the step owner/assignee */
     ownerName?: string | null;
@@ -55,6 +58,8 @@ interface WorkflowTimelineProps {
     variant?: 'default' | 'preview';
     onStepClick?: (stepId: string) => void;
     selectedStepId?: string;
+    /** StatusFlowContent JSON string for resolving business-friendly status labels */
+    statusFlowContent?: string | null;
 }
 
 // ─── Status helpers ──────────────────────────────────────────────
@@ -85,7 +90,8 @@ export function WorkflowTimeline({
     isSimulation,
     variant = 'default',
     onStepClick,
-    selectedStepId
+    selectedStepId,
+    statusFlowContent
 }: WorkflowTimelineProps) {
     const isPreview = variant === 'preview';
 
@@ -399,7 +405,7 @@ export function WorkflowTimeline({
                                                                             step.status === 'PENDING' ? 'text-orange-600' :
                                                                                 'text-slate-400'
                                                             }`}>
-                                                            {STATUS_CONFIG[step.status]?.label || step.status}
+                                                            {resolveStepBusinessStatus(statusFlowContent, step.stepDefId || step.id, step.status)?.label || STATUS_CONFIG[step.status]?.label || step.status}
                                                         </span>
                                                     </div>
 
