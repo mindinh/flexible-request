@@ -10,10 +10,11 @@ import { NotificationPopover } from '../features/notifications/NotificationPopov
 export const AppShell = () => {
     const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const isStudioDetail = /^\/studio\/[^/]+$/.test(location.pathname);
 
-    // Auto-collapse sidebar when navigating to the Inbox page
+    // Auto-collapse sidebar when navigating to certain pages
     useEffect(() => {
-        if (location.pathname === '/inbox') {
+        if (location.pathname === '/inbox' || /^\/studio\/[^/]+$/.test(location.pathname)) {
             setSidebarCollapsed(true);
         }
     }, [location.pathname]);
@@ -32,11 +33,13 @@ export const AppShell = () => {
             <Sidebar
                 collapsed={sidebarCollapsed}
                 onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onCollapse={() => setSidebarCollapsed(true)}
             />
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Top Header - Banner Landmark */}
+                {/* Top Header - Banner Landmark (hidden on Studio detail) */}
+                {!isStudioDetail && (
                 <header
                     className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6"
                     role="banner"
@@ -77,11 +80,12 @@ export const AppShell = () => {
                         </Button>
                     </div>
                 </header>
+                )}
 
                 {/* Page Content - Main Landmark */}
                 <main
                     id="main-content"
-                    className="flex-1 flex flex-col overflow-auto p-6"
+                    className={`flex-1 flex flex-col overflow-auto ${isStudioDetail ? '' : 'p-6'}`}
                     role="main"
                     tabIndex={-1}
                 >

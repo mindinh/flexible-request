@@ -353,9 +353,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                             animated: isSimulationMode ? simulationHistory.includes(e.source) && simulationHistory.includes(e.target) : e.animated,
                             style: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
                                 ? { stroke: '#10b981', strokeWidth: 3 }
-                                : statusColor
-                                    ? { stroke: statusColor, strokeWidth: 2 }
-                                    : e.style,
+                                : e.style,
                             labelStyle: statusName ? {
                                 fontSize: 10,
                                 fontWeight: 700,
@@ -695,87 +693,74 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                         boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                     }} />
                     <Background color="#e2e8f0" gap={24} size={1} />
-
-                    {showJson && (
-                        <Panel position="top-right" style={{ top: 60, bottom: 20, right: 20, margin: 0 }} className="z-50 pointer-events-none">
-                            <motion.div
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                className="w-[450px] h-full flex flex-col bg-[#1e1e2e] shadow-2xl rounded-2xl border border-slate-800 overflow-hidden pointer-events-auto"
-                            >
-                                <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-[#1e1e2e]">
-                                    <div className="flex items-center gap-2.5">
-                                        <Code size={16} className="text-slate-400" />
-                                        <h3 className="font-semibold text-[13px] text-white">Workflow JSON</h3>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {jsonError ? (
-                                            <Badge variant="destructive" className="text-[10px] h-5 px-2 bg-red-500/20 text-red-400 border-red-500/30">Error</Badge>
-                                        ) : (
-                                            <Badge className="text-[10px] h-5 px-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Valid</Badge>
-                                        )}
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setShowJson(false)}
-                                            className="h-7 w-7 rounded-md text-slate-500 hover:text-white hover:bg-slate-800"
-                                        >
-                                            <X size={14} />
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 flex overflow-hidden bg-[#1e1e2e]" style={{ minHeight: 0 }}>
-                                    {/* Line Number Gutter */}
-                                    <div
-                                        className="w-10 flex-shrink-0 bg-[#1e1e2e] text-[#4c566a] font-mono text-[11px] leading-6 pt-3 pr-2 text-right select-none overflow-hidden"
-                                        ref={(el) => {
-                                            if (!el) return;
-                                            const ta = jsonTextareaRef.current;
-                                            if (ta) {
-                                                ta.onscroll = () => { if (el) el.scrollTop = ta.scrollTop; };
-                                            }
-                                        }}
-                                    >
-                                        {jsonText.split('\n').map((_, i) => (
-                                            <div key={i} className="px-1">{i + 1}</div>
-                                        ))}
-                                    </div>
-                                    {/* Textarea */}
-                                    <textarea
-                                        ref={jsonTextareaRef}
-                                        value={jsonText}
-                                        onChange={(e) => handleJsonChange(e.target.value)}
-                                        className="flex-1 px-3 py-3 font-mono text-[11px] leading-6 bg-transparent text-[#d8dee9] resize-none focus:outline-none placeholder:text-slate-600 caret-white overflow-auto custom-scrollbar"
-                                        spellCheck={false}
-                                        placeholder="{}"
-                                    />
-                                </div>
-                                <div className="px-5 py-2.5 border-t border-slate-800 bg-[#1e1e2e]/50 flex items-center justify-between">
-                                    <span className="text-[10px] text-slate-500 font-medium">
-                                        {workflow.nodes.length} Nodes • {workflow.edges.length} Edges
-                                    </span>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(jsonText);
-                                        }}
-                                        className="text-[10px] h-7 px-2.5 text-slate-400 hover:text-white hover:bg-slate-800 gap-1.5"
-                                    >
-                                        Copy JSON
-                                    </Button>
-                                </div>
-                                {jsonError && (
-                                    <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 flex items-center gap-2 text-red-400 text-[10px] font-mono">
-                                        <AlertTriangle size={12} className="shrink-0" />
-                                        <span className="truncate">{jsonError}</span>
-                                    </div>
-                                )}
-                            </motion.div>
-                        </Panel>
-                    )}
                 </ReactFlow >
             </motion.div >
+
+            {/* ─── RIGHT: Workflow JSON Editor (inline panel) ─── */}
+            {showJson && (
+                <div className="w-[380px] flex-shrink-0 flex flex-col overflow-hidden bg-[#1e1e2e]">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700 bg-[#181825]">
+                        <Code size={14} className="text-slate-400" />
+                        <span className="text-xs font-medium text-slate-300">Workflow JSON</span>
+                        <div className="flex-1" />
+                        {jsonError ? (
+                            <Badge variant="destructive" className="text-[10px] h-5 px-2 bg-red-500/20 text-red-400 border-red-500/30">Error</Badge>
+                        ) : (
+                            <Badge className="text-[10px] h-5 px-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Valid</Badge>
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                navigator.clipboard.writeText(jsonText);
+                            }}
+                            className="text-[10px] h-7 px-2.5 text-slate-400 hover:text-white hover:bg-slate-700 gap-1.5"
+                        >
+                            Copy
+                        </Button>
+                    </div>
+                    {/* Editor */}
+                    <div className="flex-1 flex overflow-hidden" style={{ minHeight: 0 }}>
+                        {/* Line Number Gutter */}
+                        <div
+                            className="w-10 flex-shrink-0 bg-[#181825] text-slate-600 font-mono text-xs leading-6 pt-3 pr-2 text-right select-none overflow-hidden"
+                            ref={(el) => {
+                                if (!el) return;
+                                const ta = jsonTextareaRef.current;
+                                if (ta) {
+                                    ta.onscroll = () => { el.scrollTop = ta.scrollTop; };
+                                }
+                            }}
+                        >
+                            {jsonText.split('\n').map((_, i) => (
+                                <div key={i} className="px-1">{i + 1}</div>
+                            ))}
+                        </div>
+                        {/* Textarea */}
+                        <textarea
+                            ref={jsonTextareaRef}
+                            value={jsonText}
+                            onChange={(e) => handleJsonChange(e.target.value)}
+                            className="flex-1 px-3 py-3 font-mono text-xs leading-6 bg-transparent text-[#a6e3a1] resize-none focus:outline-none placeholder:text-slate-600 caret-[#f5c2e7]"
+                            spellCheck={false}
+                            placeholder="{}"
+                        />
+                    </div>
+                    {/* Status bar */}
+                    <div className="px-4 py-2 border-t border-slate-700 bg-[#181825] flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500 font-medium">
+                            {workflow.nodes.length} Nodes • {workflow.edges.length} Edges
+                        </span>
+                    </div>
+                    {jsonError && (
+                        <div className="flex items-center gap-2 px-3 py-2 text-red-400 text-[11px] bg-red-500/10 border-t border-red-500/20">
+                            <AlertTriangle size={12} />
+                            <span className="truncate">{jsonError}</span>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

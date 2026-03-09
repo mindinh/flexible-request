@@ -218,6 +218,9 @@ export const StudioAdapter = {
                             offsets = [0, 0, 0];
                         }
 
+                        // Parse statusConfigContent from backend
+                        const statusConfig = parseJson<any>((pred as any).statusConfigContent, null);
+
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
@@ -225,7 +228,8 @@ export const StudioAdapter = {
                             type: 'editableEdge',
                             data: {
                                 offsets,
-                                action: handleId // Preserve the actual handle mapping
+                                action: handleId, // Preserve the actual handle mapping
+                                ...(statusConfig ? { statusConfig } : {}),
                             },
                             ...(handleId ? { sourceHandle: handleId } : {}),
                         });
