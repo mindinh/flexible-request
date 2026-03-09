@@ -14,8 +14,12 @@ import {
     MiniMap,
     Handle,
     Position,
+    MarkerType,
+    BaseEdge,
+    EdgeLabelRenderer,
     type Node,
     type Edge,
+    type EdgeProps,
     ReactFlowProvider,
     Panel,
 } from '@xyflow/react';
@@ -29,10 +33,10 @@ import type { StatusFlowModel } from './types';
 // ─── Layout Constants ───────────────────────────────────────────────────
 
 const LANE_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
-const LANE_HEIGHT = 140;
+const LANE_HEIGHT = 200;
 const CARD_WIDTH = 150;
 const CARD_HEIGHT = 44;
-const CARD_GAP = 90;
+const CARD_GAP = 130;
 const LANE_HEADER_WIDTH = 140;
 const FIRST_CARD_X = LANE_HEADER_WIDTH + 30;
 
@@ -62,18 +66,23 @@ function SimpleStatusCard({ data }: { data: any }) {
     const statusColor = data.statusColor || '#475569';
     const bgColor = data.bgColor || '#f8fafc';
     const borderColor = data.borderColor || '#e2e8f0';
+    const handleStyle = { background: '#94a3b8', width: 6, height: 6, border: '2px solid white' };
 
     return (
         <div
             className="px-4 py-2 rounded-xl border-2 shadow-sm flex items-center gap-2.5 relative"
             style={{ backgroundColor: bgColor, borderColor }}
         >
-            <Handle type="target" position={Position.Left} style={{ background: '#94a3b8', width: 6, height: 6, border: '2px solid white' }} />
+            {/* Forward handles */}
+            <Handle type="target" position={Position.Left} id="left" style={handleStyle} />
+            <Handle type="source" position={Position.Right} id="right" style={handleStyle} />
+            {/* Reverse handles — top receives back-edges, bottom sends back-edges */}
+            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...handleStyle, opacity: 0 }} />
+            <Handle type="target" position={Position.Top} id="top" style={{ ...handleStyle, opacity: 0 }} />
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor }} />
             <span className="text-[11px] font-bold whitespace-nowrap" style={{ color: statusColor }}>
                 {data.statusName}
             </span>
-            <Handle type="source" position={Position.Right} style={{ background: '#94a3b8', width: 6, height: 6, border: '2px solid white' }} />
         </div>
     );
 }
@@ -92,10 +101,77 @@ function LaneSeparatorNode({ data }: { data: any }) {
     );
 }
 
+// ─── Custom Edge: Reverse (U-shaped path below lanes) ─────────────────
+
+function ReverseEdge({
+    id, sourceX, sourceY, targetX, targetY, label, style, markerEnd, data,
+}: EdgeProps) {
+    const laneCount = (data as any)?.laneCount ?? 4;
+    // Route below all lanes with padding
+    const bottomY = laneCount * LANE_HEIGHT + 40;
+    const radius = 14; // corner radius
+
+    // Direction: source is to the right, target is to the left
+    // Path: source bottom → down to bottomY → horizontally left → up to target top
+    const goingLeft = targetX < sourceX;
+    const path = goingLeft
+        ? [
+            `M ${sourceX},${sourceY}`,
+            `L ${sourceX},${bottomY - radius}`,
+            `Q ${sourceX},${bottomY} ${sourceX - radius},${bottomY}`,
+            `L ${targetX + radius},${bottomY}`,
+            `Q ${targetX},${bottomY} ${targetX},${bottomY - radius}`,
+            `L ${targetX},${targetY}`,
+        ].join(' ')
+        : [
+            `M ${sourceX},${sourceY}`,
+            `L ${sourceX},${bottomY - radius}`,
+            `Q ${sourceX},${bottomY} ${sourceX + radius},${bottomY}`,
+            `L ${targetX - radius},${bottomY}`,
+            `Q ${targetX},${bottomY} ${targetX},${bottomY - radius}`,
+            `L ${targetX},${targetY}`,
+        ].join(' ');
+
+    // Label at the midpoint of the horizontal segment
+    const labelX = (sourceX + targetX) / 2;
+    const labelY = bottomY;
+
+    return (
+        <>
+            <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+            {label && (
+                <EdgeLabelRenderer>
+                    <div
+                        style={{
+                            position: 'absolute',
+                            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+                            pointerEvents: 'none',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: '#1e293b',
+                            background: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: 6,
+                            padding: '2px 8px',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {label as string}
+                    </div>
+                </EdgeLabelRenderer>
+            )}
+        </>
+    );
+}
+
 const statusFlowNodeTypes = {
     laneHeader: LaneHeaderNode,
     statusCard: SimpleStatusCard,
     laneSeparator: LaneSeparatorNode,
+};
+
+const statusFlowEdgeTypes = {
+    reverse: ReverseEdge,
 };
 
 // ─── Convert Model → React Flow ─────────────────────────────────────────
@@ -165,7 +241,7 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
             });
         } else {
             // Multiple cards — distribute vertically within lane
-            const gap = 8;
+            const gap = 16;
             const totalH = count * CARD_HEIGHT + (count - 1) * gap;
             const startY = laneIdx * LANE_HEIGHT + (LANE_HEIGHT - totalH) / 2;
 
@@ -191,23 +267,54 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
     // Transition edges
     for (const t of transitions) {
         const hasAction = !!t.action;
-        edges.push({
-            id: t.id,
-            source: t.from,
-            target: t.to,
-            type: 'smoothstep',
-            animated: false,
-            label: hasAction ? t.action : undefined,
-            style: {
-                stroke: hasAction ? '#64748b' : '#94a3b8',
-                strokeWidth: hasAction ? 2 : 1.5,
-                strokeDasharray: hasAction ? undefined : '6 3',
-            },
-            labelStyle: hasAction ? { fontSize: 11, fontWeight: 700, fill: '#475569' } : undefined,
-            labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
-            labelBgPadding: hasAction ? [3, 5] as [number, number] : undefined,
-            labelBgBorderRadius: hasAction ? 4 : undefined,
-        });
+        const isReverse = !!t.isReverse;
+
+        if (isReverse) {
+            // Reverse / Sent-Back edges — custom U-shaped path below all lanes
+            edges.push({
+                id: t.id,
+                source: t.from,
+                target: t.to,
+                sourceHandle: 'bottom',
+                targetHandle: 'top',
+                type: 'reverse',
+                animated: false,
+                label: hasAction ? `↩ ${t.action}` : undefined,
+                style: {
+                    stroke: '#1e293b',
+                    strokeWidth: 1.5,
+                },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#1e293b', width: 14, height: 14 },
+                data: { laneCount: lanes.length },
+            });
+        } else {
+            // Forward edges — route via left→right handles
+            edges.push({
+                id: t.id,
+                source: t.from,
+                target: t.to,
+                sourceHandle: 'right',
+                targetHandle: 'left',
+                type: 'smoothstep',
+                animated: false,
+                label: hasAction ? t.action : undefined,
+                style: {
+                    stroke: hasAction ? '#64748b' : '#94a3b8',
+                    strokeWidth: hasAction ? 2 : 1.5,
+                    strokeDasharray: hasAction ? undefined : '6 3',
+                },
+                markerEnd: {
+                    type: MarkerType.ArrowClosed,
+                    color: hasAction ? '#64748b' : '#94a3b8',
+                    width: 14,
+                    height: 14,
+                },
+                labelStyle: hasAction ? { fontSize: 10, fontWeight: 700, fill: '#475569' } : undefined,
+                labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
+                labelBgPadding: hasAction ? [3, 6] as [number, number] : undefined,
+                labelBgBorderRadius: hasAction ? 6 : undefined,
+            });
+        }
     }
 
     return { nodes, edges };
@@ -241,6 +348,7 @@ function StatusFlowCanvas({ model }: { model: StatusFlowModel }) {
             nodes={nodes}
             edges={edges}
             nodeTypes={statusFlowNodeTypes}
+            edgeTypes={statusFlowEdgeTypes}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={false}
