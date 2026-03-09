@@ -149,16 +149,25 @@ export const StudioAdapter = {
                     // Parse notificationsContent: new object format or legacy string[]
                     ...(() => {
                         const raw = parseJson<any>(step.notificationsContent, null);
-                        if (!raw) return { notificationTypes: [], emailConfig: undefined };
+                        if (!raw) return { notificationTypes: [], emailConfig: undefined, bellConfig: undefined };
                         // Legacy: plain string[] like ["bell","email"]
-                        if (Array.isArray(raw)) return { notificationTypes: raw as string[], emailConfig: undefined };
-                        // New object contract: { channels, emailConfig? }
+                        if (Array.isArray(raw)) return { notificationTypes: raw as string[], emailConfig: undefined, bellConfig: undefined };
+                        // New object contract: { channels, emailConfig?, bellConfig? }
                         return {
                             notificationTypes: Array.isArray(raw.channels) ? raw.channels : [],
                             emailConfig: raw.emailConfig ?? undefined,
+                            bellConfig: raw.bellConfig ?? undefined,
+                            // Map bellConfig fields to top-level for UI consistency
+                            bellTitle: raw.bellConfig?.titleTemplate || '',
+                            bellBody: raw.bellConfig?.bodyTemplate || '',
+                            bellType: raw.bellConfig?.typeTemplate || 'DATA_INPUT',
+                            bellPriority: raw.bellConfig?.priorityTemplate || 'MEDIUM',
+                            bellRole: raw.bellConfig?.roleTemplate || 'Step Owner',
                         };
                     })(),
                     conditionExpr: step.conditionExpr ? parseJson<any>(step.conditionExpr, null) : null,
+                    conditionLogic: step.conditionExpr ? parseJson<any>(step.conditionExpr, null) : null,
+                    formulas: step.formulas ? parseJson<any>(step.formulas, []) : [],
                     // Legacy/Custom fields (from HEAD)
                     approver_ID: step.approverId,
                     approverType: step.approverType,

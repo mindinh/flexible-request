@@ -2,6 +2,7 @@ import cds from '@sap/cds';
 import { SELECT, UPDATE } from '../lib/db';
 import { EmailService } from '../lib/email-service';
 import { IdentityProvisioner } from '../lib/identity-provisioner';
+import { formatEnumLabel } from '../lib/utils';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Shared contract: mirrors app/.../studio/types.ts NotificationsContent
@@ -13,9 +14,18 @@ interface EmailConfig {
     bodyTemplate?: string;
 }
 
+interface BellConfig {
+    titleTemplate?: string;
+    bodyTemplate?: string;
+    typeTemplate?: string;
+    priorityTemplate?: string;
+    roleTemplate?: string;
+}
+
 interface ParsedNotificationsContent {
     channels: string[];
     emailConfig?: EmailConfig;
+    bellConfig?: BellConfig;
 }
 
 /**
@@ -27,7 +37,7 @@ interface ParsedNotificationsContent {
  *  3. New object `{ channels: [...], emailConfig?: {...} }`
  */
 function parseNotificationsContent(raw?: string | null): ParsedNotificationsContent {
-    const DEFAULT: ParsedNotificationsContent = { channels: ['bell', 'email'] };
+    const DEFAULT: ParsedNotificationsContent = { channels: [] };
     if (!raw) return DEFAULT;
 
     try {
@@ -43,7 +53,11 @@ function parseNotificationsContent(raw?: string | null): ParsedNotificationsCont
             const channels = Array.isArray(parsed.channels)
                 ? parsed.channels.map((c: unknown) => String(c).toLowerCase())
                 : DEFAULT.channels;
-            return { channels, emailConfig: parsed.emailConfig ?? undefined };
+            return {
+                channels,
+                emailConfig: parsed.emailConfig ?? undefined,
+                bellConfig: parsed.bellConfig ?? undefined
+            };
         }
     } catch { /* fall through */ }
 
@@ -122,13 +136,23 @@ export class NotificationHandler {
                 return;
             }
 
-            // 2. Read channel config from StepDefinition
-            let notifConfig: ParsedNotificationsContent = { channels: ['bell', 'email'] };
+            // 2. Read channel config and templates from StepDefinition
+            let notifConfig: ParsedNotificationsContent = { channels: [] };
+            let sidebarEmailSubject: string | null = null;
+            let sidebarEmailBody: string | null = null;
+
             if (step.stepDefinition_ID) {
                 const stepDef = await SELECT.one.from(StepDefinitions)
                     .where({ ID: step.stepDefinition_ID })
-                    .columns('notificationsContent') as { notificationsContent?: string | null } | null;
+                    .columns('notificationsContent', 'emailSubject', 'emailBody') as {
+                        notificationsContent?: string | null,
+                        emailSubject?: string | null,
+                        emailBody?: string | null
+                    } | null;
+
                 notifConfig = parseNotificationsContent(stepDef?.notificationsContent);
+                sidebarEmailSubject = stepDef?.emailSubject || null;
+                sidebarEmailBody = stepDef?.emailBody || null;
             }
 
             const sendBell = notifConfig.channels.includes('bell') || notifConfig.channels.includes('in-app');
@@ -170,28 +194,42 @@ export class NotificationHandler {
             const uniqueRecipientIds = [...new Set(recipientIds)];
             const uniqueEmails = [...new Set(recipientEmails)];
 
-            // 4. Create bell notifications
+            // 4. Resolve Variables for templates
+            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+            const requesterName = requester?.displayName || requester?.email || 'Requester';
+
+            const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
+            const deepLink = `${appUrl}/inbox/request/${requestId}`;
+
+            // 5. Create bell notifications
             if (sendBell) {
-                const title = 'Data Input Required';
-                const message = `${request.displayId || 'Request'} needs your input`;
+                const bellCfg = notifConfig.bellConfig;
+                const title = bellCfg?.titleTemplate
+                    ? this.renderTemplate(bellCfg.titleTemplate, request, requesterName)
+                    : 'Data Input Required';
+                const message = bellCfg?.bodyTemplate
+                    ? this.renderTemplate(bellCfg.bodyTemplate, request, requesterName, deepLink)
+                    : `${request.displayId || 'Request'} needs your input`;
+                const type = this.renderTemplate(bellCfg?.typeTemplate || 'DATA_INPUT', request, requesterName);
+                const priority = this.renderTemplate(bellCfg?.priorityTemplate || (request.priority || 'MEDIUM'), request, requesterName);
+                const role = this.renderTemplate(bellCfg?.roleTemplate || 'Step Owner', request, requesterName);
+
                 for (const userId of uniqueRecipientIds) {
-                    await this.createInAppNotification(userId, title, message, request, stepId, 'DATA_INPUT', 'Step Owner');
+                    await this.createInAppNotification(userId, title, message, request, stepId, type, role, priority);
                 }
                 this.log.info(`[notification-handler] StepActivated: sent ${uniqueRecipientIds.length} bell notification(s) for step ${stepId}`);
             }
 
-            // 5. Send email if enabled
+            // 6. Send email if enabled
             if (sendEmail && uniqueEmails.length > 0) {
-                const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
-                const deepLink = `${appUrl}/inbox/request/${requestId}`;
-
-                // Use custom template from emailConfig if available
+                // Use custom template from emailConfig (Editor) or top-level columns (Sidebar)
                 const emailCfg = notifConfig.emailConfig;
-                const subject = emailCfg?.subjectTemplate
-                    ? this.renderTemplate(emailCfg.subjectTemplate, request)
+                const subject = (emailCfg?.subjectTemplate || sidebarEmailSubject)
+                    ? this.renderTemplate(emailCfg?.subjectTemplate || sidebarEmailSubject!, request, requesterName)
                     : `Data Input Required [${request.displayId}]`;
-                const bodyText = emailCfg?.bodyTemplate
-                    ? this.renderTemplate(emailCfg.bodyTemplate, request)
+
+                const bodyText = (emailCfg?.bodyTemplate || sidebarEmailBody)
+                    ? this.renderTemplate(emailCfg?.bodyTemplate || sidebarEmailBody!, request, requesterName, deepLink)
                     : `Your input is required for request ${request.displayId} – ${request.title}.\n\nLink: ${deepLink}`;
 
                 for (const email of uniqueEmails) {
@@ -216,7 +254,8 @@ export class NotificationHandler {
         request: any,
         stepId: string,
         type: string,
-        role: string
+        role: string,
+        priority?: string
     ) {
         const db = await cds.connect.to('db');
         const { Notifications } = db.entities('sap.cre');
@@ -225,7 +264,7 @@ export class NotificationHandler {
             recipient_ID: userId,
             title,
             message,
-            priority: request.priority || 'MEDIUM',
+            priority: priority || request.priority || 'MEDIUM',
             type,
             request_ID: request.ID,
             stepId,
@@ -275,13 +314,23 @@ export class NotificationHandler {
                 throw new Error(`Missing data for notification (approval=${approvalId}, step=${stepId}, request=${requestId}), aborting.`);
             }
 
-            // 2. Fetch notificationsContent from StepDefinition — robust parser
-            let notifConfig: ParsedNotificationsContent = { channels: ['bell', 'email'] };
+            // 2. Fetch notificationsContent and templates from StepDefinition — robust parser
+            let notifConfig: ParsedNotificationsContent = { channels: [] };
+            let sidebarEmailSubject: string | null = null;
+            let sidebarEmailBody: string | null = null;
+
             if (step.stepDefinition_ID) {
                 const stepDef = await SELECT.one.from(StepDefinitions)
                     .where({ ID: step.stepDefinition_ID })
-                    .columns('notificationsContent') as { notificationsContent?: string | null } | null;
+                    .columns('notificationsContent', 'emailSubject', 'emailBody') as {
+                        notificationsContent?: string | null,
+                        emailSubject?: string | null,
+                        emailBody?: string | null
+                    } | null;
+
                 notifConfig = parseNotificationsContent(stepDef?.notificationsContent);
+                sidebarEmailSubject = stepDef?.emailSubject || null;
+                sidebarEmailBody = stepDef?.emailBody || null;
             }
 
             const sendBell = notifConfig.channels.includes('bell') || notifConfig.channels.includes('in-app');
@@ -341,10 +390,25 @@ export class NotificationHandler {
             const uniqueUserIds = [...new Set(recipientUserIds)];
             const uniqueEmails = [...new Set(recipientEmails)];
 
-            // 4. Create in-app (bell) notifications if enabled
+            // 4. Resolve Variables for templates (Title, Message, Email)
+            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
+            const requesterName = requester?.displayName || requester?.email || 'Requester';
+
+            const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
+            const deepLink = `${appUrl}/inbox/request/${requestId}`;
+
+            // 5. Create in-app (bell) notifications if enabled
             if (sendBell) {
-                const notificationTitle = 'Approval Required';
-                const notificationMessage = `Request ${request.displayId || 'Request'} needs your approval`;
+                const bellCfg = notifConfig.bellConfig;
+                const notificationTitle = bellCfg?.titleTemplate
+                    ? this.renderTemplate(bellCfg.titleTemplate, request, requesterName)
+                    : 'Approval Required';
+                const notificationMessage = bellCfg?.bodyTemplate
+                    ? this.renderTemplate(bellCfg.bodyTemplate, request, requesterName, deepLink)
+                    : `Request ${request.displayId || 'Request'} needs your approval`;
+                const type = this.renderTemplate(bellCfg?.typeTemplate || 'APPROVAL', request, requesterName);
+                const priority = this.renderTemplate(bellCfg?.priorityTemplate || request.priority || 'MEDIUM', request, requesterName);
+                const role = this.renderTemplate(bellCfg?.roleTemplate || 'Approver', request, requesterName);
 
                 for (const userId of uniqueUserIds) {
                     await this.createInAppNotification(
@@ -353,8 +417,9 @@ export class NotificationHandler {
                         notificationMessage,
                         request,
                         stepId,
-                        'APPROVAL',
-                        'Approver'
+                        type,
+                        role,
+                        priority
                     );
                 }
                 this.log.info(`[notification-handler] Created ${uniqueUserIds.length} in-app notification(s) for approval ${approvalId}`);
@@ -362,7 +427,7 @@ export class NotificationHandler {
                 this.log.info(`[notification-handler] Bell notifications disabled for this step — skipping in-app.`);
             }
 
-            // 5. Send email notifications if enabled
+            // 6. Send email notifications if enabled
             if (!sendEmail) {
                 this.log.info(`[notification-handler] Email notifications disabled for this step — done.`);
                 return;
@@ -373,7 +438,7 @@ export class NotificationHandler {
                 return;
             }
 
-            // 6. Fetch submitted data summary
+            // 7. Fetch submitted data summary
             const stepData = await SELECT.one.from(RequestData).where({ step_ID: stepId });
             let dataSummary = 'No additional data.';
             if (stepData?.payload) {
@@ -386,21 +451,14 @@ export class NotificationHandler {
                 } catch { /* ignore parse error */ }
             }
 
-            // 7. Resolve Requester Name – use createdBy_ID (UUID FK)
-            const requester = await SELECT.one.from(ShadowUsers).where({ ID: request.createdBy_ID }).columns('displayName', 'email');
-            const requesterName = requester?.displayName || requester?.email || 'Requester';
-
             // 8. Build email content — use custom template from emailConfig if available
-            const appUrl = process.env.APP_URL || 'https://conarum-gmbh---co--kg---payasyougo-conarum-demo-general145ef808.cfapps.eu10.hana.ondemand.com';
-            const deepLink = `${appUrl}/inbox/request/${requestId}`;
-
             const emailCfg = notifConfig.emailConfig;
-            const subject = emailCfg?.subjectTemplate
-                ? this.renderTemplate(emailCfg.subjectTemplate, request, requesterName)
+            const subject = (emailCfg?.subjectTemplate || sidebarEmailSubject)
+                ? this.renderTemplate(emailCfg?.subjectTemplate || sidebarEmailSubject!, request, requesterName)
                 : `New Approval Request [${request.displayId}] – Action Required`;
 
-            const html = emailCfg?.bodyTemplate
-                ? this.renderTemplate(emailCfg.bodyTemplate, request, requesterName, deepLink)
+            const html = (emailCfg?.bodyTemplate || sidebarEmailBody)
+                ? this.renderTemplate(emailCfg?.bodyTemplate || sidebarEmailBody!, request, requesterName, deepLink)
                 : `
                 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 20px; color: #333; line-height: 1.6;">
                     <p>Dear Approver,</p>
@@ -426,8 +484,8 @@ export class NotificationHandler {
                 </div>
             `;
 
-            const text = emailCfg?.bodyTemplate
-                ? this.renderTemplate(emailCfg.bodyTemplate, request, requesterName, deepLink)
+            const text = (emailCfg?.bodyTemplate || sidebarEmailBody)
+                ? this.renderTemplate(emailCfg?.bodyTemplate || sidebarEmailBody!, request, requesterName, deepLink)
                 : `Dear Approver,\n\nYou have been assigned a new request that requires your review and decision.\n\nPlease find the details below:\n- Request: ${request.title}\n- Step: ${approval.ruleName || step.stepDefinition?.stepName}\n- Priority: ${NotificationHandler.formatPriority(request.priority)}\n- Created By: ${requesterName}\n\nKindly review the request in the system and provide your approval or rejection at your earliest convenience.\nYou can access the request here: ${deepLink}\n\nIf you have any questions or require further clarification, please feel free to contact the requester.\n\nThank you for your prompt attention.\n\nBest regards,\nproRequest System`;
 
             // 9. Send to all resolved emails — individually try/catch to avoid crashing the flow
@@ -454,8 +512,7 @@ export class NotificationHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     private static formatPriority(priority: string): string {
-        const p = (priority || 'MEDIUM').toLowerCase();
-        return p.charAt(0).toUpperCase() + p.slice(1);
+        return formatEnumLabel(priority || 'MEDIUM');
     }
 
     /**
@@ -468,12 +525,36 @@ export class NotificationHandler {
         requesterName?: string,
         deepLink?: string
     ): string {
-        return template
-            .replace(/\{\{displayId\}\}/g, request.displayId || '')
-            .replace(/\{\{title\}\}/g, request.title || '')
-            .replace(/\{\{priority\}\}/g, this.formatPriority(request.priority))
-            .replace(/\{\{requesterName\}\}/g, requesterName || 'Requester')
-            .replace(/\{\{deepLink\}\}/g, deepLink || '');
+        if (!template) return '';
+
+        return template.replace(/\{\{(.*?)\}\}/g, (match, p1) => {
+            const key = p1.trim();
+            const lowerKey = key.toLowerCase();
+
+            // 1. System Variables (Studio Format: System.FieldName)
+            if (lowerKey === 'system.priority') return this.formatPriority(request.priority);
+            if (lowerKey === 'system.requestid' || lowerKey === 'system.displayid') return request.displayId || '';
+            if (lowerKey === 'system.requesttitle') return request.title || '';
+            if (lowerKey === 'system.requestuuid') return request.ID || '';
+            if (lowerKey === 'system.requester') return requesterName || 'Requester';
+
+            // 2. Internal/Legacy IDs (Studio Format: __request_*)
+            if (lowerKey === '__request_priority') return this.formatPriority(request.priority);
+            if (lowerKey === '__request_displayid') return request.displayId || '';
+            if (lowerKey === '__request_title') return request.title || '';
+            if (lowerKey === '__request_uuid') return request.ID || '';
+            if (lowerKey === '__requester_name') return requesterName || 'Requester';
+
+            // 3. Short Legacy Names
+            if (lowerKey === 'displayid') return request.displayId || '';
+            if (lowerKey === 'title') return request.title || '';
+            if (lowerKey === 'priority') return this.formatPriority(request.priority);
+            if (lowerKey === 'requestername') return requesterName || 'Requester';
+            if (lowerKey === 'deeplink') return deepLink || '';
+
+            // 4. Fallback: Return raw key if not matched
+            return match;
+        });
     }
 
     /**

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, Bell, MessageSquare, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, Search, Link2, Users, RefreshCw } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Trash2, Play, Flag, FileEdit, Mail, Shield, Bell, MessageSquare, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, Search, Users, AlertCircle, FileText, ChevronDown, Calculator, Hash, Type, RotateCcw } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -12,24 +12,28 @@ import { PrincipalSelect, type Principal } from '@/components/shared/PrincipalSe
 import { OrgHierarchySelect } from '@/components/shared/OrgHierarchySelect';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/Dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/Popover';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Textarea } from '@/components/ui/TextArea';
+
 import { MappingSelector } from './components/MappingSelector';
 import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
-import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeInput, UiNodeOutput } from './types';
-import { getPredecessorOutputs, flattenPredecessorOutputsForPicker, validateInputMappings, findAllAncestors } from './workflowIOHelpers';
+import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeOutput } from './types';
+import { findAllAncestors } from './workflowIOHelpers';
+import { AVAILABLE_ICONS, ICON_CATEGORIES, getAllIcons, type IconCategory } from '../../config/iconConfig';
+import { cn } from '@/lib/utils';
 
 // System-level output fields available on every Start Node
 const SYSTEM_OUTPUT_FIELDS = [
     { id: '__request_uuid', label: 'Request UUID', type: 'system', category: 'Request Info' },
     { id: '__request_displayId', label: 'Request ID', type: 'system', category: 'Request Info' },
     { id: '__request_title', label: 'Request Title', type: 'system', category: 'Request Info' },
+    { id: '__request_priority', label: 'Priority', type: 'system', category: 'Request Info' },
     { id: '__requester_name', label: 'Requester', type: 'system', category: 'Related Personnel' },
 ] as const;
 
-const DEFAULT_EMAIL_SUBJECT = '';
-const DEFAULT_EMAIL_BODY = '';
+
 
 // ─── Trigger Type Toggle ──────────────────────────────────────────────────
 function TriggerTypeToggle({
@@ -148,369 +152,14 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
                 case 'apiCall':
                 case 'api_call':
                     return { icon: Globe, color: '#0ea5e9', label: 'API Call' };
+                case 'formula':
+                    return { icon: Calculator, color: 'var(--brand-red)', label: 'Formula' };
                 default:
                     return { icon: FileEdit, color: 'var(--brand-red)', label: 'Action Step' };
             }
         default:
             return { icon: FileEdit, color: '#64748b', label: 'Step' };
     }
-}
-
-// ─── Node I/O Section ─────────────────────────────────────────────────────
-// Renders Input/Output configuration directly in the Workflow Properties Panel.
-// - Start Node (form submission): Output only (auto-synced from form)
-// - User Task: Input (from predecessor outputs) + Output (from form)
-// - Other: Input (from predecessors) + Output (manual)
-
-function IOFieldRow({
-    mapping,
-    onAliasChange,
-    onRemove,
-    isInvalid,
-    isReadOnly,
-}: {
-    mapping: { sourcePath: string; alias?: string; type?: string; derivedFrom?: string; bindTo?: string };
-    onAliasChange?: (alias: string) => void;
-    onRemove?: () => void;
-    isInvalid?: boolean;
-    isReadOnly?: boolean;
-}) {
-    return (
-        <div
-            className={`flex items-center gap-2 p-2 rounded-lg border transition-colors group ${isInvalid
-                ? 'border-red-300 bg-red-50/50'
-                : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
-        >
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                    <Link2 size={12} className={isInvalid ? 'text-red-400' : 'text-slate-400'} />
-                    <code className="text-xs font-mono text-slate-700 truncate">
-                        {mapping.sourcePath}
-                    </code>
-                    {mapping.type && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium flex-shrink-0">
-                            {mapping.type}
-                        </span>
-                    )}
-                    {mapping.bindTo && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium flex-shrink-0">
-                            global
-                        </span>
-                    )}
-                    {mapping.derivedFrom === 'formLayout' && !mapping.bindTo && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-500 font-medium flex-shrink-0">
-                            form
-                        </span>
-                    )}
-                </div>
-                {isInvalid && (
-                    <p className="text-[10px] text-red-500 mt-0.5 flex items-center gap-1">
-                        <AlertTriangle size={10} />
-                        Source output not found
-                    </p>
-                )}
-            </div>
-            {!isReadOnly && onAliasChange && (
-                <Input
-                    value={mapping.alias || ''}
-                    onChange={(e) => onAliasChange(e.target.value)}
-                    placeholder="alias"
-                    className="w-24 h-7 text-xs border-slate-200"
-                />
-            )}
-            {!isReadOnly && onRemove && (
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    onClick={onRemove}
-                >
-                    <Trash2 size={12} />
-                </Button>
-            )}
-        </div>
-    );
-}
-
-function IOFieldPicker({
-    availableFields,
-    usedPaths,
-    onAdd,
-}: {
-    availableFields: { key: string; label: string; type: string }[];
-    usedPaths: Set<string>;
-    onAdd: (path: string, type: string) => void;
-}) {
-    const [search, setSearch] = useState('');
-
-    const filtered = useMemo(() => {
-        const q = search.toLowerCase();
-        return availableFields.filter(
-            (f) =>
-                !usedPaths.has(f.key) &&
-                (f.key.toLowerCase().includes(q) || f.label.toLowerCase().includes(q) || f.type.toLowerCase().includes(q))
-        );
-    }, [availableFields, usedPaths, search]);
-
-    if (availableFields.length === 0) {
-        return (
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
-                <p className="text-xs text-amber-600">
-                    No predecessor outputs available. Connect predecessor nodes first.
-                </p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="space-y-1.5">
-            <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by field name, path, or type..."
-                    className="pl-8 h-8 text-xs"
-                />
-            </div>
-            <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-                {filtered.length === 0 ? (
-                    <p className="text-xs text-slate-400 p-3 text-center italic">
-                        {search ? 'No matching fields' : 'All fields mapped'}
-                    </p>
-                ) : (
-                    filtered.map((f) => (
-                        <button
-                            key={f.key}
-                            onClick={() => onAdd(f.key, f.type)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors"
-                        >
-                            <code className="text-xs font-mono text-slate-700 flex-1 truncate">{f.key}</code>
-                            <span className="text-[10px] text-slate-400">{f.label}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">
-                                {f.type}
-                            </span>
-                        </button>
-                    ))
-                )}
-            </div>
-        </div>
-    );
-}
-
-function NodeIOSection({
-    node,
-    allNodes,
-    edges,
-}: {
-    node: UiWorkflowNode;
-    allNodes: UiWorkflowNode[];
-    edges: UiWorkflowEdge[];
-}) {
-    const { updateNodeInputs, updateNodeOutputs, syncUserTaskOutputs } = useStudioStore();
-    const [showInputPicker, setShowInputPicker] = useState(false);
-
-    const nodeType = node.type || 'actionNode';
-    const isStartNode = nodeType === 'startNode';
-    const isFormSubmission = isStartNode && (node.data.triggerType as string || 'FORM_SUB') === 'FORM_SUB';
-    const isUserTask = nodeType === 'actionNode' && (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask');
-
-    const inputs = (node.data.inputs as UiNodeInput[] | undefined) ?? [];
-    const outputs = (node.data.outputs as UiNodeOutput[] | undefined) ?? [];
-    const hasDerivedOutputs = outputs.some((o) => o.derivedFrom === 'formLayout');
-
-    // Compute predecessor outputs for Input picker
-    // NOTE: All hooks must be called unconditionally (React rules of hooks).
-    // Early returns are deferred until after all hooks.
-    const predecessorGroups = useMemo(
-        () => getPredecessorOutputs(node.id, allNodes, edges),
-        [node.id, allNodes, edges]
-    );
-    const pickableInputFields = useMemo(
-        () => flattenPredecessorOutputsForPicker(predecessorGroups),
-        [predecessorGroups]
-    );
-    const validInputKeys = useMemo(
-        () => new Set(pickableInputFields.map((f) => f.key)),
-        [pickableInputFields]
-    );
-
-    // Validate existing inputs
-    const { invalid: invalidInputs } = useMemo(
-        () => validateInputMappings(inputs, validInputKeys),
-        [inputs, validInputKeys]
-    );
-    const hasInvalidInputs = invalidInputs.length > 0;
-
-    // Show/hide input section (start node with form submission = no input, user task = shown in tab)
-    const showInputs = !isStartNode && !isUserTask;
-    // Show output section ONLY for action nodes that are NOT User Tasks (Start node outputs are separate, User Tasks have Field Mappings)
-    const showOutputs = nodeType === 'actionNode' && !isUserTask;
-
-    // End nodes and condition nodes don't need I/O — guard AFTER all hooks
-    if (nodeType === 'endNode' || nodeType === 'conditionNode') return null;
-    if (!showInputs && !showOutputs) return null;
-
-    return (
-        <Card className="p-4 space-y-4">
-            <Label variant="section">Data Mapping</Label>
-
-            {/* Validation warning banner */}
-            {hasInvalidInputs && (
-                <div className="p-2.5 bg-red-50 rounded-lg border border-red-200 flex items-start gap-2">
-                    <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-red-600">
-                        Some input mappings reference outputs that no longer exist.
-                        Update or remove them before saving.
-                    </p>
-                </div>
-            )}
-
-            {/* ── Inputs Section ─────────────────────────────── */}
-            {showInputs && (
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                            <ArrowDownToLine size={14} className="text-blue-500" />
-                            Inputs
-                            <span className="text-slate-400 font-normal">({inputs.length})</span>
-                        </Label>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-xs text-blue-600 hover:text-blue-700"
-                            onClick={() => setShowInputPicker(!showInputPicker)}
-                        >
-                            <Plus size={12} className="mr-1" />
-                            Add
-                        </Button>
-                    </div>
-
-                    {showInputPicker && (
-                        <IOFieldPicker
-                            availableFields={pickableInputFields}
-                            usedPaths={new Set(inputs.map((i) => i.sourcePath))}
-                            onAdd={(path, type) => {
-                                updateNodeInputs(node.id, [...inputs, { sourcePath: path, type }]);
-                                setShowInputPicker(false);
-                            }}
-                        />
-                    )}
-
-                    {inputs.length === 0 && !showInputPicker && (
-                        predecessorGroups.length === 0 ? (
-                            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
-                                <p className="text-[11px] text-slate-400 italic text-center">
-                                    No predecessor nodes connected. Add edges to make outputs available as inputs.
-                                </p>
-                            </div>
-                        ) : (
-                            <p className="text-xs text-slate-400 italic text-center py-2">No inputs configured</p>
-                        )
-                    )}
-
-                    <div className="space-y-1">
-                        {inputs.map((input, idx) => (
-                            <IOFieldRow
-                                key={input.sourcePath}
-                                mapping={input}
-                                isInvalid={!validInputKeys.has(input.sourcePath)}
-                                onAliasChange={(alias) => {
-                                    const updated = [...inputs];
-                                    updated[idx] = { ...updated[idx], alias: alias || undefined };
-                                    updateNodeInputs(node.id, updated);
-                                }}
-                                onRemove={() => updateNodeInputs(node.id, inputs.filter((_, i) => i !== idx))}
-                            />
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Divider between Input & Output */}
-            {showInputs && showOutputs && <div className="border-t border-slate-100" />}
-
-            {/* ── Outputs Section ────────────────────────────── */}
-            {showOutputs && (
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                            <ArrowUpFromLine size={14} className="text-emerald-500" />
-                            Outputs
-                            <span className="text-slate-400 font-normal">({outputs.length})</span>
-                        </Label>
-                        {(isUserTask || isFormSubmission) && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-xs text-emerald-600 hover:text-emerald-700"
-                                onClick={() => syncUserTaskOutputs(node.id)}
-                                title="Sync outputs from form layout"
-                            >
-                                <RefreshCw size={12} className="mr-1" />
-                                Sync
-                            </Button>
-                        )}
-                    </div>
-
-                    {/* User Task / Start info banner */}
-                    {(isUserTask || isFormSubmission) && hasDerivedOutputs && (
-                        <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                            <p className="text-[11px] text-blue-600">
-                                Outputs are derived from all form fields.
-                                Fields bound to the Data Schema are tagged <strong className="text-emerald-600">global</strong>.
-                                Click <strong>Sync</strong> to refresh after editing the form.
-                            </p>
-                        </div>
-                    )}
-
-                    {(isUserTask || isFormSubmission) && !hasDerivedOutputs && outputs.length === 0 && (
-                        <div className="p-2 bg-amber-50 rounded-lg border border-amber-200">
-                            <p className="text-[11px] text-amber-600">
-                                Assign a form and click <strong>Sync</strong> to derive outputs from form fields.
-                            </p>
-                        </div>
-                    )}
-
-                    {outputs.length === 0 && !isUserTask && !isFormSubmission && (
-                        <p className="text-xs text-slate-400 italic text-center py-2">No outputs configured</p>
-                    )}
-
-                    <div className="space-y-1">
-                        {outputs.map((output, idx) => (
-                            <IOFieldRow
-                                key={output.sourcePath}
-                                mapping={output}
-                                isReadOnly={(isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'}
-                                onAliasChange={
-                                    (isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'
-                                        ? undefined
-                                        : (alias) => {
-                                            const updated = [...outputs];
-                                            updated[idx] = { ...updated[idx], alias: alias || undefined };
-                                            updateNodeOutputs(node.id, updated);
-                                        }
-                                }
-                                onRemove={
-                                    (isUserTask || isFormSubmission) && output.derivedFrom === 'formLayout'
-                                        ? undefined
-                                        : () => updateNodeOutputs(node.id, outputs.filter((_, i) => i !== idx))
-                                }
-                            />
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* Start node: explicitly hide inputs */}
-            {isStartNode && (
-                <p className="text-[11px] text-slate-400 italic">
-                    Start nodes do not receive inputs.
-                </p>
-            )}
-        </Card>
-    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -528,8 +177,8 @@ function EmailTemplateEditor({
     availableSources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string }>;
 }) {
     const [open, setOpen] = useState(false);
-    const [draftSubject, setDraftSubject] = useState(subject || DEFAULT_EMAIL_SUBJECT);
-    const [draftBody, setDraftBody] = useState(body || DEFAULT_EMAIL_BODY);
+    const [draftSubject, setDraftSubject] = useState(subject || '');
+    const [draftBody, setDraftBody] = useState(body || '');
     const [lastSaved, setLastSaved] = useState<string | null>(null);
     const bodyRef = useState<HTMLTextAreaElement | null>(null);
     const subjectRef = useState<HTMLInputElement | null>(null);
@@ -537,8 +186,8 @@ function EmailTemplateEditor({
     const [viewMode, setViewMode] = useState<'html' | 'preview'>('html');
 
     const handleOpen = () => {
-        setDraftSubject(subject || DEFAULT_EMAIL_SUBJECT);
-        setDraftBody(body || DEFAULT_EMAIL_BODY);
+        setDraftSubject(subject || '');
+        setDraftBody(body || '');
         setOpen(true);
     };
 
@@ -548,8 +197,8 @@ function EmailTemplateEditor({
         setOpen(false);
     };
 
-    const insertVariable = (fieldId: string) => {
-        const varStr = `{{${fieldId}}}`;
+    const insertVariable = (varName: string) => {
+        const varStr = `{{${varName}}}`;
         if (activeTarget === 'body') {
             const textarea = bodyRef[0];
             if (textarea) {
@@ -622,15 +271,19 @@ function EmailTemplateEditor({
 
         // Replace system variables
         SYSTEM_OUTPUT_FIELDS.forEach(f => {
-            const badge = `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold border border-amber-200">@${f.label}</span>`;
-            content = content.replaceAll(`{{${f.id}}}`, badge);
-            subj = subj.replaceAll(`{{${f.id}}}`, badge);
+            const varStr = `System.${f.label.replace(/\s+/g, '')}`;
+            const badge = `<span class="px-1.5 py-0.5 rounded bg-[var(--brand-red)]/10 text-[var(--brand-red)] font-bold border border-[var(--brand-red)]/20">@${f.label}</span>`;
+            content = content.replaceAll(`{{${varStr}}}`, badge);
+            subj = subj.replaceAll(`{{${varStr}}}`, badge);
         });
         // Replace form variables
         availableSources.forEach(s => {
+            if (s.stepId === 'system' || s.fieldId.startsWith('__')) return;
+            const stepName = s.stepName || 'Unknown Step';
+            const varStr = `${stepName.replace(/\s+/g, '')}.${s.fieldName.replace(/\s+/g, '')}`;
             const badge = `<span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold border border-blue-200">#${s.fieldName}</span>`;
-            content = content.replaceAll(`{{${s.fieldId}}}`, badge);
-            subj = subj.replaceAll(`{{${s.fieldId}}}`, badge);
+            content = content.replaceAll(`{{${varStr}}}`, badge);
+            subj = subj.replaceAll(`{{${varStr}}}`, badge);
         });
         return { body: content, subject: subj };
     }, [draftBody, draftSubject, availableSources]);
@@ -641,7 +294,7 @@ function EmailTemplateEditor({
                 variant="outline"
                 size="sm"
                 onClick={handleOpen}
-                className="w-full gap-2 font-semibold h-9 border-amber-200 bg-amber-50/50 text-amber-700 hover:bg-amber-100 hover:text-amber-800"
+                className="w-full gap-2 font-semibold h-9 border-[var(--brand-red)]/30 bg-[var(--brand-red)]/5 text-[var(--brand-red)] hover:bg-[var(--brand-red)]/10 hover:text-[var(--brand-red)]"
             >
                 <Mail size={14} />
                 Edit Body Content
@@ -652,7 +305,7 @@ function EmailTemplateEditor({
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b border-slate-100">
                         <div className="flex items-center gap-4">
-                            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-amber-50 text-amber-500">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--brand-red)]/10 text-[var(--brand-red)]">
                                 <Mail size={24} />
                             </div>
                             <div>
@@ -662,9 +315,6 @@ function EmailTemplateEditor({
                                 </DialogDescription>
                             </div>
                         </div>
-                        <DialogPrimitive.Close className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
-                            <X size={20} />
-                        </DialogPrimitive.Close>
                     </div>
 
                     <div className="flex h-[600px]">
@@ -689,17 +339,20 @@ function EmailTemplateEditor({
                                                         <div key={stepName} className="space-y-2">
                                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight px-1">{stepName}</div>
                                                             <div className="grid gap-1.5">
-                                                                {fields.map(f => (
-                                                                    <button
-                                                                        key={f.id}
-                                                                        onClick={() => insertVariable(f.id)}
-                                                                        title={`Click to insert {{${f.id}}}`}
-                                                                        className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-amber-400 hover:shadow-sm transition-all text-left"
-                                                                    >
-                                                                        <span className="text-xs font-medium text-slate-700 group-hover:text-amber-600 truncate">{f.label}</span>
-                                                                        <Play size={8} className="text-slate-300 group-hover:text-amber-400" />
-                                                                    </button>
-                                                                ))}
+                                                                {fields.map(f => {
+                                                                    const varStr = `${stepName.replace(/\s+/g, '')}.${f.label.replace(/\s+/g, '')}`;
+                                                                    return (
+                                                                        <button
+                                                                            key={f.id}
+                                                                            onClick={() => insertVariable(varStr)}
+                                                                            title={`Click to insert {{${varStr}}}`}
+                                                                            className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left"
+                                                                        >
+                                                                            <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                                            <Play size={8} className="text-slate-300 group-hover:text-[var(--brand-red)]" />
+                                                                        </button>
+                                                                    )
+                                                                })}
                                                             </div>
                                                         </div>
                                                     ))}
@@ -718,17 +371,20 @@ function EmailTemplateEditor({
                                                 <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
                                             </div>
                                             <div className="grid gap-1.5">
-                                                {fields.map(f => (
-                                                    <button
-                                                        key={f.id}
-                                                        onClick={() => insertVariable(f.id)}
-                                                        title={`Click to insert {{${f.id}}}`}
-                                                        className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-amber-400 hover:shadow-sm transition-all text-left"
-                                                    >
-                                                        <span className="text-xs font-medium text-slate-700 group-hover:text-amber-600 truncate">{f.label}</span>
-                                                        <Play size={8} className="text-slate-300 group-hover:text-amber-400" />
-                                                    </button>
-                                                ))}
+                                                {fields.map(f => {
+                                                    const varStr = `System.${f.label.replace(/\s+/g, '')}`;
+                                                    return (
+                                                        <button
+                                                            key={f.id}
+                                                            onClick={() => insertVariable(varStr)}
+                                                            title={`Click to insert {{${varStr}}}`}
+                                                            className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left"
+                                                        >
+                                                            <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                            <Play size={8} className="text-slate-300 group-hover:text-[var(--brand-red)]" />
+                                                        </button>
+                                                    )
+                                                })}
                                             </div>
                                         </div>
                                     );
@@ -748,7 +404,7 @@ function EmailTemplateEditor({
                                     value={draftSubject}
                                     onFocus={() => setActiveTarget('subject')}
                                     onChange={(e) => setDraftSubject(e.target.value)}
-                                    className="h-10 px-4 text-slate-900 font-semibold bg-slate-50/50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-amber-400/20 focus:border-amber-400 rounded-lg transition-all"
+                                    className="h-10 px-4 text-slate-900 font-semibold bg-slate-50/50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)] rounded-lg transition-all"
                                     placeholder="Enter subject..."
                                 />
                             </div>
@@ -763,13 +419,13 @@ function EmailTemplateEditor({
                                         <div className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200 mr-2">
                                             <button
                                                 onClick={() => setViewMode('html')}
-                                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'html' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'html' ? 'bg-white shadow-sm text-[var(--brand-red)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             >
                                                 HTML
                                             </button>
                                             <button
                                                 onClick={() => setViewMode('preview')}
-                                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'preview' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-500 hover:text-slate-700'}`}
+                                                className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'preview' ? 'bg-white shadow-sm text-[var(--brand-red)]' : 'text-slate-500 hover:text-slate-700'}`}
                                             >
                                                 PREVIEW
                                             </button>
@@ -785,7 +441,7 @@ function EmailTemplateEditor({
                                     </div>
                                 </div>
 
-                                <div className="relative flex-1 flex flex-col min-h-[350px] rounded-xl border border-slate-200 bg-slate-50/30 overflow-hidden focus-within:ring-2 focus-within:ring-amber-400/20 focus-within:border-amber-400 transition-all">
+                                <div className="relative flex-1 flex flex-col min-h-[350px] rounded-xl border border-slate-200 bg-slate-50/30 overflow-hidden focus-within:ring-2 focus-within:ring-[var(--brand-red)]/20 focus-within:border-[var(--brand-red)] transition-all">
                                     {viewMode === 'html' ? (
                                         <textarea
                                             ref={(el) => { if (el) bodyRef[0] = el; }}
@@ -842,10 +498,1084 @@ function EmailTemplateEditor({
                             </Button>
                             <Button
                                 onClick={handleSave}
-                                className="h-11 px-8 bg-[#FF7D29] hover:bg-[#e66d1f] text-white font-bold rounded-xl shadow-lg shadow-orange-200 gap-2 transition-all text-sm"
+                                className="h-11 px-8 bg-[var(--brand-red)] hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-red-200 gap-2 transition-all text-sm"
                             >
                                 <Mail size={16} />
                                 Save Email Template
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
+export type FormulaItem = {
+    id: string;
+    resultName: string;
+    expression: string;
+};
+
+// ─── Math Guide Helper ───────────────────────────────────────────────────
+function MathGuide() {
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <button className="p-1 rounded-full hover:bg-slate-100 text-slate-400 transition-colors" title="View supported operators">
+                    <Info size={14} />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-5 bg-white shadow-2xl border border-slate-200 rounded-2xl z-[9999]">
+                <div className="space-y-4">
+                    <div className="pb-3 border-b border-slate-100">
+                        <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                            <Calculator size={16} className="text-[var(--brand-red)]" />
+                            Formula Help
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-1">Supported mathematical operators and syntax.</p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-bold text-[var(--brand-red)] px-1.5 py-0.5 rounded bg-red-50">+ - * /</span>
+                            <span className="text-slate-600 font-medium">Basic Math</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-bold text-[var(--brand-red)] px-1.5 py-0.5 rounded bg-red-50">**</span>
+                            <span className="text-slate-600 font-medium">Power (e.g. 2**3 = 8)</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-bold text-[var(--brand-red)] px-1.5 py-0.5 rounded bg-red-50">%</span>
+                            <span className="text-slate-600 font-medium">Remainder (Modulo)</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-bold text-[var(--brand-red)] px-1.5 py-0.5 rounded bg-red-50">( )</span>
+                            <span className="text-slate-600 font-medium">Grouping</span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-blue-50 border border-blue-100">
+                        <p className="text-[11px] text-blue-800 leading-relaxed">
+                            <strong className="block mb-1">💡 Variables</strong>
+                            Always wrap field IDs in double curly braces: <code className="bg-white px-1.5 py-0.5 rounded shadow-sm text-blue-700 font-bold font-mono">{"{{Step.Field}}"}</code>
+                        </p>
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Formula Editor (Dialog)
+// ═══════════════════════════════════════════════════════════════════════════
+function FormulaEditor({
+    formulas,
+    onSave,
+    availableSources,
+}: {
+    formulas: FormulaItem[];
+    onSave: (formulas: FormulaItem[]) => void;
+    availableSources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string; type?: string }>;
+}) {
+    const [open, setOpen] = useState(false);
+    const [draftFormulas, setDraftFormulas] = useState<FormulaItem[]>([]);
+    const [activeTarget, setActiveTarget] = useState<{ id: string, field: 'resultName' | 'expression' } | null>(null);
+    const [testingIds, setTestingIds] = useState<string[]>([]);
+    const [testValues, setTestValues] = useState<Record<string, string>>({});
+
+    const expressionToNames = useCallback((expr: string) => {
+        let res = expr;
+        // Also map SYSTEM_OUTPUT_FIELDS if they use f.id to f.label
+        availableSources.forEach(s => {
+            const idRegex = new RegExp(`\\{\\{${s.fieldId}\\}\\}`, 'g');
+            const friendlyName = s.stepId === 'system'
+                ? `System.${s.fieldName.replace(/\s+/g, '')}`
+                : `${s.stepName.replace(/\s+/g, '')}.${s.fieldName.replace(/\s+/g, '')}`;
+            res = res.replace(idRegex, `{{${friendlyName}}}`);
+        });
+        return res;
+    }, [availableSources]);
+
+    const expressionToIds = useCallback((expr: string) => {
+        let res = expr;
+        availableSources.forEach(s => {
+            const friendlyName = s.stepId === 'system'
+                ? `System.${s.fieldName.replace(/\s+/g, '')}`
+                : `${s.stepName.replace(/\s+/g, '')}.${s.fieldName.replace(/\s+/g, '')}`;
+            const escapedName = friendlyName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+            const nameRegex = new RegExp(`\\{\\{${escapedName}\\}\\}`, 'g');
+            res = res.replace(nameRegex, `{{${s.fieldId}}}`);
+        });
+        return res;
+    }, [availableSources]);
+
+    // Update draft state when props change or modal opens
+    useEffect(() => {
+        if (open) {
+            if (formulas && formulas.length > 0) {
+                setDraftFormulas(formulas.map(f => ({ ...f, expression: expressionToNames(f.expression) })));
+                setActiveTarget({ id: formulas[0].id, field: 'expression' });
+            } else {
+                const newId = crypto.randomUUID();
+                setDraftFormulas([{ id: newId, resultName: '', expression: '' }]);
+                setActiveTarget({ id: newId, field: 'expression' });
+            }
+        }
+    }, [open, formulas, expressionToNames]);
+
+    const handleOpen = () => setOpen(true);
+
+    const handleSave = () => {
+        const validFormulas = draftFormulas.filter(f => f.resultName.trim() !== '' || f.expression.trim() !== '');
+        onSave(validFormulas.map(f => ({ ...f, expression: expressionToIds(f.expression) })));
+        setOpen(false);
+    };
+
+    const addFormula = () => {
+        const newId = crypto.randomUUID();
+        setDraftFormulas([...draftFormulas, { id: newId, resultName: '', expression: '' }]);
+        setActiveTarget({ id: newId, field: 'resultName' });
+    };
+
+    const removeFormula = (id: string) => {
+        setDraftFormulas(draftFormulas.filter(f => f.id !== id));
+    };
+
+    const updateFormula = (id: string, field: 'resultName' | 'expression', value: string) => {
+        setDraftFormulas(draftFormulas.map(f => f.id === id ? { ...f, [field]: value } : f));
+    };
+
+    const insertVariable = (varName: string) => {
+        if (!activeTarget) return;
+        const varStr = `{{${varName}}}`;
+        const elmId = `${activeTarget.field}-${activeTarget.id}`;
+        const el = document.getElementById(elmId) as HTMLInputElement | HTMLTextAreaElement | null;
+
+        if (el) {
+            const start = el.selectionStart || 0;
+            const end = el.selectionEnd || 0;
+            setDraftFormulas(prev => prev.map(f => {
+                if (f.id === activeTarget.id) {
+                    const currentVal = f[activeTarget.field];
+                    const before = currentVal.slice(0, start);
+                    const after = currentVal.slice(end);
+                    return { ...f, [activeTarget.field]: before + varStr + after };
+                }
+                return f;
+            }));
+            requestAnimationFrame(() => {
+                el.selectionStart = el.selectionEnd = start + varStr.length;
+                el.focus();
+            });
+        } else {
+            setDraftFormulas(prev => prev.map(f => {
+                if (f.id === activeTarget.id) {
+                    return { ...f, [activeTarget.field]: f[activeTarget.field] + varStr };
+                }
+                return f;
+            }));
+        }
+    };
+
+
+
+    const getVariablesForExpression = useCallback((expr: string) => {
+        const vars = new Set<string>();
+        const matches = expr.match(/\{\{([^}]+)\}\}/g);
+        if (matches) {
+            matches.forEach(m => vars.add(m.replace(/\{\{|\}\}/g, '').trim()));
+        }
+        return Array.from(vars).sort();
+    }, []);
+
+    const evaluate = useCallback((expr: string) => {
+        if (!expr || expr.trim() === '') return null;
+        try {
+            // 1. Replace variables with test values
+            let replaced = expr.replace(/\{\{([^}]+)\}\}/g, (_, name) => {
+                const val = testValues[name.trim()] || '0';
+                return val;
+            });
+
+            // 2. Sanitize (allow only math)
+            const sanitized = replaced.replace(/[^-0-9. +*/%()]/g, '');
+            if (!sanitized.trim()) return null;
+
+            // 3. Eval
+            // eslint-disable-next-line no-new-func
+            const res = new Function(`return (${sanitized})`)();
+            const num = Number(res);
+            return isNaN(num) ? 'Error' : num.toLocaleString();
+        } catch (e) {
+            return 'Error';
+        }
+    }, [testValues]);
+
+    // Group variables by category
+    const categorizedVariables = useMemo(() => {
+        const categories: Record<string, any> = {
+            'Request Info': [],
+            'Related Personnel': [],
+            'Form Data': {}
+        };
+
+        SYSTEM_OUTPUT_FIELDS.forEach(sf => {
+            if (Array.isArray(categories[sf.category])) {
+                categories[sf.category].push({ id: sf.id, label: sf.label, type: sf.type });
+            }
+        });
+
+        availableSources.forEach(s => {
+            if (s.stepId === 'system') return;
+            if (!s.fieldId.startsWith('__')) {
+                const stepName = s.stepName || 'Unknown Step';
+                if (!categories['Form Data'][stepName]) {
+                    categories['Form Data'][stepName] = [];
+                }
+                categories['Form Data'][stepName].push({ id: s.fieldId, label: s.fieldName, type: s.type });
+            }
+        });
+
+        return categories;
+    }, [availableSources]);
+
+    return (
+        <>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpen}
+                className="w-full gap-2 font-semibold h-9 border-[var(--brand-red)]/20 bg-[var(--brand-red)]/5 text-[var(--brand-red)] hover:bg-[var(--brand-red)]/10 hover:text-[var(--brand-red)]"
+            >
+                <Calculator size={14} />
+                Edit Formula Configuration
+            </Button>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-[1100px] p-0 gap-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--brand-red)]/10 text-[var(--brand-red)]">
+                                <Calculator size={24} />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl font-bold text-slate-900">Formula Editor</DialogTitle>
+                                <DialogDescription className="text-sm text-slate-500">
+                                    Use the variable picker on the left to insert dynamic data into your formula.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex h-[600px]">
+                        {/* Sidebar - Smaller width (1/4 instead of 1/3) */}
+                        <div className="w-1/4 bg-slate-50/50 border-r border-slate-100 p-5 overflow-y-auto">
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Available Data</h3>
+
+                            <div className="space-y-6">
+                                {Object.entries(categorizedVariables).map(([category, content]) => {
+                                    // Special rendering for Form Data (nested)
+                                    if (category === 'Form Data') {
+                                        const stepGroups = content as Record<string, any[]>;
+                                        if (Object.keys(stepGroups).length === 0) return null;
+                                        return (
+                                            <div key={category} className="space-y-4">
+                                                <div className="flex items-center gap-2 text-slate-600">
+                                                    <Layers size={12} />
+                                                    <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
+                                                </div>
+                                                <div className="space-y-5 pl-2 border-l-2 border-slate-100 ml-1.5">
+                                                    {Object.entries(stepGroups).map(([stepName, fields]) => (
+                                                        <div key={stepName} className="space-y-2">
+                                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight px-1">{stepName}</div>
+                                                            <div className="grid gap-1.5">
+                                                                {fields.map(f => {
+                                                                    const varStr = `${stepName.replace(/\s+/g, '')}.${f.label.replace(/\s+/g, '')}`;
+                                                                    const isNumber = f.type === 'number';
+                                                                    return (
+                                                                        <button
+                                                                            key={f.id}
+                                                                            onClick={() => insertVariable(varStr)}
+                                                                            title={`Click to insert {{${varStr}}}`}
+                                                                            className="group flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left gap-2"
+                                                                        >
+                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                <div className={`flex flex-shrink-0 items-center justify-center w-5 h-5 rounded ${isNumber ? 'bg-blue-50 text-blue-500' : 'bg-slate-50 text-slate-400'}`}>
+                                                                                    {isNumber ? <Hash size={12} /> : <Type size={12} />}
+                                                                                </div>
+                                                                                <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                                            </div>
+                                                                            <Plus size={12} className="text-slate-300 group-hover:text-[var(--brand-red)] flex-shrink-0" />
+                                                                        </button>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Flat rendering for System Categories
+                                    const fields = content as any[];
+                                    return fields.length > 0 && (
+                                        <div key={category} className="space-y-2">
+                                            <div className="flex items-center gap-2 text-slate-600">
+                                                {category === 'Request Info' && <Database size={12} />}
+                                                {category === 'Related Personnel' && <Shield size={12} />}
+                                                <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
+                                            </div>
+                                            <div className="grid gap-1.5">
+                                                {fields.map(f => {
+                                                    const varStr = `System.${f.label.replace(/\s+/g, '')}`;
+                                                    const isNumber = f.type === 'number';
+                                                    return (
+                                                        <button
+                                                            key={f.id}
+                                                            onClick={() => insertVariable(varStr)}
+                                                            title={`Click to insert {{${varStr}}}`}
+                                                            className="group flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left gap-2"
+                                                        >
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <div className={`flex flex-shrink-0 items-center justify-center w-5 h-5 rounded ${isNumber ? 'bg-blue-50 text-blue-500' : 'bg-slate-50 text-slate-400'}`}>
+                                                                    {isNumber ? <Hash size={12} /> : <Type size={12} />}
+                                                                </div>
+                                                                <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                            </div>
+                                                            <Plus size={12} className="text-slate-300 group-hover:text-[var(--brand-red)] flex-shrink-0" />
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto bg-white flex flex-col p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-slate-900">Calculations</h3>
+                                <Button onClick={addFormula} variant="outline" size="sm" className="h-8 gap-1 border-[var(--brand-red)]/20 text-[var(--brand-red)] hover:bg-[var(--brand-red)]/5">
+                                    <Plus size={14} /> Add Calculation
+                                </Button>
+                            </div>
+
+
+
+                            <div className="space-y-6">
+                                {draftFormulas.map((formula, index) => {
+                                    const isTesting = testingIds.includes(formula.id);
+                                    const formulaVars = getVariablesForExpression(formula.expression);
+
+                                    return (
+                                        <div key={formula.id} className={`p-5 rounded-xl border relative transition-all ${activeTarget?.id === formula.id ? 'border-[var(--brand-red)]/50 shadow-sm bg-[var(--brand-red)]/5' : 'border-slate-200 bg-white'}`}>
+
+                                            {/* Header Row for each Formula */}
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-500 font-bold text-[10px]">
+                                                        {index + 1}
+                                                    </div>
+                                                    <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Calculation #{index + 1}</Label>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        size="sm"
+                                                        variant={isTesting ? 'secondary' : 'ghost'}
+                                                        onClick={() => setTestingIds(prev => isTesting ? prev.filter(id => id !== formula.id) : [...prev, formula.id])}
+                                                        className={`h-7 gap-1.5 px-3 rounded-md text-[10px] font-bold uppercase tracking-wider ${isTesting ? 'bg-[var(--brand-red)] text-white hover:opacity-90 border-transparent shadow-sm' : 'text-slate-400 hover:text-[var(--brand-red)] hover:bg-[var(--brand-red)]/5'}`}
+                                                    >
+                                                        <Play size={10} className={isTesting ? 'fill-current' : ''} />
+                                                        {isTesting ? 'Stop Test' : 'Test'}
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeFormula(formula.id)}
+                                                        className="h-7 px-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-5">
+                                                {/* Testing UI (if enabled) */}
+                                                {isTesting && (
+                                                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 mt-2 mb-6 space-y-4 shadow-inner">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="p-1 px-2 rounded bg-[var(--brand-red)]/10 text-[var(--brand-red)] text-[10px] font-bold uppercase">Test Mode</div>
+                                                                <span className="text-[11px] text-slate-500 font-medium">Enter values for variables used in this formula</span>
+                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => setTestValues({})}
+                                                                className="h-6 text-[10px] text-slate-400 hover:text-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 uppercase font-bold gap-1"
+                                                            >
+                                                                <RotateCcw size={10} /> Reset All
+                                                            </Button>
+                                                        </div>
+
+                                                        {formulaVars.length > 0 ? (
+                                                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                                                {formulaVars.map(v => (
+                                                                    <div key={v} className="space-y-1">
+                                                                        <Label className="text-[10px] text-slate-500 font-bold truncate block px-1" title={v}>{v}</Label>
+                                                                        <Input
+                                                                            type="number"
+                                                                            id={`test-${formula.id}-${v}`}
+                                                                            value={testValues[v] || ''}
+                                                                            onChange={(e) => setTestValues({ ...testValues, [v]: e.target.value })}
+                                                                            className="h-8 text-xs bg-white border-slate-200 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)]"
+                                                                            placeholder="0"
+                                                                        />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-[10px] text-slate-400 italic text-center py-1">No variables detected in this expression.</div>
+                                                        )}
+
+                                                        <div className="pt-3 border-t border-slate-200/60 flex items-center justify-between">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Calculation Result</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs font-mono font-bold text-[var(--brand-red)] text-lg">
+                                                                    {evaluate(formula.expression) ?? '-'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex flex-col gap-2">
+                                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Result Name</Label>
+                                                    <Input
+                                                        id={`resultName-${formula.id}`}
+                                                        value={formula.resultName}
+                                                        onFocus={() => setActiveTarget({ id: formula.id, field: 'resultName' })}
+                                                        onChange={(e) => updateFormula(formula.id, 'resultName', e.target.value)}
+                                                        className="h-10 px-4 text-slate-900 font-semibold bg-white border-slate-200 focus:bg-white focus:ring-2 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)] rounded-lg transition-all"
+                                                        placeholder="e.g. TotalAmount"
+                                                    />
+                                                </div>
+
+                                                {/* Expression Section */}
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Expression</Label>
+                                                            <MathGuide />
+                                                        </div>
+                                                        <span className="text-[10px] uppercase text-slate-400 font-medium">Math logic</span>
+                                                    </div>
+
+                                                    <div className="relative flex flex-col min-h-[140px] rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-[var(--brand-red)]/20 focus-within:border-[var(--brand-red)] transition-all">
+                                                        <textarea
+                                                            id={`expression-${formula.id}`}
+                                                            value={formula.expression}
+                                                            onFocus={() => setActiveTarget({ id: formula.id, field: 'expression' })}
+                                                            onChange={(e) => updateFormula(formula.id, 'expression', e.target.value)}
+                                                            className="w-full flex-1 p-4 bg-white border-none focus:outline-none resize-y min-h-[140px] text-slate-800 font-mono text-xs leading-relaxed"
+                                                            placeholder="{{Start.Amount}} * 2"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {draftFormulas.length === 0 && (
+                                    <div className="p-10 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-center">
+                                        <Calculator size={32} className="text-slate-300 mb-3" />
+                                        <p className="text-sm font-semibold text-slate-600">No calculations defined</p>
+                                        <p className="text-xs text-slate-400 mb-4 mt-1">Add a calculation to map dynamic formulas to output variables.</p>
+                                        <Button onClick={addFormula} variant="outline" size="sm" className="h-9 gap-2">
+                                            <Plus size={14} /> Add First Calculation
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-6 border-t border-slate-100 flex items-center justify-end bg-slate-50/50">
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="ghost"
+                                onClick={() => setOpen(false)}
+                                className="font-bold text-slate-500 hover:text-slate-900 h-11 px-6 text-sm"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSave}
+                                className="h-11 px-8 bg-[var(--brand-red)] hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-red-200 gap-2 transition-all text-sm"
+                            >
+                                <Calculator size={16} />
+                                Save Formula
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Icon Picker ────────────────────────────────────────────────────────────
+function IconPicker({
+    value,
+    onChange
+}: {
+    value: string;
+    onChange: (val: string) => void;
+}) {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeCategory, setActiveCategory] = useState<IconCategory | 'all'>('all');
+    const [isOpen, setIsOpen] = useState(false);
+
+    const filteredIcons = useMemo(() => {
+        const query = searchQuery.toLowerCase().trim();
+        return getAllIcons().filter(icon => {
+            const matchesCategory = activeCategory === 'all' || icon.category === activeCategory;
+            const matchesSearch = !query ||
+                icon.label.toLowerCase().includes(query) ||
+                icon.id.toLowerCase().includes(query);
+            return matchesCategory && matchesSearch;
+        });
+    }, [searchQuery, activeCategory]);
+
+    const activeIcon = useMemo(() => AVAILABLE_ICONS[value] || AVAILABLE_ICONS['workflow'], [value]);
+    const ActiveIconComponent = activeIcon.icon;
+
+    return (
+        <>
+            <Popover open={isOpen} onOpenChange={setIsOpen}>
+                <PopoverTrigger asChild>
+                    <button className="w-full h-11 px-4 bg-slate-50 border-2 border-slate-100 rounded-xl flex items-center justify-between group hover:border-slate-200 transition-all focus:outline-none focus:border-[var(--brand-red)] focus:bg-white overflow-hidden">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className={cn(
+                                "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                                activeIcon.bgColor
+                            )}>
+                                <ActiveIconComponent size={18} className={activeIcon.color} />
+                            </div>
+                            <span className="text-sm font-semibold text-slate-700 truncate">{activeIcon.label}</span>
+                        </div>
+                        <ChevronDown size={14} className="text-slate-400 group-hover:text-slate-600 transition-colors shrink-0" />
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[420px] p-0 border-none shadow-2xl rounded-3xl overflow-hidden mt-2">
+                    <div className="flex flex-col gap-4 p-5 bg-white">
+                        {/* Search Bar */}
+                        <div className="relative group">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--brand-red)] transition-colors" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search icons..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full h-12 pl-11 pr-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm focus:outline-none focus:border-[var(--brand-red)] focus:bg-white transition-all font-semibold text-slate-700 placeholder:text-slate-400"
+                            />
+                        </div>
+
+                        {/* Categories */}
+                        <div
+                            className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1 pointer-events-auto"
+                            onWheel={(e) => e.stopPropagation()}
+                        >
+                            <button
+                                onClick={() => setActiveCategory('all')}
+                                className={cn(
+                                    "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all",
+                                    activeCategory === 'all'
+                                        ? "bg-[var(--brand-red)] text-white shadow-lg shadow-red-100"
+                                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                )}
+                            >
+                                All
+                            </button>
+                            {Object.entries(ICON_CATEGORIES).map(([id, cfg]) => (
+                                <button
+                                    key={id}
+                                    onClick={() => setActiveCategory(id as IconCategory)}
+                                    className={cn(
+                                        "px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all",
+                                        activeCategory === id
+                                            ? "bg-[var(--brand-red)] text-white shadow-lg shadow-red-100"
+                                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                    )}
+                                >
+                                    {cfg.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Icon Grid */}
+                        <div
+                            className="grid grid-cols-7 gap-3 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar p-1 pointer-events-auto"
+                            onWheel={(e) => e.stopPropagation()}
+                        >
+                            {filteredIcons.map((icon) => {
+                                const Icon = icon.icon;
+                                const isSelected = value === icon.id;
+                                return (
+                                    <button
+                                        key={icon.id}
+                                        onClick={() => {
+                                            onChange(icon.id);
+                                            setIsOpen(false);
+                                        }}
+                                        title={icon.label}
+                                        className={cn(
+                                            "group relative aspect-square rounded-2xl flex items-center justify-center transition-all",
+                                            isSelected
+                                                ? "bg-white ring-4 ring-offset-2 ring-[var(--brand-red)] shadow-2xl z-10 scale-95"
+                                                : "bg-slate-50 hover:bg-white hover:ring-2 hover:ring-slate-200 hover:scale-110 active:scale-90"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-10 h-10 flex items-center justify-center rounded-xl transition-colors shrink-0",
+                                            isSelected ? "bg-red-50" : icon.bgColor
+                                        )}>
+                                            <Icon
+                                                size={20}
+                                                className={cn(
+                                                    "transition-all stroke-[2.5]",
+                                                    isSelected ? "text-[var(--brand-red)]" : icon.color
+                                                )}
+                                            />
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="pt-3 border-t border-slate-50 flex items-center justify-between px-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{filteredIcons.length} icons</span>
+                            <div className="flex gap-1">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                            </div>
+                        </div>
+                    </div>
+                </PopoverContent>
+            </Popover >
+            <style dangerouslySetInnerHTML={{
+                __html: `
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 5px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: #f1f5f9;
+                border-radius: 10px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #cbd5e1;
+                border-radius: 10px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        `}} />
+        </>
+    );
+}
+
+// Bell Notification Editor (Dialog)
+// ═══════════════════════════════════════════════════════════════════════════
+function BellNotificationEditor({
+    title,
+    body,
+    type,
+    priority,
+    role,
+    onSave,
+    availableSources,
+}: {
+    title: string;
+    body: string;
+    type: string;
+    priority: string;
+    role: string;
+    onSave: (title: string, body: string, type: string, priority: string, role: string) => void;
+    availableSources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string }>;
+}) {
+    const [open, setOpen] = useState(false);
+    const [draftTitle, setDraftTitle] = useState(title || '');
+    const [draftBody, setDraftBody] = useState(body || '');
+    const [draftType, setDraftType] = useState(type || 'DATA_INPUT');
+    const [draftPriority, setDraftPriority] = useState(priority || '');
+    const [draftRole, setDraftRole] = useState(role || '');
+    const [lastSaved, setLastSaved] = useState<string | null>(null);
+    const bodyRef = useState<HTMLTextAreaElement | null>(null);
+    const titleRef = useState<HTMLInputElement | null>(null);
+    const priorityRef = useState<HTMLInputElement | null>(null);
+    const roleRef = useState<HTMLInputElement | null>(null);
+    const [activeTarget, setActiveTarget] = useState<'title' | 'body' | 'priority'>('body');
+    const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
+
+    const handleOpen = () => {
+        setDraftTitle(title || '');
+        setDraftBody(body || '');
+        setDraftType(type || 'DATA_INPUT');
+        setDraftPriority(priority || '');
+        setDraftRole(role || '');
+        setOpen(true);
+    };
+
+    const handleSave = () => {
+        onSave(draftTitle, draftBody, draftType, draftPriority, draftRole);
+        setLastSaved(new Date().toLocaleTimeString());
+        setOpen(false);
+    };
+
+    const insertVariable = (varName: string) => {
+        const varStr = `{{${varName}}}`;
+        if (activeTarget === 'body') {
+            const textarea = bodyRef[0];
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                setDraftBody(draftBody.slice(0, start) + varStr + draftBody.slice(end));
+                requestAnimationFrame(() => {
+                    textarea.selectionStart = textarea.selectionEnd = start + varStr.length;
+                    textarea.focus();
+                });
+            } else {
+                setDraftBody(draftBody + varStr);
+            }
+        } else if (activeTarget === 'title') {
+            const input = titleRef[0];
+            if (input) {
+                const start = input.selectionStart || 0;
+                const end = input.selectionEnd || 0;
+                setDraftTitle(draftTitle.slice(0, start) + varStr + draftTitle.slice(end));
+                requestAnimationFrame(() => {
+                    input.selectionStart = input.selectionEnd = start + varStr.length;
+                    input.focus();
+                });
+            } else {
+                setDraftTitle(draftTitle + varStr);
+            }
+        } else if (activeTarget === 'priority') {
+            const input = priorityRef[0];
+            if (input) {
+                const start = input.selectionStart || 0;
+                const end = input.selectionEnd || 0;
+                setDraftPriority(draftPriority.slice(0, start) + varStr + draftPriority.slice(end));
+                requestAnimationFrame(() => {
+                    input.selectionStart = input.selectionEnd = start + varStr.length;
+                    input.focus();
+                });
+            } else {
+                setDraftPriority(draftPriority + varStr);
+            }
+        }
+    };
+
+    const categorizedVariables = useMemo(() => {
+        const categories: Record<string, any> = { 'Request Info': [], 'Related Personnel': [], 'Form Data': {} };
+        SYSTEM_OUTPUT_FIELDS.forEach(sf => {
+            if (Array.isArray(categories[sf.category])) categories[sf.category].push({ id: sf.id, label: sf.label });
+        });
+        availableSources.forEach(s => {
+            if (s.stepId === 'system' || s.fieldId.startsWith('__')) return;
+            const stepName = s.stepName || 'Unknown Step';
+            if (!categories['Form Data'][stepName]) categories['Form Data'][stepName] = [];
+            categories['Form Data'][stepName].push({ id: s.fieldId, label: s.fieldName });
+        });
+        return categories;
+    }, [availableSources]);
+
+    const renderedPreview = useMemo(() => {
+        let content = draftBody;
+        let t = draftTitle;
+        let p = draftPriority;
+        let r = draftRole;
+
+        SYSTEM_OUTPUT_FIELDS.forEach(f => {
+            const varStr = `System.${f.label.replace(/\s+/g, '')}`;
+            const badge = `<span class="px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold border border-red-100 italic">@${f.label}</span>`;
+            content = content.replaceAll(`{{${varStr}}}`, badge);
+            t = t.replaceAll(`{{${varStr}}}`, badge);
+            p = p.replaceAll(`{{${varStr}}}`, badge);
+            r = r.replaceAll(`{{${varStr}}}`, badge);
+        });
+        availableSources.forEach(s => {
+            if (s.stepId === 'system' || s.fieldId.startsWith('__')) return;
+            const stepName = s.stepName || 'Unknown Step';
+            const varStr = `${stepName.replace(/\s+/g, '')}.${s.fieldName.replace(/\s+/g, '')}`;
+            const badge = `<span class="px-1.5 py-0.5 rounded bg-red-50 text-[var(--brand-red)] font-bold border border-red-100 italic">#${s.fieldName}</span>`;
+            content = content.replaceAll(`{{${varStr}}}`, badge);
+            t = t.replaceAll(`{{${varStr}}}`, badge);
+            p = p.replaceAll(`{{${varStr}}}`, badge);
+            r = r.replaceAll(`{{${varStr}}}`, badge);
+        });
+        return { body: content, title: t, priority: p, role: r };
+    }, [draftBody, draftTitle, draftPriority, draftRole, availableSources]);
+
+    return (
+        <>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpen}
+                className="w-full gap-2 font-semibold h-9 border-red-200 bg-red-50/50 text-[var(--brand-red)] hover:bg-red-100 hover:text-[var(--brand-red)] mt-2"
+            >
+                <Bell size={14} />
+                Edit Bell Content
+            </Button>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-[1100px] p-0 gap-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-50 text-[var(--brand-red)]">
+                                <Bell size={24} />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-xl font-bold text-slate-900">Bell Notification Content</DialogTitle>
+                                <DialogDescription className="text-sm text-slate-500">
+                                    Customize the in-app notification message
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex h-[600px]">
+                        {/* Sidebar */}
+                        <div className="w-1/4 bg-slate-50/50 border-r border-slate-100 p-5 overflow-y-auto custom-scrollbar">
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-6">Available Data</h3>
+                            <div className="space-y-6">
+                                {Object.entries(categorizedVariables).map(([category, items]) => {
+                                    if (category === 'Form Data') {
+                                        return Object.entries(items as Record<string, any[]>).map(([stepName, fields]) => (
+                                            <div key={stepName} className="space-y-2">
+                                                <div className="flex items-center gap-2 text-slate-600">
+                                                    <Layers size={12} />
+                                                    <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
+                                                </div>
+                                                <div className="space-y-5 pl-2 border-l-2 border-slate-100 ml-1.5">
+                                                    <div key={stepName} className="space-y-2">
+                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight px-1">{stepName}</div>
+                                                        <div className="grid gap-1.5">
+                                                            {fields.map(f => {
+                                                                const varStr = `${stepName.replace(/\s+/g, '')}.${f.label.replace(/\s+/g, '')}`;
+                                                                return (
+                                                                    <button key={f.id} onClick={() => insertVariable(varStr)} title={`Click to insert {{${varStr}}}`} className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left">
+                                                                        <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                                        <Play size={8} className="text-slate-300 group-hover:text-[var(--brand-red)]" />
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ));
+                                    }
+                                    return (
+                                        <div key={category} className="space-y-2">
+                                            <div className="flex items-center gap-2 text-slate-600">
+                                                {category === 'Request Info' && <Database size={12} />}
+                                                {category === 'Related Personnel' && <Shield size={12} />}
+                                                <span className="text-[11px] font-bold uppercase text-slate-500">{category}</span>
+                                            </div>
+                                            <div className="grid gap-1.5">
+                                                {(items as any[]).map(f => {
+                                                    const varStr = `System.${f.label.replace(/\s+/g, '')}`;
+                                                    return (
+                                                        <button key={f.id} onClick={() => insertVariable(varStr)} title={`Click to insert {{${varStr}}}`} className="group flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200 hover:border-[var(--brand-red)] hover:shadow-sm transition-all text-left">
+                                                            <span className="text-xs font-medium text-slate-700 group-hover:text-[var(--brand-red)] truncate">{f.label}</span>
+                                                            <Play size={8} className="text-slate-300 group-hover:text-[var(--brand-red)]" />
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Main Content */}
+                        <div className="flex-1 p-6 space-y-6 overflow-y-auto bg-white flex flex-col custom-scrollbar">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Configure Appearance</Label>
+                                <div className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                                    <button
+                                        onClick={() => setViewMode('edit')}
+                                        className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'edit' ? 'bg-white shadow-sm text-[var(--brand-red)]' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        EDIT
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('preview')}
+                                        className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${viewMode === 'preview' ? 'bg-white shadow-sm text-[var(--brand-red)]' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        PREVIEW
+                                    </button>
+                                </div>
+                            </div>
+
+                            {viewMode === 'edit' ? (
+                                <>
+                                    <div className="grid grid-cols-3 gap-6 items-start">
+                                        <FormField label="Notification Icon" hint="Visual identifier">
+                                            <IconPicker value={draftType} onChange={setDraftType} />
+                                        </FormField>
+
+                                        <FormField label="Priority" hint="Badge level">
+                                            <div className="relative group/field">
+                                                <Input
+                                                    ref={(el) => { if (el) priorityRef[0] = el; }}
+                                                    value={draftPriority}
+                                                    onFocus={() => setActiveTarget('priority')}
+                                                    onChange={(e) => setDraftPriority(e.target.value)}
+                                                    className="h-11 rounded-xl bg-slate-50 border-2 border-slate-100 focus:border-[var(--brand-red)] transition-all font-semibold pr-10"
+                                                    placeholder="Priority (template or static)"
+                                                />
+                                                {draftPriority && (
+                                                    <button
+                                                        onClick={() => setDraftPriority('')}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-[var(--brand-red)] hover:bg-red-50 transition-all"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </FormField>
+
+                                        <FormField label="Role Label" hint="Badge text">
+                                            <Input
+                                                ref={(el) => { if (el) roleRef[0] = el; }}
+                                                value={draftRole}
+                                                onChange={(e) => setDraftRole(e.target.value)}
+                                                className="h-11 rounded-xl bg-slate-50 border-2 border-slate-100 focus:border-[var(--brand-red)] transition-all font-semibold"
+                                                placeholder="Enter role label..."
+                                            />
+                                        </FormField>
+                                    </div>
+
+                                    <div className="space-y-4 flex-1 flex flex-col min-h-0">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-bold text-slate-500 uppercase">Notification Title</Label>
+                                            <Input
+                                                ref={(el) => { if (el) titleRef[0] = el; }}
+                                                value={draftTitle}
+                                                onFocus={() => setActiveTarget('title')}
+                                                onChange={(e) => setDraftTitle(e.target.value)}
+                                                className="h-11 px-4 text-slate-900 font-semibold bg-slate-50/50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-[var(--brand-red)]/20 focus:border-[var(--brand-red)] rounded-lg transition-all"
+                                                placeholder="Enter title template..."
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2 flex-1 flex flex-col min-h-0">
+                                            <Label className="text-xs font-bold text-slate-500 uppercase">Message Content</Label>
+                                            <div className={`relative flex-1 flex flex-col rounded-xl border transition-all ${activeTarget === 'body' ? 'border-[var(--brand-red)] ring-2 ring-red-50' : 'border-slate-200 bg-slate-50/30'}`}>
+                                                <textarea
+                                                    ref={(el) => { if (el) bodyRef[0] = el; }}
+                                                    value={draftBody}
+                                                    onFocus={() => setActiveTarget('body')}
+                                                    onChange={(e) => setDraftBody(e.target.value)}
+                                                    className="w-full flex-1 p-5 bg-white border-none focus:outline-none resize-none text-slate-800 text-sm leading-relaxed rounded-xl"
+                                                    placeholder="Enter notification message..."
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 p-12">
+                                    <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 w-full max-w-md relative overflow-hidden">
+                                        <div className="flex gap-4 items-start">
+                                            <div className={cn(
+                                                "w-11 h-11 flex items-center justify-center rounded-2xl shrink-0 mt-0.5",
+                                                AVAILABLE_ICONS[draftType]?.bgColor || "bg-slate-100",
+                                                AVAILABLE_ICONS[draftType]?.color || "text-slate-600"
+                                            )}>
+                                                {(() => {
+                                                    const Icon = AVAILABLE_ICONS[draftType]?.icon || FileText;
+                                                    return <Icon size={24} />;
+                                                })()}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-start justify-between gap-2 mb-1">
+                                                    <p className="font-bold text-slate-900 leading-tight" dangerouslySetInnerHTML={{ __html: renderedPreview.title }} />
+                                                    {draftPriority === 'HIGH' && <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />}
+                                                </div>
+                                                <p className="text-sm text-slate-600 mb-2 truncate" dangerouslySetInnerHTML={{ __html: renderedPreview.body }} />
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold uppercase rounded h-5 flex items-center" dangerouslySetInnerHTML={{ __html: renderedPreview.role }} />
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 text-[10px] font-bold uppercase rounded h-5 flex items-center",
+                                                        draftPriority === 'HIGH' ? "bg-red-100 text-red-700" :
+                                                            draftPriority === 'LOW' ? "bg-slate-100 text-slate-600" :
+                                                                "bg-yellow-100 text-yellow-700"
+                                                    )} dangerouslySetInnerHTML={{ __html: renderedPreview.priority }} />
+                                                    <div className="flex items-center gap-1 text-[11px] text-slate-400 ml-auto">
+                                                        <Clock size={12} />
+                                                        <span>1 min ago</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="mt-8 text-xs font-medium text-slate-400 uppercase tracking-widest italic">Live Preview in Notification Popover</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-6 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="flex items-center gap-6 text-slate-400">
+                            <div className="flex items-center gap-2">
+                                <Info size={14} className="text-[var(--brand-red)]" />
+                                <span className="text-[10px] font-bold uppercase tracking-tight">Real-time Preview</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Clock size={14} />
+                                <span className="text-[10px] font-bold uppercase tracking-tight">
+                                    {lastSaved ? `Saved at ${lastSaved}` : 'Not saved yet'}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="ghost"
+                                onClick={() => setOpen(false)}
+                                className="font-bold text-slate-500 hover:text-slate-900 h-11 px-6 text-sm"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSave}
+                                className="h-11 px-8 bg-[var(--brand-red)] hover:opacity-90 text-white font-bold rounded-xl shadow-lg shadow-red-200 gap-2 transition-all text-sm"
+                            >
+                                <Bell size={16} />
+                                Save Bell Template
                             </Button>
                         </div>
                     </div>
@@ -1285,9 +2015,6 @@ function ApiTriggerSettingsDialog({
                             </DialogDescription>
                         </div>
                     </div>
-                    <DialogPrimitive.Close className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
-                        <X size={20} />
-                    </DialogPrimitive.Close>
                 </div>
 
                 <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
@@ -1377,6 +2104,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
 
     const isUserTask = subType === 'user_task' || subType === 'userTask' || subType === 'form';
     const isApiCall = subType === 'api_call' || subType === 'apiCall';
+    const isFormula = subType === 'formula';
     const isApproval = subType === 'approval';
 
     // --- Data Resolvers for IO Mapping ---
@@ -1443,7 +2171,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
 
     // 2. Get available source fields from ALL previous steps (Ancestors)
     const availableSources = useMemo(() => {
-        const sources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string }> = [];
+        const sources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string; type?: string }> = [];
 
         // 1. Always add System Fields
         SYSTEM_OUTPUT_FIELDS.forEach(sf => {
@@ -1451,7 +2179,8 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 stepId: 'system',
                 stepName: 'System',
                 fieldId: sf.id,
-                fieldName: sf.label
+                fieldName: sf.label,
+                type: sf.type
             });
         });
 
@@ -1475,7 +2204,8 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             stepId: id,
                             stepName,
                             fieldId: f.id,
-                            fieldName: f.label
+                            fieldName: f.label,
+                            type: f.type
                         }));
                     } else if (item.type !== 'table') {
                         const f = item as UiFormField;
@@ -1483,7 +2213,8 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             stepId: id,
                             stepName,
                             fieldId: f.id,
-                            fieldName: f.label
+                            fieldName: f.label,
+                            type: f.type
                         });
                     }
                 });
@@ -1496,8 +2227,23 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     stepId: id,
                     stepName,
                     fieldId: opt.sourcePath,
-                    fieldName: opt.alias || opt.sourcePath
+                    fieldName: opt.alias || opt.sourcePath,
+                    type: opt.type || 'string'
                 });
+            });
+
+            // Formula Outputs
+            const formulas = (ancestor.data.formulas as FormulaItem[] | undefined) ?? [];
+            formulas.forEach(f => {
+                if (f.resultName) {
+                    sources.push({
+                        stepId: id,
+                        stepName,
+                        fieldId: f.id,
+                        fieldName: f.resultName,
+                        type: 'number' // Assuming formulas output numbers for calculation purposes
+                    });
+                }
             });
         });
 
@@ -1536,9 +2282,17 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             const existingForm = forms.find(f => f.id === existingFormId);
             if (existingForm) return existingFormId;
         }
-        // Create a skeleton form named after the step
+        // Create a skeleton form named after the step, ensuring uniqueness
         const stepLabel = (node.data.label as string) || 'Untitled Step';
-        addForm(`${stepLabel} Form`);
+        const baseName = `${stepLabel} Form`;
+        let uniqueName = baseName;
+        let counter = 1;
+
+        while (forms.some(f => f.name === uniqueName)) {
+            uniqueName = `${baseName} ${counter++}`;
+        }
+
+        addForm(uniqueName);
         const latestForms = useStudioStore.getState().forms;
         const newForm = latestForms[latestForms.length - 1];
         if (newForm) {
@@ -1782,7 +2536,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             {nodeType === 'actionNode' && (
                 <>
                     {/* ─── Task Form Configuration ──────────── */}
-                    {!isUserTask && (
+                    {(!isUserTask && !isFormula) && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Task Form</Label>
                             {currentForm ? (
@@ -1809,7 +2563,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Approvers Card ────────────────────── */}
-                    {!isUserTask && (
+                    {(!isUserTask && !isFormula) && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Approvers</Label>
                             <p className="text-[11px] text-slate-400">
@@ -1950,6 +2704,47 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                         </Card>
                     )}
 
+                    {/* ─── FORMULA SUB-TYPE ───────────────────── */}
+                    {isFormula && (
+                        <Card className="p-4 space-y-4">
+                            <Label variant="section">Formula Configuration</Label>
+                            <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                Calculate values dynamically based on outputs of previous steps.
+                            </p>
+                            <FormulaEditor
+                                formulas={(node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: crypto.randomUUID(), resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : [])}
+                                onSave={(formulas) => updateNodeData(node.id, { formulas })}
+                                availableSources={availableSources}
+                            />
+
+                        </Card>
+                    )}
+
+                    {/* ─── FORMULA OUTPUTS CARD ───────────────────── */}
+                    {isFormula && (
+                        (() => {
+                            const currentFormulas = (node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: 'legacy', resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : []);
+                            if (currentFormulas.length === 0) return null;
+                            return (
+                                <Card className="p-4 space-y-3 mt-4">
+                                    <div className="flex flex-col">
+                                        <Label variant="section">Outputs</Label>
+                                        <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Formula Results</p>
+                                        {currentFormulas.map(f => (
+                                            <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
+                                                <Database size={12} className="text-slate-400" />
+                                                <span className="text-xs font-medium text-slate-600">{f.resultName || 'Unnamed Variable'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </Card>
+                            );
+                        })()
+                    )}
+
                     {/* ─── APPROVAL / USER TASK SUB-TYPE ──────────────────── */}
                     {(isApproval || isUserTask) && (
                         <Tabs defaultValue="general" className="w-full">
@@ -2007,24 +2802,65 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 {isUserTask && (
                                     <Card className="p-4 space-y-3">
                                         <Label variant="section">Task Form</Label>
-                                        <div className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50/50">
-                                            <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                            <span className="text-sm font-medium text-slate-700 flex-1 truncate">
-                                                {currentForm?.name || 'No form assigned'}
-                                            </span>
+                                        <div className="space-y-3">
+                                            <Select
+                                                value={node.data?.formId as string || "none"}
+                                                onValueChange={(val) => {
+                                                    const newFormId = val === "none" ? null : val;
+                                                    updateNodeData(node.id, { formId: newFormId });
+                                                    if (newFormId) selectForm(newFormId);
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-full h-10 bg-slate-50/50 border-slate-200 rounded-xl focus:ring-0">
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                                        <SelectValue placeholder="Select a form..." />
+                                                    </div>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none" className="text-slate-500 italic">(None) No Form</SelectItem>
+                                                    {(() => {
+                                                        const startNode = allNodes.find(n => n.data?.isStart || n.type === 'startNode');
+                                                        const startFormId = startNode?.data?.formId;
+                                                        return forms
+                                                            .filter(f => f.id !== startFormId)
+                                                            .map(f => (
+                                                                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                                            ));
+                                                    })()}
+                                                </SelectContent>
+                                            </Select>
+
+                                            {node.data?.formId ? (
+                                                <>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleEditFormLayout}
+                                                        className="w-full gap-2 font-semibold h-10 border-slate-200"
+                                                    >
+                                                        <FileEdit size={14} />
+                                                        Open Task Editor
+                                                    </Button>
+                                                    <p className="text-[10px] text-slate-400 text-center px-2 leading-relaxed">
+                                                        Configure the task form layout in the Task Editor
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const formId = ensureFormForNode();
+                                                        if (formId) selectForm(formId);
+                                                    }}
+                                                    className="w-full gap-2 font-semibold h-10 border-slate-200 border-dashed hover:border-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 text-slate-500 hover:text-[var(--brand-red)]"
+                                                >
+                                                    <Plus size={14} />
+                                                    Create New Form
+                                                </Button>
+                                            )}
                                         </div>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={handleEditFormLayout}
-                                            className="w-full gap-2 font-semibold h-10 border-slate-200"
-                                        >
-                                            <FileEdit size={14} />
-                                            Open Task Editor
-                                        </Button>
-                                        <p className="text-[10px] text-slate-400 text-center px-2">
-                                            Configure the task form layout in the Task Editor
-                                        </p>
                                     </Card>
                                 )}
 
@@ -2040,25 +2876,25 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                                 { id: 'bell', icon: Bell, label: 'BELL' },
                                                 { id: 'teams', icon: MessageSquare, label: 'TEAMS' },
                                             ].map((channel) => {
-                                                const notificationTypes = (node.data.notificationTypes as string[]) || ['bell'];
+                                                const notificationTypes = (node.data.notificationTypes as string[]) || [];
                                                 const isActive = notificationTypes.includes(channel.id);
                                                 const ChannelIcon = channel.icon;
                                                 return (
                                                     <button
                                                         key={channel.id}
                                                         onClick={() => {
-                                                            const current = (node.data.notificationTypes as string[]) || ['bell'];
+                                                            const current = (node.data.notificationTypes as string[]) || [];
                                                             const next = current.includes(channel.id)
                                                                 ? current.filter(c => c !== channel.id)
                                                                 : [...current, channel.id];
                                                             updateNodeData(node.id, { notificationTypes: next });
                                                         }}
                                                         className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isActive
-                                                            ? 'border-amber-400 bg-white shadow-sm'
+                                                            ? 'border-[var(--brand-red)] bg-white shadow-sm'
                                                             : 'border-slate-100 bg-slate-50/50 grayscale opacity-60'
                                                             }`}
                                                     >
-                                                        <ChannelIcon size={18} className={isActive ? 'text-amber-500' : 'text-slate-400'} />
+                                                        <ChannelIcon size={18} className={isActive ? 'text-[var(--brand-red)]' : 'text-slate-400'} />
                                                         <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>
                                                             {channel.label}
                                                         </span>
@@ -2073,6 +2909,25 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                                 subject={(node.data.emailSubject as string) || ''}
                                                 body={(node.data.emailBody as string) || ''}
                                                 onSave={(subject, body) => updateNodeData(node.id, { emailSubject: subject, emailBody: body })}
+                                                availableSources={availableSources}
+                                            />
+                                        )}
+
+                                        {/* Edit Bell Content button — only visible when BELL is enabled */}
+                                        {((node.data.notificationTypes as string[]) || []).includes('bell') && (
+                                            <BellNotificationEditor
+                                                title={(node.data.bellTitle as string) || ''}
+                                                body={(node.data.bellBody as string) || ''}
+                                                type={(node.data.bellType as string) || ''}
+                                                priority={(node.data.bellPriority as string) || ''}
+                                                role={(node.data.bellRole as string) || ''}
+                                                onSave={(title, body, type, priority, role) => updateNodeData(node.id, {
+                                                    bellTitle: title,
+                                                    bellBody: body,
+                                                    bellType: type,
+                                                    bellPriority: priority,
+                                                    bellRole: role
+                                                })}
                                                 availableSources={availableSources}
                                             />
                                         )}
@@ -2205,7 +3060,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Shared: SLA + Owner (Visible for all node types EXCEPT UserTask/Approval where it's moved to General Tab) ────────────────── */}
-                    {!(isApproval || isUserTask) && (
+                    {!(isApproval || isUserTask || isFormula) && (
                         <>
                             <Card className="p-4 space-y-4">
                                 <FormField label="SLA" hint="Time limit in days">
@@ -2313,9 +3168,6 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     </div>
                 </Card>
             )}
-
-            {/* ── DATA MAPPING (I/O) ──────────────────────────── */}
-            <NodeIOSection node={node} allNodes={allNodes} edges={edges} />
 
             {/* Delete Node Button (not for start) */}
             {nodeType !== 'startNode' && (

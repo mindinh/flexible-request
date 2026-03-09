@@ -64,27 +64,31 @@ interface FormDialogProps {
 
 function FormDialog({ requestTypes, initial, onSave, onCancel, isSaving, existingRangeTypeIds }: FormDialogProps) {
     const [requestTypeId, setRequestTypeId] = useState(initial?.requestType_ID ?? '');
-    const [startNumber, setStartNumber] = useState(initial?.startNumber ?? 1000);
-    const [currentNumber, setCurrentNumber] = useState(initial?.currentNumber ?? 1000);
-    const [digits, setDigits] = useState(initial?.digits ?? 6);
+    const [startNumber, setStartNumber] = useState<number | ''>(initial?.startNumber ?? 1000);
+    const [currentNumber, setCurrentNumber] = useState<number | ''>(initial?.currentNumber ?? 1000);
+    const [digits, setDigits] = useState<number | ''>(initial?.digits ?? 6);
 
     const isEdit = !!initial;
     const availableTypes = requestTypes.filter(rt =>
         isEdit ? true : !existingRangeTypeIds.has(rt.ID)
     );
 
-    const previewId = String(currentNumber).padStart(digits, '0');
+    const safeDigits = Number(digits) || 1;
+    const safeCurrentNumber = Number(currentNumber) || 0;
+    const previewId = String(safeCurrentNumber).padStart(safeDigits, '0');
 
-    const isValid = requestTypeId && startNumber > 0 && digits >= 1 && digits <= 12;
+    const isValid = requestTypeId &&
+        startNumber !== '' && Number(startNumber) > 0 &&
+        digits !== '' && Number(digits) >= 1 && Number(digits) <= 12;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!isValid) return;
         onSave({
             requestType_ID: requestTypeId,
-            startNumber,
-            currentNumber: isEdit ? currentNumber : startNumber,
-            digits,
+            startNumber: Number(startNumber),
+            currentNumber: isEdit ? Number(currentNumber) : Number(startNumber),
+            digits: Number(digits),
             isActive: true,
         });
     };
@@ -142,7 +146,7 @@ function FormDialog({ requestTypes, initial, onSave, onCancel, isSaving, existin
                         <Input
                             type="number"
                             value={digits}
-                            onChange={e => setDigits(parseInt(e.target.value) || 6)}
+                            onChange={e => setDigits(e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
                             min={1}
                             max={12}
                             className="font-mono"
@@ -160,7 +164,7 @@ function FormDialog({ requestTypes, initial, onSave, onCancel, isSaving, existin
                                 type="number"
                                 value={startNumber}
                                 onChange={e => {
-                                    const val = parseInt(e.target.value) || 1;
+                                    const val = e.target.value === '' ? '' : parseInt(e.target.value) || 0;
                                     setStartNumber(val);
                                     if (!isEdit) setCurrentNumber(val);
                                 }}
@@ -176,8 +180,8 @@ function FormDialog({ requestTypes, initial, onSave, onCancel, isSaving, existin
                                 <Input
                                     type="number"
                                     value={currentNumber}
-                                    onChange={e => setCurrentNumber(parseInt(e.target.value) || startNumber)}
-                                    min={startNumber}
+                                    onChange={e => setCurrentNumber(e.target.value === '' ? '' : parseInt(e.target.value) || 0)}
+                                    min={startNumber === '' ? 1 : Number(startNumber)}
                                     className="font-mono"
                                 />
                             </div>

@@ -63,6 +63,7 @@ entity StepDefinitions : cuid, managedWithUser {
     inputMapping         : LargeString; // JSON: Map of field ID to source {stepId, fieldId}
     approversContent     : LargeString; // JSON: Array<{ id, type, displayName }>
     notificationsContent : LargeString; // JSON: { channels: string[], emailConfig?: {...} }
+    formulas             : LargeString; // JSON: Step-level formula definitions
     conditionExpr        : LargeString; // JSON condition expression for condition nodes (AND/OR/NOT groups)
     // Sync Trigger: When to sync data to S/4HANA or external system
     syncTrigger          : String enum {
@@ -197,6 +198,7 @@ entity Requests : cuid, managedWithUser {
     // Coordinator Assignment - JOIN with ShadowUsers/Groups for display name
     coordinatorType : String(20); // Principal type (USER/GROUP)
     coordinatorId   : UUID; // ShadowUser or ShadowGroup ID
+    coordinatorValue: String; // Display name of coordinator (snapshot)
     delegatedFrom   : UUID; // Previous coordinator (if delegated)
     delegatedAt     : Timestamp; // When delegation occurred
 

@@ -1,4 +1,4 @@
-import { Play, Flag, GitBranch, ClipboardCheck, Globe } from 'lucide-react';
+import { Play, Flag, GitBranch, ClipboardCheck, Globe, Calculator } from 'lucide-react';
 
 type WorkflowNodeType = 'START' | 'END' | 'ACTION' | 'CONDITION';
 // Palette node definitions matching reference design
@@ -10,6 +10,7 @@ const TRIGGER_TERMINAL_NODES = [
 const ACTION_NODES = [
     { id: 'action-user-task', label: 'User Task', icon: ClipboardCheck, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'User Task', subType: 'user_task' },
     { id: 'action-api-call', label: 'API Call', icon: Globe, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'API Call', subType: 'api_call' },
+    { id: 'action-formula', label: 'Formula', icon: Calculator, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Formula', subType: 'formula' },
 ];
 
 const LOGIC_NODES = [

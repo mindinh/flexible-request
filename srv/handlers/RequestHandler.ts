@@ -34,8 +34,10 @@ export class RequestHandler {
         this.srv.on('submit', Requests, this.onSubmit.bind(this));
         this.srv.on('withdraw', Requests, this.onWithdraw.bind(this));
 
-        // Initialize workflow after request creation
-        this.srv.after('CREATE', Requests, this.onCreate.bind(this));
+        // Initialize fields before creation
+        this.srv.before('CREATE', Requests, this.beforeCreate.bind(this));
+        // Advance workflow after creation
+        this.srv.after('CREATE', Requests, this.afterCreate.bind(this));
 
         // Enrich requests with display names
         this.srv.after('READ', Requests, this.afterRead.bind(this));
@@ -164,24 +166,50 @@ export class RequestHandler {
     }
 
     /**
-     * After Create: Initialize workflow
+     * Before Create: Initialize fields like coordinator and displayId
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private async onCreate(data: any, req: cds.Request) {
-        const requestId = data.ID as string;
-        this.log.info(`Request created with ID: ${requestId}`);
-
-        // 1. Resolve user UUID for audit (supports multi-IDP)
+    private async beforeCreate(req: cds.Request) {
+        const data = req.data;
         const origin = (req.user as any).origin || 'sap.default';
         const userUUID = await this.userResolver.resolveUserUUID(req.user.id, origin);
 
-        // 2. Generate displayId from NumberRange configuration
-        await this.generateDisplayId(requestId, data.requestType_ID, userUUID);
+        this.log.info(`[RequestHandler] beforeCreate for user: ${req.user.id} (UUID: ${userUUID})`);
 
-        // 3. Record request creation FIRST (before steps are generated)
+        // 1. Set default coordinator if missing
+        if (!data.coordinatorId) {
+            const { ShadowUsers } = this.srv.entities;
+            const creator = await SELECT.one.from(ShadowUsers, userUUID).columns('displayName');
+
+            this.log.info(`[RequestHandler] Defaulting coordinator to creator: ${creator?.displayName || userUUID}`);
+
+            data.coordinatorId = userUUID;
+            data.coordinatorType = 'USER';
+            data.coordinatorValue = creator?.displayName || (req.user as any).id;
+        }
+
+        // 2. Generate displayId synchronously for the INSERT
+        const displayId = await this.generateDisplayId(data.requestType_ID, userUUID);
+        if (displayId) {
+            data.displayId = displayId;
+        }
+    }
+
+    /**
+     * After Create: Initialize workflow and record history
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private async afterCreate(data: any, req: cds.Request) {
+        const requestId = data.ID as string;
+        this.log.info(`[RequestHandler] afterCreate for Request: ${requestId}`);
+
+        const origin = (req.user as any).origin || 'sap.default';
+        const userUUID = await this.userResolver.resolveUserUUID(req.user.id, origin);
+
+        // 1. Record request creation history
         await this.recordHistory(requestId, null, 'CREATE', userUUID, 'Request Created');
 
-        // 4. Resolve source request ID for copying Step 1 data
+        // 2. Resolve source request ID for copying Step 1 data
         let sourceRequestId = data.refRequest_ID;
         if (!sourceRequestId) {
             this.log.debug(`[RequestHandler] refRequest_ID not in data, fetching from DB for request ${requestId}`);
@@ -189,12 +217,11 @@ export class RequestHandler {
             const res = await SELECT.one.from(Requests, requestId).columns('refRequest_ID');
             sourceRequestId = res?.refRequest_ID;
         }
-
         if (sourceRequestId) {
             this.log.info(`[RequestHandler] Detected copy from source request: ${sourceRequestId}`);
         }
 
-        // 5. THEN initialize workflow (creates steps from definition)
+        // 3. Initialize workflow
         try {
             await this.workflowEngine.advance(requestId, userUUID, sourceRequestId);
         } catch (err) {
@@ -204,16 +231,16 @@ export class RequestHandler {
 
     /**
      * Generate a human-readable displayId using the NumberRange configured for the request type.
-     * Format: {prefix}-{currentNumber padded to digits}
-     * e.g., LVE-001023 (prefix=LVE, currentNumber=1023, digits=6)
-     * Atomically increments the counter to avoid duplicate IDs.
+     * Format: PADDED_NUMBER (no prefix)
+     * e.g., 001023 (currentNumber=1023, digits=6)
+     * Atomically increments the counter.
      */
-    private async generateDisplayId(requestId: string, requestTypeId: string | undefined, userUUID: string | null) {
-        if (!requestTypeId) return;
+    private async generateDisplayId(requestTypeId: string | undefined, userUUID: string | null): Promise<string | null> {
+        if (!requestTypeId) return null;
 
         try {
             const db = await cds.connect.to('db');
-            const { NumberRanges, Requests } = db.entities('sap.cre');
+            const { NumberRanges } = db.entities('sap.cre');
 
             // Find active number range for this request type
             const range = await SELECT.one.from(NumberRanges)
@@ -222,7 +249,7 @@ export class RequestHandler {
 
             if (!range) {
                 this.log.info(`[RequestHandler] No active NumberRange for requestType ${requestTypeId} – skipping displayId`);
-                return;
+                return null;
             }
 
             // Build the displayId: PADDED_NUMBER (no prefix)
@@ -234,13 +261,12 @@ export class RequestHandler {
                 modifiedBy_ID: userUUID
             });
 
-            // Assign to the request
-            await UPDATE(Requests, requestId).with({ displayId });
-
-            this.log.info(`[RequestHandler] Assigned displayId "${displayId}" to request ${requestId}`);
+            this.log.info(`[RequestHandler] Generated displayId "${displayId}" for requestType ${requestTypeId}`);
+            return displayId;
         } catch (err) {
-            // Non-fatal: displayId is optional decoration, don't block request creation
-            this.log.warn(`[RequestHandler] Failed to generate displayId for request ${requestId}:`, err);
+            // Non-fatal: displayId is optional decoration
+            this.log.warn(`[RequestHandler] Failed to generate displayId for requestType ${requestTypeId}:`, err);
+            return null;
         }
     }
 

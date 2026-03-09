@@ -1137,31 +1137,17 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                     </div>
 
                                     {/* Footer Actions Editor — Decision Branching */}
-                                    {activeForm && (
+                                    {activeForm && isStartNodeForm && (
                                         <div className="mt-6">
-                                            {isStartNodeForm ? (
-                                                <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
-                                                    <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                                                    <div>
-                                                        <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
-                                                        <p className="text-xs text-blue-600 mt-0.5">
-                                                            This step uses a standard submission action. Custom decision buttons are typically added for Approval steps to enable workflow branching.
-                                                        </p>
-                                                    </div>
+                                            <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                                                <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
+                                                    <p className="text-xs text-blue-600 mt-0.5">
+                                                        This step uses a standard submission action. Custom decision buttons are typically added for Approval steps to enable workflow branching.
+                                                    </p>
                                                 </div>
-                                            ) : (
-                                                /* Hide technical list for User Tasks to avoid redundancy with the interactive buttons below */
-                                                !isUserTaskForm && (
-                                                    <FooterActionsEditor
-                                                        actions={activeForm.actions || []}
-                                                        onChange={(actions) => {
-                                                            if (activeFormId) {
-                                                                updateFormActions(activeFormId, actions);
-                                                            }
-                                                        }}
-                                                    />
-                                                )
-                                            )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

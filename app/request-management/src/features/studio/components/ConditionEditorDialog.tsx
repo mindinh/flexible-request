@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, GitBranch, X, Layers, Database } from 'lucide-react';
+import { Plus, Trash2, GitBranch, Layers, Database } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/Dialog';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
+
 import { Button } from '@/components/ui/Button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
@@ -92,42 +92,39 @@ export function ConditionEditorDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[800px] p-0 gap-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-purple-50/50">
+                <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-red-50/50">
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-purple-100 text-purple-600">
+                        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-100 text-[var(--brand-red)]">
                             <GitBranch size={24} />
                         </div>
                         <div>
                             <DialogTitle className="text-xl font-bold text-slate-900">Condition Logic Editor</DialogTitle>
                             <DialogDescription className="text-sm text-slate-500">
-                                Define the rules that decide if the workflow follows the YES path.
+                                Define the rules that decide if the workflow follows the TRUE path.
                             </DialogDescription>
                         </div>
                     </div>
-                    <DialogPrimitive.Close className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
-                        <X size={20} />
-                    </DialogPrimitive.Close>
                 </div>
 
                 {/* Content */}
                 <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
 
                     {/* Multi-rule logic toggle */}
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className={`flex items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl transition-opacity ${rules.length <= 1 ? 'opacity-60' : ''}`}>
                         <div>
                             <Label className="text-sm font-bold text-slate-700">Condition Match Type</Label>
                             <p className="text-[11px] text-slate-500">Determine how multiple rules are combined.</p>
                         </div>
-                        <div className="flex bg-white rounded-lg p-1 border border-slate-200 ml-auto">
+                        <div className={`flex bg-white rounded-lg p-1 border border-slate-200 ml-auto ${rules.length <= 1 ? 'pointer-events-none' : ''}`}>
                             <button
                                 onClick={() => setMatchType('AND')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${matchType === 'AND' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${matchType === 'AND' ? 'bg-red-100 text-[var(--brand-red)] shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
                             >
                                 Match ALL (AND)
                             </button>
                             <button
                                 onClick={() => setMatchType('OR')}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${matchType === 'OR' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${matchType === 'OR' ? 'bg-red-100 text-[var(--brand-red)] shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
                             >
                                 Match ANY (OR)
                             </button>
@@ -137,7 +134,7 @@ export function ConditionEditorDialog({
                     {/* Rule Builder */}
                     <div className="space-y-3">
                         {rules.map((rule, idx) => (
-                            <div key={rule.id} className="flex items-start gap-3 p-4 border border-slate-200 rounded-xl bg-white shadow-sm relative group hover:border-purple-300 transition-colors">
+                            <div key={rule.id} className="flex items-start gap-3 p-4 border border-slate-200 rounded-xl bg-white shadow-sm relative group hover:border-red-300 transition-colors">
 
                                 {/* Rule Index / Status */}
                                 <div className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-bold mt-2">
@@ -174,7 +171,7 @@ export function ConditionEditorDialog({
                                     <div className="col-span-3 space-y-1.5">
                                         <Label className="text-[10px] font-bold text-slate-500 uppercase">Operator</Label>
                                         <Select value={rule.operator} onValueChange={(val) => updateRule(rule.id, 'operator', val)}>
-                                            <SelectTrigger className="bg-slate-50 text-purple-700 font-semibold text-center h-10">
+                                            <SelectTrigger className="bg-slate-50 text-[var(--brand-red)] font-semibold text-center h-10">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -213,7 +210,7 @@ export function ConditionEditorDialog({
                     <Button
                         variant="outline"
                         onClick={handleAddRule}
-                        className="w-full h-12 border-2 border-dashed border-slate-200 text-slate-500 hover:text-purple-600 hover:border-purple-300 hover:bg-purple-50 gap-2 font-semibold transition-all rounded-xl"
+                        className="w-full h-12 border-2 border-dashed border-slate-200 text-slate-500 hover:text-[var(--brand-red)] hover:border-red-300 hover:bg-red-50 gap-2 font-semibold transition-all rounded-xl"
                     >
                         <Plus size={16} />
                         Add Rule
@@ -225,7 +222,7 @@ export function ConditionEditorDialog({
                     <Button variant="ghost" onClick={() => onOpenChange(false)} className="font-bold text-slate-500 h-11 px-6">
                         Cancel
                     </Button>
-                    <Button onClick={handleSave} className="h-11 px-8 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg shadow-purple-200 gap-2 transition-all">
+                    <Button onClick={handleSave} className="h-11 px-8 bg-[var(--brand-red)] hover:bg-red-800 text-white font-bold rounded-xl shadow-lg shadow-red-200 gap-2 transition-all">
                         <GitBranch size={16} />
                         Save Conditions
                     </Button>

@@ -1,4 +1,4 @@
-import { cds, SELECT } from '../lib/db';
+import { cds, SELECT, DELETE, INSERT } from '../lib/db';
 import { IdentityProvisioner } from '../lib/identity-provisioner';
 
 /**
@@ -23,6 +23,68 @@ export class InboxHandler {
         this.srv.on('getMyTasks', this.onGetMyTasks.bind(this));
         this.srv.on('getTeamTasks', this.onGetTeamTasks.bind(this));
         this.srv.on('getCoordinatingRequests', this.onGetCoordinatingRequests.bind(this));
+        this.srv.on('deleteTask', this.onDeleteTask.bind(this));
+    }
+
+    /**
+     * Delete a task and its parent request if it exists.
+     * Use to clean up both regular and orphaned records.
+     */
+    private async onDeleteTask(req: cds.Request) {
+        const { requestId, stepApprovalId } = req.data as { requestId: string, stepApprovalId: string };
+        const db = await cds.connect.to('db');
+        const { Requests, Steps, StepApprovals, RequestData, RequestHistory, StepHistory, Attachments } = db.entities('sap.cre');
+
+        this.log.info(`Deleting task (requestId: ${requestId}, stepApprovalId: ${stepApprovalId})`);
+
+        try {
+            // 1) Handle Request and its steps
+            if (requestId) {
+                // Find all steps for this request
+                const steps = await SELECT.from(Steps).where({ request_ID: requestId }).columns('ID');
+                const stepIds = steps.map((s: any) => s.ID).filter(Boolean);
+
+                if (stepIds.length > 0) {
+                    await DELETE.from(StepApprovals).where({ step_ID: { in: stepIds } });
+                    await DELETE.from(StepHistory).where({ step_ID: { in: stepIds } });
+                    await DELETE.from(RequestData).where({ step_ID: { in: stepIds } });
+                    await DELETE.from(Steps).where({ ID: { in: stepIds } });
+                }
+
+                await DELETE.from(RequestHistory).where({ request_ID: requestId });
+                await DELETE.from(Attachments).where({ request_ID: requestId });
+                await DELETE.from(Requests).where({ ID: requestId });
+
+                this.log.debug(`[onDeleteTask] Cleaned up Request ${requestId} and ${stepIds.length} steps`);
+            }
+
+            // 2) Explicitly delete the step approval record if still present (targets orphans)
+            if (stepApprovalId && stepApprovalId !== 'null' && stepApprovalId !== 'undefined') {
+                const approval = await SELECT.one.from(StepApprovals, stepApprovalId).columns('step_ID');
+                if (approval) {
+                    const stepId = (approval as any).step_ID;
+                    await DELETE.from(StepApprovals).where({ ID: stepApprovalId });
+
+                    if (stepId) {
+                        // Check if step has other approvals. If not, delete step too.
+                        const otherApps = await SELECT.from(StepApprovals).where({ step_ID: stepId }).columns('ID');
+                        if (otherApps.length === 0) {
+                            await DELETE.from(StepHistory).where({ step_ID: stepId });
+                            await DELETE.from(RequestData).where({ step_ID: stepId });
+                            await DELETE.from(Steps).where({ ID: stepId });
+                        }
+                    }
+                } else {
+                    // Even if approval not found, try to delete it just in case
+                    await DELETE.from(StepApprovals).where({ ID: stepApprovalId });
+                }
+            }
+
+            return true;
+        } catch (err) {
+            this.log.error(`[onDeleteTask] Error:`, err);
+            return req.error(500, 'Failed to delete task.');
+        }
     }
 
     /**

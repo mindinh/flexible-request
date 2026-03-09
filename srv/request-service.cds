@@ -141,6 +141,8 @@ service RequestService @(
     @readonly
     entity ValueHelpList         as projection on db.ValueHelpList;
 
+    action   deleteTask(requestId : UUID, stepApprovalId : UUID);
+
     // ------------------------------------------------------------------------
     // Unbound Functions
     // ------------------------------------------------------------------------

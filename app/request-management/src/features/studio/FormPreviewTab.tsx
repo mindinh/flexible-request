@@ -9,7 +9,7 @@ import { Layers, ArrowLeft, Send, Save, Trash2, Plus, Download, Upload, Copy } f
 import { motion } from 'framer-motion';
 
 // ─── Field Renderer for Preview ───
-function PreviewField({ field }: { field: UiFormField }) {
+export function PreviewField({ field, value, onChange }: { field: UiFormField, value?: any, onChange?: (val: any) => void }) {
     const colSpanClass = (() => {
         const raw = (field.colSpan as number) || 6;
         const span = raw === 1 ? 6 : raw === 2 ? 12 : raw;
@@ -21,27 +21,27 @@ function PreviewField({ field }: { field: UiFormField }) {
         switch (field.type) {
             case 'text':
             case 'number':
-                return <Input type={field.type} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`} />;
+                return <Input type={field.type} placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`} value={value || ''} onChange={e => onChange && onChange(e.target.value)} />;
             case 'email':
-                return <Input type="email" placeholder={field.placeholder || 'email@example.com'} />;
+                return <Input type="email" placeholder={field.placeholder || 'email@example.com'} value={value || ''} onChange={e => onChange && onChange(e.target.value)} />;
             case 'phone':
-                return <Input type="tel" placeholder={field.placeholder || '+1 (555) 000-0000'} />;
+                return <Input type="tel" placeholder={field.placeholder || '+1 (555) 000-0000'} value={value || ''} onChange={e => onChange && onChange(e.target.value)} />;
             case 'currency':
                 return (
                     <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-                        <Input className="pl-7" placeholder={field.placeholder || '0.00'} />
+                        <Input className="pl-7" placeholder={field.placeholder || '0.00'} value={value || ''} onChange={e => onChange && onChange(e.target.value)} />
                     </div>
                 );
             case 'date':
                 return (
                     <div className="relative">
-                        <Input type="date" placeholder={field.placeholder || 'mm/dd/yyyy'} />
+                        <Input type="date" placeholder={field.placeholder || 'mm/dd/yyyy'} value={value || ''} onChange={e => onChange && onChange(e.target.value)} />
                     </div>
                 );
             case 'select':
                 return (
-                    <Select>
+                    <Select value={value} onValueChange={onChange}>
                         <SelectTrigger className="w-full">
                             <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}...`} />
                         </SelectTrigger>
@@ -53,6 +53,8 @@ function PreviewField({ field }: { field: UiFormField }) {
                     <Textarea
                         placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
                         className="min-h-[100px] resize-y"
+                        value={value || ''}
+                        onChange={e => onChange && onChange(e.target.value)}
                     />
                 );
             case 'checkbox':
@@ -108,7 +110,7 @@ function PreviewField({ field }: { field: UiFormField }) {
 }
 
 // ─── Section Renderer ───
-function PreviewSection({ section }: { section: UiSection }) {
+export function PreviewSection({ section, values, onChange }: { section: UiSection, values?: Record<string, any>, onChange?: (id: string, val: any) => void }) {
     return (
         <div className="mb-8">
             <div className="flex items-center gap-3 mb-4 pb-2 border-b border-slate-200">
@@ -119,7 +121,7 @@ function PreviewSection({ section }: { section: UiSection }) {
             </div>
             <div className="grid grid-cols-12 gap-x-6 gap-y-5">
                 {section.fields.map(field => (
-                    <PreviewField key={field.id} field={field} />
+                    <PreviewField key={field.id} field={field} value={values?.[field.id]} onChange={val => onChange?.(field.id, val)} />
                 ))}
             </div>
         </div>
@@ -127,7 +129,7 @@ function PreviewSection({ section }: { section: UiSection }) {
 }
 
 // ─── Table Renderer ───
-function PreviewTable({ table }: { table: UiTableField }) {
+export function PreviewTable({ table }: { table: UiTableField }) {
     return (
         <div className="mb-8">
             <div className="flex items-center justify-between mb-3">

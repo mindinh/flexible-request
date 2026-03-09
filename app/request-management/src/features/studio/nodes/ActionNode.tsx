@@ -1,5 +1,6 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { ClipboardCheck, FileEdit, Mail, Shield, Clock, Globe } from 'lucide-react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
+import { ClipboardCheck, FileEdit, Mail, Shield, Clock, Globe, Calculator } from 'lucide-react';
+import { useEffect } from 'react';
 import { useStudioStore } from '../useStudioStore';
 import type { UiFormAction } from '../types';
 
@@ -7,6 +8,7 @@ import type { UiFormAction } from '../types';
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
     user_task: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
     api_call: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'API Call' },
+    formula: { icon: Calculator, color: '#b10e10', bg: '#fef2f2', label: 'Formula' },
     // Legacy subtypes kept for backward compatibility
     form: { icon: FileEdit, color: '#e74c3c', bg: '#fef2f2', label: 'Form' },
     email: { icon: Mail, color: '#3b82f6', bg: '#eff6ff', label: 'Email' },
@@ -23,8 +25,9 @@ const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', 
  * icon badge, and clean typography.
  * Supports dynamic output handles based on form actions (decision branching).
  */
-export function ActionNode({ data, selected }: NodeProps) {
+export function ActionNode({ id, data, selected }: NodeProps) {
     const { forms } = useStudioStore();
+    const updateNodeInternals = useUpdateNodeInternals();
     const subType = data.actionSubType as string | undefined;
     const config = (subType && ACTION_CONFIG[subType]) || DEFAULT_CONFIG;
     const Icon = config.icon;
@@ -33,6 +36,13 @@ export function ActionNode({ data, selected }: NodeProps) {
     const associatedForm = forms.find(f => f.id === data.formId);
     const customActions = associatedForm?.actions || [];
 
+    // CRITICAL: When the number of handles changes dynamically, 
+    // we MUST notify React Flow to recalculate positions.
+    useEffect(() => {
+        updateNodeInternals(id);
+    }, [id, customActions.length, updateNodeInternals]);
+
+    const supportsSLA = subType === 'user_task' || subType === 'userTask' || subType === 'approval';
 
     return (
         <div
@@ -101,7 +111,7 @@ export function ActionNode({ data, selected }: NodeProps) {
                         color: '#94a3b8',
                         marginTop: '2px',
                     }}>
-                        {(data.sla as number) > 0 ? (
+                        {(data.sla as number) > 0 && supportsSLA ? (
                             <>
                                 <Clock size={10} />
                                 <span>{data.sla as number}d SLA</span>

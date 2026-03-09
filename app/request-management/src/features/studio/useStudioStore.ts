@@ -56,9 +56,11 @@ interface StudioState {
 
     // Simulation State
     isSimulationMode: boolean;
+    isSimulationAutoPlaying: boolean;
     simulationActiveNodeId: string | null;
     simulationHistory: string[];
     simulationVariables: Record<string, any>;
+    simulationPendingBranches: UiWorkflowEdge[] | null;
 
     // Actions
     setActiveTab: (tab: string) => void;
@@ -104,8 +106,11 @@ interface StudioState {
     // Simulation Actions
     startSimulation: () => void;
     stopSimulation: () => void;
+    playSimulation: () => void;
+    pauseSimulation: () => void;
     stepSimulation: () => void;
     updateSimulationVariable: (key: string, value: any) => void;
+    selectSimulationBranch: (edgeId: string) => void;
 }
 
 export const useStudioStore = create<StudioState>((set, get) => ({
@@ -122,7 +127,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     rules: [],
     statusNetwork: { nodes: [], edges: [] },
 
-    activeTab: 'workflow',
+    activeTab: 'data-schema',
     isLoading: false,
     isSaving: false,
     isDirty: false,
@@ -147,9 +152,11 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
     // Simulation
     isSimulationMode: false,
+    isSimulationAutoPlaying: false,
     simulationActiveNodeId: null,
     simulationHistory: [],
     simulationVariables: {},
+    simulationPendingBranches: null,
 
     // Auto-close editors when switching to a base tab
     setActiveTab: (tab) => {
@@ -433,16 +440,36 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     })(),
                     notificationsContent: (() => {
                         const notifTypes = (node.data.notificationTypes as string[]) || [];
-                        if (notifTypes.length === 0 && !node.data.emailConfig) return null;
-                        const payload: { channels: string[]; emailConfig?: any } = {
+                        if (notifTypes.length === 0 && !node.data.emailConfig && !node.data.bellTitle && !node.data.bellBody && !node.data.emailSubject && !node.data.emailBody) return null;
+
+                        const payload: { channels: string[]; emailConfig?: any; bellConfig?: any } = {
                             channels: notifTypes,
                         };
+
+                        // Sync emailConfig: prefer explicit emailConfig, fallback to top-level sidebar fields
                         if (node.data.emailConfig) {
                             payload.emailConfig = node.data.emailConfig;
+                        } else if (node.data.emailSubject || node.data.emailBody) {
+                            payload.emailConfig = {
+                                recipientMode: (node.data.emailRecipient as string) || 'requester',
+                                subjectTemplate: (node.data.emailSubject as string) || '',
+                                bodyTemplate: (node.data.emailBody as string) || '',
+                            };
+                        }
+
+                        if (node.data.bellTitle || node.data.bellBody || node.data.bellType || node.data.bellPriority || node.data.bellRole) {
+                            payload.bellConfig = {
+                                titleTemplate: node.data.bellTitle,
+                                bodyTemplate: node.data.bellBody,
+                                typeTemplate: node.data.bellType,
+                                priorityTemplate: node.data.bellPriority,
+                                roleTemplate: node.data.bellRole,
+                            };
                         }
                         return JSON.stringify(payload);
                     })(),
-                    conditionExpr: node.data.conditionExpr ? JSON.stringify(node.data.conditionExpr) : null,
+                    conditionExpr: node.data.conditionLogic ? JSON.stringify(node.data.conditionLogic) : null,
+                    formulas: node.data.formulas ? JSON.stringify(node.data.formulas) : null,
                     // Email & API Configuration (Custom fields from HEAD)
                     emailSubject: (node.data.emailSubject as string) || null,
                     emailBody: (node.data.emailBody as string) || null,
@@ -656,14 +683,34 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     },
 
     deleteStep: (stepId) => set(state => {
+        const nodeToDelete = state.workflow.nodes.find(n => n.id === stepId);
+        const isStartNode = nodeToDelete?.type === 'startNode' || nodeToDelete?.data?.isStart;
+        const formIdToDelete = isStartNode ? nodeToDelete?.data?.formId : null;
+
         // Remove node
         const newNodes = state.workflow.nodes.filter(n => n.id !== stepId);
 
         // Remove connected edges
         const newEdges = state.workflow.edges.filter(e => e.source !== stepId && e.target !== stepId);
 
+        // Conditional form deletion
+        let newForms = state.forms;
+        let newActiveFormId = state.activeFormId;
+        let newSchema = state.schema;
+
+        if (formIdToDelete) {
+            newForms = state.forms.filter(f => f.id !== formIdToDelete);
+            if (state.activeFormId === formIdToDelete) {
+                newActiveFormId = newForms[0]?.id || null;
+                newSchema = newActiveFormId ? (newForms.find(f => f.id === newActiveFormId)?.items || []) : [];
+            }
+        }
+
         return {
             workflow: { nodes: newNodes, edges: newEdges },
+            forms: newForms,
+            activeFormId: newActiveFormId,
+            schema: newSchema,
             activeStepId: state.activeStepId === stepId ? null : state.activeStepId,
             isDirty: true
         };
@@ -818,27 +865,34 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         }
         set({
             isSimulationMode: true,
+            isSimulationAutoPlaying: false,
             simulationActiveNodeId: startNode.id,
             simulationHistory: [startNode.id],
             simulationVariables: {},
+            simulationPendingBranches: null,
             error: null
         });
     },
 
     stopSimulation: () => set({
         isSimulationMode: false,
+        isSimulationAutoPlaying: false,
         simulationActiveNodeId: null,
         simulationHistory: [],
-        simulationVariables: {}
+        simulationVariables: {},
+        simulationPendingBranches: null
     }),
+
+    playSimulation: () => set({ isSimulationAutoPlaying: true }),
+    pauseSimulation: () => set({ isSimulationAutoPlaying: false }),
 
     updateSimulationVariable: (key, value) => set(state => ({
         simulationVariables: { ...state.simulationVariables, [key]: value }
     })),
 
     stepSimulation: () => set(state => {
-        const { workflow, simulationActiveNodeId, simulationVariables } = state;
-        if (!simulationActiveNodeId) return {};
+        const { workflow, simulationActiveNodeId, simulationVariables, isSimulationAutoPlaying, simulationPendingBranches } = state;
+        if (!simulationActiveNodeId || simulationPendingBranches) return {};
 
         const currentNode = workflow.nodes.find(n => n.id === simulationActiveNodeId);
         if (!currentNode) return {};
@@ -848,30 +902,67 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
         if (outgoingEdges.length === 0) {
             // End of flow
-            return { simulationActiveNodeId: null };
+            return { simulationActiveNodeId: null, isSimulationAutoPlaying: false };
+        }
+
+        // If there are multiple branches, pause and ask for selection
+        if (outgoingEdges.length > 1) {
+            return {
+                simulationPendingBranches: outgoingEdges
+            };
         }
 
         let nextNodeId: string | null = null;
 
         if (currentNode.type === 'conditionNode') {
-            // Condition Logic Traversal
+            // Condition Logic Traversal (Auto-evaluation or first branch if no variable set)
             const trueEdge = outgoingEdges.find(e => e.sourceHandle === 'true');
             const falseEdge = outgoingEdges.find(e => e.sourceHandle === 'false');
 
-            // Simplified logic: Check if simulationVariables['condition_result'] is true
-            // In a real implementation, we would evaluate currentNode.data.conditionLogic
-            const result = simulationVariables[currentNode.id] === true;
-            nextNodeId = result ? (trueEdge?.target || null) : (falseEdge?.target || null);
+            const result = simulationVariables[currentNode.id];
+            if (result === undefined) {
+                // No result yet, ask for branch
+                return {
+                    simulationPendingBranches: outgoingEdges
+                };
+            }
+            nextNodeId = result === true ? (trueEdge?.target || null) : (falseEdge?.target || null);
         } else {
             // Sequential traversal (take the first available edge)
             nextNodeId = outgoingEdges[0].target;
         }
 
-        if (!nextNodeId) return { simulationActiveNodeId: null };
+        if (!nextNodeId) return { simulationActiveNodeId: null, isSimulationAutoPlaying: false };
 
         return {
             simulationActiveNodeId: nextNodeId,
             simulationHistory: [...state.simulationHistory, nextNodeId]
+        };
+    }),
+
+    selectSimulationBranch: (edgeId) => set(state => {
+        const edge = state.workflow.edges.find(e => e.id === edgeId);
+        if (!edge) return {};
+
+        const nextNodeId = edge.target;
+
+        // If the source was a condition node, update the variable for history/display purposes
+        const sourceNode = state.workflow.nodes.find(n => n.id === edge.source);
+        let extraState = {};
+        if (sourceNode?.type === 'conditionNode') {
+            extraState = {
+                simulationVariables: {
+                    ...state.simulationVariables,
+                    [sourceNode.id]: edge.sourceHandle === 'true'
+                }
+            };
+        }
+
+        return {
+            ...extraState,
+            simulationActiveNodeId: nextNodeId,
+            simulationHistory: [...state.simulationHistory, nextNodeId],
+            simulationPendingBranches: null
         };
     }),
 

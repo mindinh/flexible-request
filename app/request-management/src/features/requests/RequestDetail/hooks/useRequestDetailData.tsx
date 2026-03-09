@@ -64,11 +64,48 @@ export function useRequestDetailData(id: string | undefined) {
         }
     }, [startStepData]);
 
+    // Reset transient state when switching requests
+    useEffect(() => {
+        setFormData({});
+        setStepFormData({});
+        setSelectedStepId(null);
+    }, [id]);
+
+    // Pre-initialize stepFormData from server payloads when request is loaded
+    useEffect(() => {
+        if (!request?.steps) return;
+
+        setStepFormData(prev => {
+            if (!request?.steps) return prev;
+            const next = { ...prev };
+            let hasChanged = false;
+
+            request.steps.forEach(step => {
+                if (step.ID && step.data?.payload) {
+                    try {
+                        const payload = JSON.parse(step.data.payload);
+                        // Only initialize if not already in state (to avoid overwriting user edits)
+                        // This ensures that mapped data from server is picked up immediately.
+                        if (!next[step.ID]) {
+                            next[step.ID] = payload;
+                            hasChanged = true;
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to parse payload for step ${step.ID}`, e);
+                    }
+                }
+            });
+
+            return hasChanged ? next : prev;
+        });
+    }, [request?.steps]);
+
     // Handle Input Mapping propagation for the selected step
     useEffect(() => {
         if (!selectedStepId || !request?.requestType?.steps || !request?.steps) return;
 
-        const currentStepDef = request.requestType.steps.find(s => s.ID === selectedStepId);
+        const currentStep = request.steps.find(s => s.ID === selectedStepId);
+        const currentStepDef = request.requestType.steps.find(s => s.ID === currentStep?.stepDefinition_ID);
         if (!currentStepDef?.inputMapping) return;
 
         try {
@@ -138,14 +175,14 @@ export function useRequestDetailData(id: string | undefined) {
             });
 
             if (actionableStep) {
-                setSelectedStepId(actionableStep.stepDefinition_ID || null);
+                setSelectedStepId(actionableStep.ID || null);
                 return;
             }
 
             // 2. Fallback: If no actionable step, just show the Start Step (requester view)
             const startStep = steps.find((s: Step) => s.stepDefinition?.isStartStep) || steps[0];
             if (startStep) {
-                setSelectedStepId(startStep.stepDefinition_ID || null);
+                setSelectedStepId(startStep.ID || null);
             }
         }
     }, [request, selectedStepId, currentUserId]);
@@ -317,6 +354,13 @@ export function useRequestDetailData(id: string | undefined) {
                 status = 'COMPLETED';
             }
 
+            // Force REJECTED status if there's an explicit rejection record or action
+            const isTechnicalReject = runtimeStep?.approvals?.some(a => a.status === 'REJECTED');
+            const isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
+            if (isTechnicalReject || isBranchReject) {
+                status = 'REJECTED';
+            }
+
             // Check for re-approval condition
             const hasPastActivity = auditLog?.some(l =>
                 l.stepName === stepDef.stepName &&
@@ -337,28 +381,21 @@ export function useRequestDetailData(id: string | undefined) {
                     );
                 } else if (statusUpper === 'COMPLETED') {
                     if (completedApprovals.length > 0) {
-                        const isTechnicalReject = completedApprovals.some(a => a.status === 'REJECTED');
-                        const isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
-                        const isRejected = isTechnicalReject || isBranchReject;
-
                         const approverName = completedApprovals[0].decidedByDisplayName ||
                             completedApprovals[0].approverDisplayName ||
                             completedApprovals[0].approver;
 
-                        if (isRejected) {
-                            statusBadge = <span className="text-rose-600 font-medium">Rejected by {approverName}</span>;
-                        } else {
-                            statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
-                        }
+                        statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
                     } else if (hasData) {
                         statusBadge = <span className="text-emerald-600 font-medium">Completed</span>;
                     } else {
                         statusBadge = <span className="text-slate-500">Completed</span>;
                     }
-                } else if (statusUpper === 'REJECTED' && completedApprovals.length > 0) {
-                    const approverName = completedApprovals[0].decidedByDisplayName ||
-                        completedApprovals[0].approverDisplayName ||
-                        completedApprovals[0].approver;
+                } else if (statusUpper === 'REJECTED') {
+                    const approverName = completedApprovals[0]?.decidedByDisplayName ||
+                        completedApprovals[0]?.approverDisplayName ||
+                        completedApprovals[0]?.approver || 'Approver';
+
                     statusBadge = <span className="text-rose-600 font-medium">Rejected by {approverName}</span>;
                 } else if (statusUpper === 'IN_PROGRESS') {
                     statusBadge = <span className="text-blue-600 font-medium">In Progress</span>;
@@ -490,7 +527,7 @@ export function useRequestDetailData(id: string | undefined) {
             }
 
             return {
-                id: stepDef.ID,
+                id: runtimeStep?.ID || stepDef.ID,
                 title: stepDef.stepName || 'Unknown Step',
                 status: mapStatus(status),
                 subtitle: getSubtitle(),
@@ -532,8 +569,8 @@ export function useRequestDetailData(id: string | undefined) {
     // Determine current step for actions
     // Priority: 1. User-selected step, 2. Step with pending approval for current user, 3. Active data entry step
     const currentStep = useMemo(() => {
-        if (selectedStepId) {
-            return sortedSteps.find(s => s.stepDefinition_ID === selectedStepId);
+        if (selectedStepId && sortedSteps) {
+            return sortedSteps.find(s => s.ID === selectedStepId);
         }
 
         // First, check for steps with PENDING approvals (approval steps assigned to groups/users)

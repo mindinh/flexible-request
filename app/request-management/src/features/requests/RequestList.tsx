@@ -729,7 +729,7 @@ export const RequestList = () => {
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <StatusChip status={row.status ?? undefined} />
                                             </td>
-                                            <td className="px-4 py-3 text-center">
+                                            <td className="px-4 py-3 text-left">
                                                 <span className="text-slate-700 font-medium">{currentStep}</span>
                                             </td>
                                             <td className="px-4 py-3 whitespace-nowrap">

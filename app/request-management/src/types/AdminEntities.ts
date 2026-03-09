@@ -35,6 +35,7 @@ export interface AdminStepDefinition {
     inputMapping?: string;
     approversContent?: string;
     notificationsContent?: string;
+    formulas?: string;
     conditionExpr?: string; // JSON condition expression for condition nodes
     // Sync trigger
     syncTrigger?: string;

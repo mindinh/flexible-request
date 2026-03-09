@@ -393,8 +393,12 @@ export class ApprovalHandler {
             this.log.info(`Step ${stepId} completed${decisionAction ? ` with action: ${decisionAction}` : ''}.`);
 
             // Write decisionAction to the step for workflow branching
+            // If action contains 'reject', mark step as REJECTED for UI visibility
+            const isRejectAction = decisionAction && /reject/i.test(decisionAction);
+            const targetStatus = isRejectAction ? Step.status.REJECTED : Step.status.COMPLETED;
+
             const stepUpdate: Record<string, unknown> = {
-                status: Step.status.COMPLETED,
+                status: targetStatus,
                 modifiedBy_ID: actorId
             };
             if (decisionAction) {
@@ -402,17 +406,17 @@ export class ApprovalHandler {
             }
             await UPDATE(Steps, stepId).with(stepUpdate);
 
-            // Log completion
+            // Log completion with appropriate values
             await INSERT.into(StepHistory).entries({
                 step_ID: stepId,
-                action: 'COMPLETE',
+                action: isRejectAction ? 'REJECT' : 'COMPLETE',
                 fromValue: Step.status.IN_PROGRESS,
-                toValue: Step.status.COMPLETED,
+                toValue: targetStatus,
                 actor_ID: null, // System action (all approvers approved)
                 createdBy_ID: actorId,
                 modifiedBy_ID: actorId,
                 timestamp: new Date().toISOString(),
-                comment: 'All approvals granted'
+                comment: isRejectAction ? `Step rejected via action: ${decisionAction}` : 'All approvals granted'
             });
 
             // Trigger Workflow Advance (pass actor for audit trail)

@@ -81,7 +81,7 @@ export const AppShell = () => {
                 {/* Page Content - Main Landmark */}
                 <main
                     id="main-content"
-                    className="flex-1 overflow-auto p-6"
+                    className="flex-1 flex flex-col overflow-auto p-6"
                     role="main"
                     tabIndex={-1}
                 >

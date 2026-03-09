@@ -60,6 +60,16 @@ export const RequestService = {
     },
 
     /**
+     * Delete a task and its parent request reliably (handles orphaned tasks)
+     */
+    async deleteTask(requestId: string, stepApprovalId?: string | null): Promise<void> {
+        await api.post(`${API_BASE}/RequestService.deleteTask`, {
+            requestId: requestId,
+            stepApprovalId: stepApprovalId || null
+        });
+    },
+
+    /**
      * Copy a request: creates a new draft, then explicitly copies Step 1 data client-side.
      * Client-side copy is used instead of relying on the backend `after CREATE` hook because
      * CAP does not consistently expose `refRequest_ID` in the after-handler's data payload.
@@ -81,6 +91,9 @@ export const RequestService = {
             priority: source.priority,
             requestType_ID: source.requestType?.ID,
             refRequest_ID: source.ID,
+            coordinatorId: source.coordinatorId,
+            coordinatorType: source.coordinatorType,
+            coordinatorValue: source.coordinatorValue,
         });
         const newRequest = createResp.data;
         const newRequestId = newRequest.ID;

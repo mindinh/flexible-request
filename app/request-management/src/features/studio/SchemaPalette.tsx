@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Rows3, ScrollText, Database
 } from 'lucide-react';
+import type { SimpleDataType } from './types';
 import { useStudioStore } from './useStudioStore';
 
 // Form element definitions grouped by category (matching reference design)
@@ -16,6 +17,17 @@ const LAYOUT_ELEMENTS = [
 const ELEMENT_GROUPS = [
     { key: 'layout', label: 'LAYOUT', items: LAYOUT_ELEMENTS },
 ];
+
+function getSchemaFieldControlType(schemaType: SimpleDataType): string {
+    switch (schemaType) {
+        case 'Number': return 'number';
+        case 'Boolean': return 'checkbox';
+        case 'DateTime': return 'date';
+        case 'Object': return 'textarea';
+        case 'String':
+        default: return 'text';
+    }
+}
 
 interface SchemaPaletteProps {
     isCollapsed?: boolean;
@@ -119,17 +131,20 @@ export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
                         "grid gap-2",
                         isCollapsed ? "grid-cols-1" : "grid-cols-2"
                     )}>
-                        {dataSchema.map((field) => (
-                            <PaletteCard
-                                key={field.key}
-                                type="text"
-                                label={field.label}
-                                icon={Database}
-                                isCollapsed={isCollapsed}
-                                dataFieldKey={field.key}
-                                onClick={() => handleAdd('text', field.label, field.key)}
-                            />
-                        ))}
+                        {dataSchema.map((field) => {
+                            const mappedType = getSchemaFieldControlType(field.type);
+                            return (
+                                <PaletteCard
+                                    key={field.key}
+                                    type={mappedType}
+                                    label={field.label}
+                                    icon={Database}
+                                    isCollapsed={isCollapsed}
+                                    dataFieldKey={field.key}
+                                    onClick={() => handleAdd(mappedType, field.label, field.key)}
+                                />
+                            );
+                        })}
                     </div>
                 </div>
             )}

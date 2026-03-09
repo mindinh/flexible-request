@@ -29,6 +29,18 @@ export class ConditionEvaluator {
         try {
             const condition = JSON.parse(conditionExpr);
 
+            // Studio UI format from ConditionEditorDialog: { matchType: 'AND'|'OR', rules: [...] }
+            if (condition.matchType && Array.isArray(condition.rules)) {
+                return this.evaluateGroup({
+                    logic: condition.matchType.toLowerCase(),
+                    conditions: condition.rules.map((r: any) => ({
+                        field: r.fieldId,
+                        operator: r.operator,
+                        value: r.value
+                    }))
+                }, data);
+            }
+
             // New group-based format from Condition Node: { logic: 'and'|'or', conditions: [...], negate? }
             if (condition.logic && Array.isArray(condition.conditions)) {
                 return this.evaluateGroup(condition, data);

@@ -31,6 +31,8 @@ interface StepFormSectionProps {
     formActions?: Array<{ id: string; label: string; variant: string }>;
     /** Called when a footer action button is clicked (decision branching) */
     onActionClick?: (actionId: string) => void;
+    /** Hide the default fallback Submit button */
+    hideSubmitButton?: boolean;
 }
 
 /**
@@ -50,7 +52,8 @@ export function StepFormSection({
     claimedByName,
     schemaItems: injectedSchemaItems,
     formActions,
-    onActionClick
+    onActionClick,
+    hideSubmitButton
 }: StepFormSectionProps) {
     // Use pre-resolved schema items if provided, otherwise fall back to parsing schemaContent
     const schemaItems = injectedSchemaItems || (resolvedSchemaItems && resolvedSchemaItems.length > 0
@@ -219,7 +222,7 @@ export function StepFormSection({
                                     </Button>
                                 );
                             })
-                        ) : (
+                        ) : !hideSubmitButton ? (
                             // Default: single Submit Step button
                             <Button
                                 onClick={onSubmit}
@@ -227,7 +230,7 @@ export function StepFormSection({
                             >
                                 {isSubmitting ? 'Submitting...' : 'Submit Step'}
                             </Button>
-                        )}
+                        ) : null}
                     </div>
                 )}
             </Card>

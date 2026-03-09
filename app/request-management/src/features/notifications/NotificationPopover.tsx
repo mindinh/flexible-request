@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle2, FileText, AlertCircle, Clock, Trash2 } from 'lucide-react';
+import { Bell, AlertCircle, Clock, Trash2 } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -11,8 +11,8 @@ import {
 import { RequestService } from '../../services/RequestService';
 import { cn } from '../../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
-import { PRIORITY_CONFIG } from '../../config/priorityConfig';
-import { RequestPriority } from '../../types';
+import { getPriorityConfig } from '../../config/priorityConfig';
+import { getIconConfig } from '../../config/iconConfig';
 
 export const NotificationPopover = () => {
     const navigate = useNavigate();
@@ -147,13 +147,13 @@ export const NotificationPopover = () => {
                                     <div className="flex gap-4 items-start">
                                         <div className={cn(
                                             "w-11 h-11 flex items-center justify-center rounded-2xl transition-colors shrink-0 mt-0.5",
-                                            n.type === 'APPROVAL' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
+                                            getIconConfig(n.type).bgColor,
+                                            getIconConfig(n.type).color
                                         )}>
-                                            {n.type === 'APPROVAL' ? (
-                                                <CheckCircle2 className="w-6 h-6 stroke-[2]" />
-                                            ) : (
-                                                <FileText className="w-6 h-6 stroke-[2]" />
-                                            )}
+                                            {(() => {
+                                                const Icon = getIconConfig(n.type).icon;
+                                                return <Icon className="w-6 h-6 stroke-[2]" />;
+                                            })()}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-start justify-between gap-2 mb-1">
@@ -182,7 +182,7 @@ export const NotificationPopover = () => {
                                                 </Badge>
                                                 {n.priority && (
                                                     <Badge
-                                                        variant={PRIORITY_CONFIG[n.priority as RequestPriority]?.variant || 'secondary'}
+                                                        variant={getPriorityConfig(n.priority).variant}
                                                         className="text-[10px] font-bold uppercase tracking-wider h-5"
                                                     >
                                                         {n.priority}

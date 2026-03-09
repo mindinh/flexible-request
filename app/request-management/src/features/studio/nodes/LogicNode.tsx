@@ -2,11 +2,13 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { GitBranch } from 'lucide-react';
 
 /**
- * ConditionNode — n8n-inspired compact card with a purple accent for logic/branching.
- * Has one input handle and two labelled output handles (Yes / No).
+ * ConditionNode — compact diamond card with the app's brand red accent.
+ * Has one input handle (Top) and two labelled output handles:
+ * - TRUE (Bottom, Green)
+ * - FALSE (Right, Red)
  */
 export function ConditionNode({ data, selected }: NodeProps) {
-    const accent = '#7c3aed';
+    const accent = '#b10e10'; // Matching app brand red (User Task color)
 
     return (
         <div
@@ -15,6 +17,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
                 flexDirection: 'column',
                 alignItems: 'center',
                 cursor: 'pointer',
+                position: 'relative',
             }}
         >
             {/* Diamond container */}
@@ -23,8 +26,8 @@ export function ConditionNode({ data, selected }: NodeProps) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '100px',
-                    height: '100px',
+                    width: '70px',
+                    height: '70px',
                     backgroundColor: '#fff',
                     border: `2px solid ${selected ? accent : '#e2e8f0'}`,
                     transform: 'rotate(45deg)',
@@ -43,16 +46,16 @@ export function ConditionNode({ data, selected }: NodeProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     textAlign: 'center',
-                    padding: '10px',
+                    padding: '8px',
                     width: '100%',
                 }}>
-                    <GitBranch size={16} color={accent} style={{ marginBottom: '4px' }} />
+                    <GitBranch size={14} color={accent} style={{ marginBottom: '2px' }} />
                     <div style={{
                         fontWeight: 700,
-                        fontSize: '11px',
+                        fontSize: '9px',
                         color: '#1e293b',
-                        lineHeight: 1.1,
-                        maxWidth: '70px',
+                        lineHeight: 1,
+                        maxWidth: '50px',
                         wordBreak: 'break-word',
                     }}>
                         {(data.label as string) || 'Condition'}
@@ -76,16 +79,16 @@ export function ConditionNode({ data, selected }: NodeProps) {
                 }}
             />
 
-            {/* Yes output (Bottom) */}
+            {/* TRUE output (Bottom) */}
             <div style={{
                 position: 'absolute',
-                bottom: '-25px',
+                bottom: '-30px',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '4px',
+                gap: '2px',
             }}>
                 <Handle
                     type="source"
@@ -93,35 +96,35 @@ export function ConditionNode({ data, selected }: NodeProps) {
                     id="true"
                     style={{
                         position: 'static',
-                        width: '12px',
-                        height: '12px',
+                        width: '10px',
+                        height: '10px',
                         backgroundColor: '#22c55e',
                         border: '2px solid #fff',
                         transform: 'none',
                     }}
                 />
-                <span style={{ fontSize: '9px', fontWeight: 800, color: '#22c55e' }}>YES</span>
+                <span style={{ fontSize: '8px', fontStyle: 'italic', fontWeight: 800, color: '#22c55e' }}>TRUE</span>
             </div>
 
-            {/* No output (Right) */}
+            {/* FALSE output (Right) */}
             <div style={{
                 position: 'absolute',
-                right: '-40px',
+                right: '-45px',
                 top: '50%',
                 transform: 'translateY(-50%)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
             }}>
-                <span style={{ fontSize: '9px', fontWeight: 800, color: '#ef4444' }}>NO</span>
+                <span style={{ fontSize: '8px', fontStyle: 'italic', fontWeight: 800, color: '#ef4444' }}>FALSE</span>
                 <Handle
                     type="source"
                     position={Position.Right}
                     id="false"
                     style={{
                         position: 'static',
-                        width: '12px',
-                        height: '12px',
+                        width: '10px',
+                        height: '10px',
                         backgroundColor: '#ef4444',
                         border: '2px solid #fff',
                         transform: 'none',

@@ -29,7 +29,9 @@ export const PRIORITY_CONFIG: Record<RequestPriority, PriorityConfigItem> = {
  * Get priority config with fallback to MEDIUM
  */
 export function getPriorityConfig(priority: string | undefined): PriorityConfigItem {
-    return PRIORITY_CONFIG[priority as RequestPriority] || PRIORITY_CONFIG.MEDIUM;
+    if (!priority) return PRIORITY_CONFIG.MEDIUM;
+    const upper = priority.toUpperCase();
+    return PRIORITY_CONFIG[upper as RequestPriority] || PRIORITY_CONFIG.MEDIUM;
 }
 
 /**

@@ -234,6 +234,7 @@ export function WorkflowTimeline({
                 border: 'border-rose-500',
                 icon: X,
                 iconColor: 'text-white',
+                lineColor: 'bg-rose-500',
                 opacity: 'opacity-100'
             };
         }
@@ -287,16 +288,23 @@ export function WorkflowTimeline({
                                 `}
                             >
                                 {/* Connector Line */}
-                                {(!isLast || showCompletion) && (
-                                    <div
-                                        className={`absolute left-[27px] top-10 bottom-0 w-0.5 -ml-px ${config.lineColor} ${config.lineStyle === 'dashed' ? 'opacity-60' : ''}`}
-                                        style={config.lineStyle === 'dashed' ? {
-                                            backgroundImage: `linear-gradient(to bottom, currentColor 50%, transparent 50%)`,
-                                            backgroundSize: '2px 8px',
-                                            backgroundColor: 'transparent'
-                                        } : {}}
-                                    />
-                                )}
+                                {(!isLast || showCompletion) && (() => {
+                                    const isTerminalLine = isLast && showCompletion;
+                                    const effectiveLineColor = (isTerminalLine && requestStatus === 'REJECTED')
+                                        ? 'bg-rose-500'
+                                        : config.lineColor;
+
+                                    return (
+                                        <div
+                                            className={`absolute left-[27px] top-10 bottom-0 w-0.5 -ml-px ${config.lineStyle === 'dashed' ? 'opacity-60' : ''} ${effectiveLineColor}`}
+                                            style={config.lineStyle === 'dashed' ? {
+                                                backgroundImage: `linear-gradient(to bottom, currentColor 50%, transparent 50%)`,
+                                                backgroundSize: '2px 8px',
+                                                backgroundColor: 'transparent'
+                                            } : {}}
+                                        />
+                                    );
+                                })()}
 
                                 <div className="relative z-10 flex-none pt-1">
                                     <div className={`
@@ -344,6 +352,8 @@ export function WorkflowTimeline({
                                             <div className="flex items-center gap-1.5 mb-1">
                                                 {isRejected ? (
                                                     <X className={`w-3 h-3 ${iconClass}`} />
+                                                ) : isApproved ? (
+                                                    <Check className={`w-3 h-3 ${iconClass}`} />
                                                 ) : (
                                                     <GitBranch className={`w-3 h-3 ${iconClass}`} />
                                                 )}

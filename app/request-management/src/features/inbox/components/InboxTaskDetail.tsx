@@ -154,9 +154,9 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
     // User checks
     const isRequester = (request as any).createdBy === currentUserId ||
         (request as any).requester?.userId === currentUserId;
-    const isCoordinator = (request as any).coordinator?.ID === currentUserId ||
-        (request as any).coordinator?.userId === currentUserId ||
-        (request as any).coordinatorId === currentUserId;
+    const isCoordinator = (request as any).coordinatorType === 'USER'
+        ? (request as any).coordinatorId === currentUserId
+        : checkIsGroupMember(currentUserId, (request as any).coordinatorId);
 
     const isOwner = (ownerId: string | null | undefined) => {
         if (!ownerId || !currentUserId) return false;
@@ -202,13 +202,28 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
 
     // Step form handlers
     const handleStepFieldChange = (stepId: string, fieldId: string, value: any) => {
-        setStepFormData((prev: Record<string, any>) => ({
-            ...prev,
-            [stepId]: {
-                ...prev[stepId],
-                [fieldId]: value
+        setStepFormData(prev => {
+            if (!request?.steps) return prev; // Guard for request.steps
+            const next = { ...prev };
+            let hasChanged = false;
+
+            // Update the specific step's data
+            if (next[stepId]) {
+                if (next[stepId][fieldId] !== value) {
+                    next[stepId] = {
+                        ...next[stepId],
+                        [fieldId]: value
+                    };
+                    hasChanged = true;
+                }
+            } else {
+                next[stepId] = {
+                    [fieldId]: value
+                };
+                hasChanged = true;
             }
-        }));
+            return hasChanged ? next : prev;
+        });
     };
 
     // ─── Global Context Helper ───
@@ -232,14 +247,24 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
             for (const otherStep of sortedSteps) {
                 if (otherStep.ID === currentRuntimeStep.ID) continue;
                 if (!otherStep.data?.payload) continue;
+
                 const otherStepDef = request.requestType?.steps?.find(
                     (s: any) => s.ID === otherStep.stepDefinition_ID
                 );
+
+                let otherPayload: Record<string, any> = {};
+                try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
+
+                // Merge formula step outputs
+                if (otherStepDef?.actionSubType === 'formula') {
+                    Object.assign(globalContext, otherPayload);
+                    continue;
+                }
+
                 if (!otherStepDef?.formId) continue;
                 const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
                 if (!otherForm?.items) continue;
-                let otherPayload: Record<string, any> = {};
-                try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
+
                 const extractBound = (items: any[]) => {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) extractBound(item.fields);
@@ -266,7 +291,9 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                         if (item.type === 'section' && item.fields) injectBound(item.fields);
                         else if (item.type === 'table' && item.columns) injectBound(item.columns);
                         else if (item.bindTo && globalContext[item.bindTo] !== undefined) {
-                            if (merged[item.id] === undefined || merged[item.id] === null) {
+                            // Only inject if current field is empty OR we are in a started step that hasn't been edited yet.
+                            // This prevents over-writing actual data (like formula results) with stale global context.
+                            if (merged[item.id] === undefined || merged[item.id] === null || merged[item.id] === "") {
                                 merged[item.id] = globalContext[item.bindTo];
                             }
                         }
@@ -507,7 +534,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
 
                     {/* Dynamic Step Form Sections */}
                     {sortedSteps.map((step) => {
-                        if (step.stepDefinition_ID !== selectedStepId) return null;
+                        if (step.ID !== selectedStepId) return null;
 
                         const stepDef = request.requestType?.steps?.find(s => s.ID === step.stepDefinition_ID);
                         if (!stepDef) return null;
@@ -572,6 +599,7 @@ export function InboxTaskDetail({ requestId, onDeselect }: InboxTaskDetailProps)
                                 claimRequired={stepClaimRequired}
                                 claimedByOther={stepClaimedByOther}
                                 claimedByName={stepClaimedBy?.displayName}
+                                hideSubmitButton={showApprovalActions}
                             />
                         );
                     })}

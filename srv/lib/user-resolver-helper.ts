@@ -47,14 +47,15 @@ export class UserResolverHelper {
                 .columns('ID') as { ID: string } | null;
 
             if (user?.ID) {
+                this.log.info(`[UserResolverHelper] Resolved ${origin}:${userId} to UUID: ${user.ID}`);
                 this.cache.set(cacheKey, user.ID);
                 return user.ID;
             }
 
-            this.log.warn(`ShadowUser not found for IDP user: ${origin}:${userId}`);
+            this.log.warn(`[UserResolverHelper] ShadowUser not found for: ${origin}:${userId}`);
             return null;
         } catch (e) {
-            this.log.error(`Error resolving ShadowUser for ${origin}:${userId}:`, e);
+            this.log.error(`[UserResolverHelper] Error resolving ${origin}:${userId}:`, e);
             return null;
         }
     }
