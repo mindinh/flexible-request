@@ -172,11 +172,16 @@ export function generateStatusFlow(
 
     // Cross-lane connection: target step ID → exit card ID that should connect to it
     const pendingConnections = new Map<string, string>();
+    // Track processed steps for back-edge detection
+    const processedSteps = new Set<string>();
+    // Map step node ID → the card ID that reverse transitions should land on
+    const reverseTargetMap = new Map<string, string>();
     let col = 0;
 
     for (const step of stepsToShow) {
         const laneIdx = stepToLane.get(step.node.id) ?? 0;
         const outgoing = outEdges.get(step.node.id) || [];
+        const isDataEntry = step.stepType === 'DATA_ENTRY_STEP';
 
         // ── Entry card ───────────────────────────────────────────────
         let entryName = 'Draft';
@@ -197,6 +202,29 @@ export function generateStatusFlow(
             pendingConnections.delete(step.node.id);
         }
 
+        // ── Intermediate "In Progress" card for Data Entry steps ─────
+        let prevCardId = entryId;
+        if (isDataEntry) {
+            const inProgressId = `card-${step.node.id}-inprogress`;
+            const ipColor = '#2563eb';
+            phases.push({
+                id: inProgressId, phaseNumber: col + 1, label: 'In Progress', laneIndex: laneIdx,
+                statuses: [makeChip('In Progress', ipColor)],
+                sourceStepIds: [step.node.id],
+            });
+            transitions.push({
+                id: `tr-${entryId}-${inProgressId}`,
+                from: entryId, to: inProgressId, action: 'Save as Draft',
+            });
+            prevCardId = inProgressId;
+            // Reverse transitions to this Data Entry should land on "In Progress"
+            reverseTargetMap.set(step.node.id, inProgressId);
+            col += 1; // advance for the extra card
+        } else {
+            // Approval steps: reverse transitions land on the "Pending" entry card
+            reverseTargetMap.set(step.node.id, entryId);
+        }
+
         // ── Exit cards ───────────────────────────────────────────────
         const exitCol = col + 1;
         let hasRcCard = false;
@@ -210,11 +238,12 @@ export function generateStatusFlow(
                 statuses: [makeChip(defaults.exitName, defaults.exitColor)],
                 sourceStepIds: [step.node.id],
             });
-            transitions.push({ id: `tr-${entryId}-${exitId}`, from: entryId, to: exitId, action: defaults.actionLabel });
+            transitions.push({ id: `tr-${prevCardId}-${exitId}`, from: prevCardId, to: exitId, action: defaults.actionLabel });
         } else {
             for (let bi = 0; bi < outgoing.length; bi++) {
                 const edge = outgoing[bi];
                 const targetsEnd = isEndNode(edge.target);
+                const isBackEdge = processedSteps.has(edge.target);
 
                 // Exit status: use statusConfig when edge has sourceHandle, else default
                 let exitName: string, exitColor: string;
@@ -234,9 +263,21 @@ export function generateStatusFlow(
                     statuses: [makeChip(exitName, exitColor)],
                     sourceStepIds: [step.node.id],
                 });
-                transitions.push({ id: `tr-${entryId}-${exitId}`, from: entryId, to: exitId, action: actionLabel });
+                transitions.push({ id: `tr-${prevCardId}-${exitId}`, from: prevCardId, to: exitId, action: actionLabel });
 
-                if (targetsEnd) {
+                if (isBackEdge) {
+                    // ── Reverse transition: connect exit card back to target's entry ──
+                    const reverseTargetId = reverseTargetMap.get(edge.target);
+                    if (reverseTargetId) {
+                        transitions.push({
+                            id: `tr-reverse-${exitId}-${reverseTargetId}`,
+                            from: exitId,
+                            to: reverseTargetId,
+                            action: 'Sent Back',
+                            isReverse: true,
+                        });
+                    }
+                } else if (targetsEnd) {
                     // "Request Completed" terminal card
                     hasRcCard = true;
                     const rcId = `card-${step.node.id}-rc-${bi}`;
@@ -253,6 +294,8 @@ export function generateStatusFlow(
             }
         }
 
+        // Mark step as processed for back-edge detection
+        processedSteps.add(step.node.id);
         // Advance column (extra space if RC cards were added)
         col = exitCol + (hasRcCard ? 2 : 1);
     }

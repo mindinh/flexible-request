@@ -306,12 +306,13 @@ export interface StatusFlowLane {
     sourceNodeId?: string;
 }
 
-/** A forward transition between two phase blocks */
+/** A transition between two phase blocks */
 export interface StatusFlowTransition {
     id: string;
     from: string;             // → StatusFlowPhase.id
     to: string;               // → StatusFlowPhase.id
     action: string;           // Label on the connector (e.g. "Submit", "Approved")
+    isReverse?: boolean;      // True when this is a backward/sent-back transition
 }
 
 /** Root model for the Status Flow visualization */
