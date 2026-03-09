@@ -294,8 +294,8 @@ export function HierarchyBuilderTab() {
 
             const newEdges = edgesToCreate.map((e, i) => ({
                 id: `e-loaded-${i}`, source: nodeIdMap.get(e.parentKey)!, target: nodeIdMap.get(e.childKey)!,
-                type: 'smoothstep', animated: false, style: { stroke: BRAND_RED, strokeWidth: 2 },
-                data: { relationship: e.relationship || 'Direct Report', accessLevel: e.accessLevel || 'View Only', effectiveDate: e.effectiveDate || '' } as HierarchyEdgeData,
+                type: 'editableHierarchyEdge', animated: false, style: { stroke: BRAND_RED, strokeWidth: 2 },
+                data: { relationship: e.relationship || 'Direct Report', accessLevel: e.accessLevel || 'View Only', effectiveDate: e.effectiveDate || '', offsets: [0, 0, 0] } as HierarchyEdgeData,
             }));
 
             store.setNodes(newNodes);

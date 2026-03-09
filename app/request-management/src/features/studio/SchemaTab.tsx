@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info
+    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info, Save, Send
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
@@ -653,6 +653,48 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
             (n) => (n.data.subType === 'user_task' || n.data.actionSubType === 'user_task' || n.data.actionSubType === 'form') && n.data.formId === activeFormId
         )
     );
+    const renderStartFormActions = (compact = false) => (
+        <div className={cn("flex items-center justify-end gap-3", compact ? "min-h-[44px]" : "")}>
+            <Button
+                variant="destructive"
+                size="sm"
+                type="button"
+                className="gap-2 mr-auto pointer-events-none"
+                tabIndex={-1}
+            >
+                <Trash2 size={14} />
+                Discard
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                className="pointer-events-none"
+                tabIndex={-1}
+            >
+                Cancel
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                className="gap-2 pointer-events-none"
+                tabIndex={-1}
+            >
+                <Save size={14} />
+                Save Draft
+            </Button>
+            <Button
+                size="sm"
+                type="button"
+                className="gap-2 pointer-events-none"
+                tabIndex={-1}
+            >
+                <Send size={14} />
+                Submit Request
+            </Button>
+        </div>
+    );
 
     const currentSchema = schema;
     const updateCurrentSchema = updateSchema;
@@ -1138,8 +1180,10 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
 
                                     {/* Footer Actions Editor — Decision Branching */}
                                     {activeForm && isStartNodeForm && (
-                                        <div className="mt-6">
-                                            <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                                        <div className="mt-6 pt-6 border-t border-slate-200">
+                                            {renderStartFormActions(true)}
+
+                                            <div className="mt-4 flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
                                                 <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
                                                 <div>
                                                     <p className="text-sm font-medium text-blue-800">Default Submit Action</p>
@@ -1208,12 +1252,6 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                 </div>
                                             ))}
 
-                                            {(!activeForm?.actions || activeForm.actions.length === 0) && (
-                                                <div className="flex gap-2 opacity-40 grayscale pointer-events-none">
-                                                    <Button size="sm" variant="outline" className="h-8 px-4 bg-green-50 text-green-600 border-green-200">Approve</Button>
-                                                    <Button size="sm" variant="outline" className="h-8 px-4 bg-rose-50 text-rose-600 border-rose-200">Reject</Button>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1319,6 +1357,11 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                 </div>
                             )}
                         </div>
+                        {isStartNodeForm && (
+                            <div className="flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50/80">
+                                {renderStartFormActions()}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

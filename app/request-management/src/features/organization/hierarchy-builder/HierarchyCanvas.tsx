@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
     ReactFlow,
     Controls,
@@ -14,24 +14,85 @@ import {
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
 import { hierarchyNodeTypes } from './nodes';
-import { useHierarchyStore, type HierarchyEdgeData } from './useHierarchyStore';
+import { EditableHierarchyEdge } from './EditableHierarchyEdge';
+import { useHierarchyStore, type HierarchyEdgeData, type HierarchyNodeData } from './useHierarchyStore';
 
 const BRAND_RED = '#b10e10';
+const hierarchyEdgeTypes = {
+    editableHierarchyEdge: EditableHierarchyEdge,
+};
 
 export function HierarchyCanvas() {
     const { screenToFlowPosition } = useReactFlow();
     const store = useHierarchyStore();
     const revision = useHierarchyStore((s) => s.revision);
+    const selectedNodeId = useHierarchyStore((s) => s.selectedNodeId);
+    const selectedEdgeId = useHierarchyStore((s) => s.selectedEdgeId);
 
-    const [nodes, setNodes, onNodesChange] = useNodesState(store.nodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(store.edges);
+    const decoratedGraph = useMemo(() => {
+        const childrenByParent = new Map<string, string[]>();
+        store.edges.forEach((edge) => {
+            const children = childrenByParent.get(edge.source) || [];
+            children.push(edge.target);
+            childrenByParent.set(edge.source, children);
+        });
+
+        const hiddenNodeIds = new Set<string>();
+        const collapsedNodeIds = store.nodes
+            .filter((node) => Boolean((node.data as HierarchyNodeData)?.collapsed))
+            .map((node) => node.id);
+
+        const markDescendantsHidden = (nodeId: string) => {
+            const stack = [...(childrenByParent.get(nodeId) || [])];
+            const visited = new Set<string>();
+
+            while (stack.length > 0) {
+                const currentId = stack.pop()!;
+                if (visited.has(currentId)) continue;
+                visited.add(currentId);
+                hiddenNodeIds.add(currentId);
+                const nextChildren = childrenByParent.get(currentId) || [];
+                nextChildren.forEach((childId) => stack.push(childId));
+            }
+        };
+
+        collapsedNodeIds.forEach(markDescendantsHidden);
+
+        return {
+            nodes: store.nodes.map((node) => ({
+                ...node,
+                hidden: hiddenNodeIds.has(node.id),
+            })),
+            edges: store.edges.map((edge) => ({
+                ...edge,
+                hidden: hiddenNodeIds.has(edge.source) || hiddenNodeIds.has(edge.target),
+            })),
+            hiddenNodeIds,
+        };
+    }, [store.edges, store.nodes]);
+
+    const [nodes, setNodes, onNodesChange] = useNodesState(decoratedGraph.nodes);
+    const [edges, setEdges, onEdgesChange] = useEdgesState(decoratedGraph.edges);
 
     // *** KEY FIX: Subscribe to `revision` to sync ALL store changes to local React Flow state ***
     useEffect(() => {
-        const state = useHierarchyStore.getState();
-        setNodes(state.nodes as any);
-        setEdges(state.edges as any);
-    }, [revision, setNodes, setEdges]);
+        setNodes(decoratedGraph.nodes as any);
+        setEdges(decoratedGraph.edges as any);
+    }, [decoratedGraph.edges, decoratedGraph.nodes, revision, setNodes, setEdges]);
+
+    useEffect(() => {
+        if (selectedNodeId && decoratedGraph.hiddenNodeIds.has(selectedNodeId)) {
+            store.clearSelection();
+            return;
+        }
+
+        if (
+            selectedEdgeId &&
+            decoratedGraph.edges.some((edge) => edge.id === selectedEdgeId && edge.hidden)
+        ) {
+            store.clearSelection();
+        }
+    }, [decoratedGraph.edges, decoratedGraph.hiddenNodeIds, selectedEdgeId, selectedNodeId, store]);
 
     const syncStore = useCallback(
         (newNodes: Node[], newEdges: Edge[]) => {
@@ -46,13 +107,14 @@ export function HierarchyCanvas() {
         (params) => {
             const newEdge = {
                 ...params,
-                type: 'smoothstep',
+                type: 'editableHierarchyEdge',
                 animated: false,
                 style: { stroke: BRAND_RED, strokeWidth: 2 },
                 data: {
                     relationship: 'Direct Report',
                     accessLevel: 'View Only',
                     effectiveDate: '',
+                    offsets: [0, 0, 0],
                 } satisfies HierarchyEdgeData,
             };
             const newEdges = addEdge(newEdge, edges);
@@ -165,9 +227,11 @@ export function HierarchyCanvas() {
                 style={{ backgroundColor: '#fafafa' }}
                 defaultEdgeOptions={{
                     style: { stroke: BRAND_RED, strokeWidth: 2 },
-                    type: 'smoothstep',
+                    type: 'editableHierarchyEdge',
                     animated: false,
+                    data: { offsets: [0, 0, 0] },
                 }}
+                edgeTypes={hierarchyEdgeTypes}
             >
                 <Controls
                     style={{

@@ -20,12 +20,14 @@ export type HierarchyNodeData = {
     groupTypeCode?: string;
     members?: MemberInfo[];
     isNew?: boolean;
+    collapsed?: boolean;
 };
 
 export type HierarchyEdgeData = {
     relationship: string;
     accessLevel: string;
     effectiveDate: string;
+    offsets?: number[];
 };
 
 export type SavedOrg = {
@@ -51,6 +53,7 @@ interface HierarchyState {
     addNode: (node: Node) => void;
     removeNode: (nodeId: string) => void;
     updateNodeData: (nodeId: string, data: Partial<HierarchyNodeData>) => void;
+    toggleNodeCollapsed: (nodeId: string) => void;
     selectNode: (nodeId: string | null) => void;
     selectEdge: (edgeId: string | null) => void;
     updateEdgeData: (edgeId: string, data: Partial<HierarchyEdgeData>) => void;
@@ -108,6 +111,22 @@ export const useHierarchyStore = create<HierarchyState>((set) => ({
         })),
 
     selectNode: (nodeId) => set({ selectedNodeId: nodeId, selectedEdgeId: null }),
+    toggleNodeCollapsed: (nodeId) =>
+        set((state) => ({
+            nodes: state.nodes.map((n) =>
+                n.id === nodeId
+                    ? {
+                        ...n,
+                        data: {
+                            ...(n.data as HierarchyNodeData),
+                            collapsed: !(n.data as HierarchyNodeData)?.collapsed,
+                        },
+                    }
+                    : n
+            ),
+            isDirty: true,
+            revision: state.revision + 1,
+        })),
     selectEdge: (edgeId) => set({ selectedEdgeId: edgeId, selectedNodeId: null }),
     clearSelection: () => set({ selectedNodeId: null, selectedEdgeId: null }),
 
@@ -131,18 +150,23 @@ export const useHierarchyStore = create<HierarchyState>((set) => ({
                 id: `e-${parentNodeId}-${childNode.id}`,
                 source: parentNodeId,
                 target: childNode.id,
-                type: 'smoothstep',
+                type: 'editableHierarchyEdge',
                 animated: false,
                 style: { stroke: BRAND_RED, strokeWidth: 2 },
                 data: {
                     relationship: 'Direct Report',
                     accessLevel: 'View Only',
                     effectiveDate: '',
+                    offsets: [0, 0, 0],
                 } satisfies HierarchyEdgeData,
             };
 
             return {
-                nodes: [...state.nodes, childNode],
+                nodes: state.nodes.map((n) =>
+                    n.id === parentNodeId
+                        ? { ...n, data: { ...(n.data as HierarchyNodeData), collapsed: false } }
+                        : n
+                ).concat(childNode),
                 edges: [...state.edges, newEdge],
                 selectedNodeId: childNode.id,
                 selectedEdgeId: null,

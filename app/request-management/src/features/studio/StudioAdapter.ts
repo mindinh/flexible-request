@@ -191,13 +191,43 @@ export const StudioAdapter = {
             if (step.predecessors) {
                 step.predecessors.forEach(pred => {
                     if (pred.dependsOn_ID) {
-                        const action = (pred as any).action as string | undefined;
+                        const rawAction = (pred as any).action as string | undefined;
+                        let handleId = rawAction;
+                        let offsets = [0, 0, 0];
+
+                        // Metadata Encoding: handleId|{"o":[x,y,z]}
+                        if (rawAction && rawAction.includes('|')) {
+                            const [id, metaStr] = rawAction.split('|');
+                            handleId = id;
+                            try {
+                                const meta = JSON.parse(metaStr);
+                                if (meta.o) offsets = meta.o;
+                            } catch (e) {
+                                console.warn("Failed to parse edge metadata:", metaStr);
+                            }
+                        }
+
+                        const isLegacyDefaultOffsets =
+                            Array.isArray(offsets) &&
+                            offsets.length === 3 &&
+                            offsets[0] === 40 &&
+                            offsets[1] === 0 &&
+                            offsets[2] === 40;
+
+                        if (isLegacyDefaultOffsets) {
+                            offsets = [0, 0, 0];
+                        }
+
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
-                            type: 'smoothstep',
-                            ...(action ? { sourceHandle: action } : {}),
+                            type: 'editableEdge',
+                            data: {
+                                offsets,
+                                action: handleId // Preserve the actual handle mapping
+                            },
+                            ...(handleId ? { sourceHandle: handleId } : {}),
                         });
                     }
                 });

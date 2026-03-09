@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Users, Building2, Briefcase, Shield, Plus, User } from 'lucide-react';
+import { Users, Building2, Briefcase, Shield, Plus, User, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHierarchyStore } from '../useHierarchyStore';
 
 const BRAND_RED = '#b10e10';
@@ -65,10 +65,13 @@ function AddChildDialog({
 export function GroupNode({ id, data, selected }: NodeProps) {
     const [showAddChild, setShowAddChild] = useState(false);
     const addChildNode = useHierarchyStore((s) => s.addChildNode);
+    const toggleNodeCollapsed = useHierarchyStore((s) => s.toggleNodeCollapsed);
+    const hasChildren = useHierarchyStore((s) => s.edges.some((edge) => edge.source === id));
 
     const label = (data.label as string) || 'Group';
     const memberCount = (data.memberCount as number) ?? (data.members as any[])?.length ?? 0;
     const groupTypeCode = (data.groupTypeCode as string) || 'GROUP';
+    const collapsed = Boolean((data as any).collapsed);
     const accentColor = BRAND_RED;
     const Icon = GROUP_ICONS[groupTypeCode] || GROUP_ICONS.DEFAULT;
 
@@ -109,6 +112,33 @@ export function GroupNode({ id, data, selected }: NodeProps) {
 
     return (
         <div style={{ position: 'relative' }}>
+            {hasChildren && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        toggleNodeCollapsed(id);
+                    }}
+                    style={{
+                        position: 'absolute',
+                        top: '-10px',
+                        right: '-10px',
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '999px',
+                        border: '1px solid #e2e8f0',
+                        backgroundColor: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: accentColor,
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                        zIndex: 20,
+                    }}
+                    title={collapsed ? 'Expand children' : 'Collapse children'}
+                >
+                    {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                </button>
+            )}
             <div
                 style={{
                     display: 'flex',

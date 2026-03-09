@@ -247,23 +247,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             ) || [];
 
             const workflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
-            const startNode = workflow.nodes.find(n => n.data.isStart);
-            const startFormId = startNode?.data?.formId;
 
             // Load forms from formSchemasContent
             let forms: UiForm[] = [];
             try {
                 if (fullDraft.formSchemasContent) {
                     forms = JSON.parse(fullDraft.formSchemasContent);
-                    // Add default actions to existing forms if they don't have any
+                    // Preserve saved actions and migrate legacy footerActions without injecting defaults
                     forms = forms.map((f: any) => ({
                         ...f,
-                        actions: f.actions !== undefined ? f.actions : (f.footerActions !== undefined ? f.footerActions : (
-                            f.id === startFormId ? [] : [
-                                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
-                                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
-                            ]
-                        ))
+                        actions: f.actions !== undefined ? f.actions : (f.footerActions !== undefined ? f.footerActions : [])
                     }));
                 }
             } catch (e) {
@@ -530,15 +523,18 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Compare current edges with original to determine adds/deletes
             const { originalEdges } = get();
 
-            // Helper to create edge key for comparison
-            const edgeKey = (source: string, target: string, sourceHandle?: string) => `${source}|${target}|${sourceHandle || ''}`;
+            // Helper to create edge key for comparison - include offsets to detect wiggle changes
+            const edgeKey = (e: any) => {
+                const offsets = e.data?.offsets || [0, 0, 0];
+                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${JSON.stringify(offsets)}`;
+            };
 
             // Build sets for comparison
-            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
-            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
+            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e)));
+            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e)));
 
             // Find edges to DELETE (in original but not in current)
-            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
+            const edgesToDelete = originalEdges.filter(e => !currentEdgeKeys.has(edgeKey(e)));
             console.log("Deleting dependencies...", edgesToDelete.length);
             for (const edge of edgesToDelete) {
                 if (edge.id) {
@@ -547,12 +543,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
 
             // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e.source, e.target, e.sourceHandle as string | undefined)));
+            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
-                // edge.source is the predecessor (dependsOn)
-                // edge.target is the step that depends on source
-                await AdminService.createStepDependency(edge.target, edge.source, edge.sourceHandle as string | undefined);
+                // Metadata Encoding for persistence
+                const offsets = (edge.data as any)?.offsets as number[] | undefined;
+                const baseAction = (edge.sourceHandle as string) || '';
+                const encodedAction = (offsets && offsets.some(v => v !== 0))
+                    ? `${baseAction}|${JSON.stringify({ o: offsets })}`
+                    : baseAction;
+
+                await AdminService.createStepDependency(edge.target, edge.source, encodedAction);
             }
 
             // 3. Save Form Schemas at Request Type level
@@ -792,10 +793,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             id: crypto.randomUUID(),
             name,
             items: [],
-            actions: [
-                { id: `action-approve-${Date.now()}`, label: 'Approve', variant: 'success' },
-                { id: `action-reject-${Date.now() + 1}`, label: 'Reject', variant: 'danger' }
-            ],
+            actions: [],
         };
         return {
             forms: [...state.forms, newForm],
@@ -916,7 +914,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     })),
 
     stepSimulation: () => set(state => {
-        const { workflow, simulationActiveNodeId, simulationVariables, isSimulationAutoPlaying, simulationPendingBranches } = state;
+        const { workflow, simulationActiveNodeId, simulationVariables, simulationPendingBranches } = state;
         if (!simulationActiveNodeId || simulationPendingBranches) return {};
 
         const currentNode = workflow.nodes.find(n => n.id === simulationActiveNodeId);

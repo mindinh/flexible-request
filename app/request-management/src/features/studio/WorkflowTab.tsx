@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import {
     ReactFlow,
     Controls,
@@ -15,14 +15,20 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
-import { Wand2, Play, Pause, X, ChevronRight, RotateCcw, Send, FileEdit } from 'lucide-react';
+import { Wand2, Play, Pause, X, ChevronRight, RotateCcw, Send, FileEdit, FileCode2, Code, AlertTriangle } from 'lucide-react';
 import dagre from 'dagre';
 import { useStudioStore } from './useStudioStore';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
 import { PreviewField, PreviewSection, PreviewTable } from './FormPreviewTab';
 import { nodeTypes } from './nodes';
+import { EditableEdge } from './nodes/EditableEdge';
 import type { UiFormAction } from './types';
+
+const edgeTypes = {
+    editableEdge: EditableEdge,
+};
 
 // Map palette nodeType strings to React Flow node type keys
 const PALETTE_TO_NODE_TYPE: Record<string, string> = {
@@ -98,7 +104,37 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         deleteStep
     } = useStudioStore();
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
-    const { screenToFlowPosition } = useReactFlow();
+    const { screenToFlowPosition, getNodes, getEdges } = useReactFlow();
+    const [showJson, setShowJson] = useState(false);
+    const [jsonText, setJsonText] = useState('');
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    const jsonTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Sync JSON text from store (one-way: store -> text)
+    useEffect(() => {
+        // Only update if not currently focused to avoid cursor reset during typing
+        if (showJson && document.activeElement !== jsonTextareaRef.current) {
+            setJsonText(JSON.stringify(workflow, null, 2));
+            setJsonError(null);
+        }
+    }, [workflow, showJson]);
+
+    const handleJsonChange = useCallback((text: string) => {
+        setJsonText(text);
+        try {
+            const parsed = JSON.parse(text);
+            if (!parsed.nodes || !parsed.edges || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+                setJsonError('Workflow JSON must contain "nodes" and "edges" arrays');
+                return;
+            }
+            setJsonError(null);
+            // Heuristic: only update the store if the structure is actually valid
+            // We use standard any to bypass strict type check for now since we are editing raw JSON
+            updateWorkflow(parsed.nodes as any, parsed.edges as any);
+        } catch (e) {
+            setJsonError((e as Error).message);
+        }
+    }, [updateWorkflow]);
 
     // Run layout if ALL nodes are at (0,0) — heuristic for "unpositioned workflow"
     const { nodes: autoLayoutedNodes, edges: autoLayoutedEdges } = useMemo(() => {
@@ -140,11 +176,12 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
             const newEdges = addEdge(
                 {
                     ...params,
-                    type: 'smoothstep',
-                    animated: true,
-                    style: { stroke: 'var(--brand-red)', strokeWidth: 2 },
+                    type: 'editableEdge',
+                    animated: false,
+                    style: { stroke: '#0f172a', strokeWidth: 2 },
                     // Ensure no label is added
                     label: undefined,
+                    data: { offsets: [0, 0, 0] }
                 },
                 edges
             );
@@ -155,8 +192,11 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     );
 
     const onNodeDragStop = useCallback(() => {
-        updateWorkflow(nodes as any, edges as any);
-    }, [nodes, edges, updateWorkflow]);
+        // Ensure we use the absolute latest state from React Flow hooks
+        const currentNodes = getNodes();
+        const currentEdges = getEdges();
+        updateWorkflow(currentNodes as any, currentEdges as any);
+    }, [getNodes, getEdges, updateWorkflow]);
 
     const onNodeClick = useCallback(
         (_: React.MouseEvent, node: Node) => {
@@ -304,11 +344,13 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                 attributionPosition="bottom-left"
                 style={{ backgroundColor: '#fafafa' }}
                 snapToGrid
-                snapGrid={[15, 15]}
+                snapGrid={[10, 10]}
                 defaultEdgeOptions={{
-                    type: 'smoothstep',
-                    style: { stroke: 'var(--brand-red)', strokeWidth: 2 },
+                    type: 'editableEdge',
+                    style: { stroke: '#0f172a', strokeWidth: 2 },
+                    data: { offsets: [0, 0, 0] }
                 }}
+                edgeTypes={edgeTypes}
             >
                 <Panel position="top-right" className="flex gap-2">
                     {!isSimulationMode && (
@@ -329,6 +371,15 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                                 className="bg-white/80 backdrop-blur-sm"
                             >
                                 <Wand2 size={16} className="text-slate-400" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowJson(!showJson)}
+                                className={`gap-2 shadow-sm ${showJson ? 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800' : 'bg-white/80 backdrop-blur-sm'}`}
+                            >
+                                <FileCode2 size={16} className={showJson ? 'text-white' : 'text-slate-400'} />
+                                {showJson ? 'Hide JSON' : 'View JSON'}
                             </Button>
                         </>
                     )}
@@ -600,6 +651,85 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                 }} />
                 <Background color="#e2e8f0" gap={24} size={1} />
+
+                {showJson && (
+                    <Panel position="top-right" style={{ top: 60, bottom: 20, right: 20, margin: 0 }} className="z-50 pointer-events-none">
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="w-[450px] h-full flex flex-col bg-[#1e1e2e] shadow-2xl rounded-2xl border border-slate-800 overflow-hidden pointer-events-auto"
+                        >
+                            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-[#1e1e2e]">
+                                <div className="flex items-center gap-2.5">
+                                    <Code size={16} className="text-slate-400" />
+                                    <h3 className="font-semibold text-[13px] text-white">Workflow JSON</h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {jsonError ? (
+                                        <Badge variant="destructive" className="text-[10px] h-5 px-2 bg-red-500/20 text-red-400 border-red-500/30">Error</Badge>
+                                    ) : (
+                                        <Badge className="text-[10px] h-5 px-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Valid</Badge>
+                                    )}
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setShowJson(false)}
+                                        className="h-7 w-7 rounded-md text-slate-500 hover:text-white hover:bg-slate-800"
+                                    >
+                                        <X size={14} />
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex-1 flex overflow-hidden bg-[#1e1e2e]" style={{ minHeight: 0 }}>
+                                {/* Line Number Gutter */}
+                                <div
+                                    className="w-10 flex-shrink-0 bg-[#1e1e2e] text-[#4c566a] font-mono text-[11px] leading-6 pt-3 pr-2 text-right select-none overflow-hidden"
+                                    ref={(el) => {
+                                        if (!el) return;
+                                        const ta = jsonTextareaRef.current;
+                                        if (ta) {
+                                            ta.onscroll = () => { if (el) el.scrollTop = ta.scrollTop; };
+                                        }
+                                    }}
+                                >
+                                    {jsonText.split('\n').map((_, i) => (
+                                        <div key={i} className="px-1">{i + 1}</div>
+                                    ))}
+                                </div>
+                                {/* Textarea */}
+                                <textarea
+                                    ref={jsonTextareaRef}
+                                    value={jsonText}
+                                    onChange={(e) => handleJsonChange(e.target.value)}
+                                    className="flex-1 px-3 py-3 font-mono text-[11px] leading-6 bg-transparent text-[#d8dee9] resize-none focus:outline-none placeholder:text-slate-600 caret-white overflow-auto custom-scrollbar"
+                                    spellCheck={false}
+                                    placeholder="{}"
+                                />
+                            </div>
+                            <div className="px-5 py-2.5 border-t border-slate-800 bg-[#1e1e2e]/50 flex items-center justify-between">
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                    {workflow.nodes.length} Nodes • {workflow.edges.length} Edges
+                                </span>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(jsonText);
+                                    }}
+                                    className="text-[10px] h-7 px-2.5 text-slate-400 hover:text-white hover:bg-slate-800 gap-1.5"
+                                >
+                                    Copy JSON
+                                </Button>
+                            </div>
+                            {jsonError && (
+                                <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 flex items-center gap-2 text-red-400 text-[10px] font-mono">
+                                    <AlertTriangle size={12} className="shrink-0" />
+                                    <span className="truncate">{jsonError}</span>
+                                </div>
+                            )}
+                        </motion.div>
+                    </Panel>
+                )}
             </ReactFlow >
         </motion.div >
     );

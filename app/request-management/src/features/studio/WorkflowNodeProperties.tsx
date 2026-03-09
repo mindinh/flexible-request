@@ -151,7 +151,7 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
                     return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
                 case 'apiCall':
                 case 'api_call':
-                    return { icon: Globe, color: '#0ea5e9', label: 'API Call' };
+                    return { icon: Globe, color: '#0ea5e9', label: 'Background Step' };
                 case 'formula':
                     return { icon: Calculator, color: 'var(--brand-red)', label: 'Formula' };
                 default:
@@ -1689,7 +1689,7 @@ function ApiConfigurationDialog({
                             <Globe size={20} />
                         </div>
                         <div>
-                            <DialogTitle className="text-lg font-bold text-slate-900">API Call Configuration</DialogTitle>
+                            <DialogTitle className="text-lg font-bold text-slate-900">Background Step Configuration</DialogTitle>
                             <DialogDescription className="text-xs text-slate-500">Configure external HTTP request settings</DialogDescription>
                         </div>
                     </div>
@@ -2562,7 +2562,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Task Form Configuration ──────────── */}
-                    {(!isUserTask && !isFormula) && (
+                    {(!isUserTask && !isFormula && !isApproval) && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Task Form</Label>
                             {currentForm ? (
@@ -2589,7 +2589,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Approvers Card ────────────────────── */}
-                    {(!isUserTask && !isFormula) && (
+                    {(!isUserTask && !isFormula && !isApproval) && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Approvers</Label>
                             <p className="text-[11px] text-slate-400">
@@ -2716,7 +2716,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
                             >
                                 <Globe size={16} />
-                                Configure API Call
+                                Configure Background Step
                             </Button>
 
                             {!(node.data.apiMethod && node.data.apiUrl) && (
@@ -2825,7 +2825,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     />
                                 </Card>
 
-                                {isUserTask && (
+                                {(isUserTask || isApproval) && (
                                     <Card className="p-4 space-y-3">
                                         <Label variant="section">Task Form</Label>
                                         <div className="space-y-3">

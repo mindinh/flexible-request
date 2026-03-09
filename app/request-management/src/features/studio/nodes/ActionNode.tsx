@@ -7,14 +7,14 @@ import type { UiFormAction } from '../types';
 // Sub-type config: icon + accent color
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
     user_task: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
-    api_call: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'API Call' },
+    api_call: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'Background Step' },
     formula: { icon: Calculator, color: '#b10e10', bg: '#fef2f2', label: 'Formula' },
     // Legacy subtypes kept for backward compatibility
     form: { icon: FileEdit, color: '#e74c3c', bg: '#fef2f2', label: 'Form' },
     email: { icon: Mail, color: '#3b82f6', bg: '#eff6ff', label: 'Email' },
     approval: { icon: Shield, color: '#f59e0b', bg: '#fffbeb', label: 'Approval' },
     userTask: { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' },
-    apiCall: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'API Call' },
+    apiCall: { icon: Globe, color: '#0ea5e9', bg: '#f0f9ff', label: 'Background Step' },
 };
 const DEFAULT_CONFIG = { icon: ClipboardCheck, color: '#b10e10', bg: '#fef2f2', label: 'User Task' };
 
