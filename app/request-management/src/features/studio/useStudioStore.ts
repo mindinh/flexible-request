@@ -25,6 +25,9 @@ import {
     type RequesterFormUiState,
 } from './requestFormNode';
 
+const edgeIdentity = (e: any) =>
+    `${e.source}|${e.target}|${e.sourceHandle || ''}|${e.targetHandle || ''}`;
+
 interface StudioState {
     // Data
     requestTypeId: string | null;
@@ -620,7 +623,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             const originalByIdentity = new Map(originalEdges.map(e => [edgeIdentity(e), e]));
 
             // Find edges to DELETE (in original but not in current by identity)
-            const currentIdentities = new Set(workflow.edges.map(e => edgeIdentity(e)));
+            const currentIdentities = new Set(denormalizedEdges.map(e => edgeIdentity(e)));
             const edgesToDelete = originalEdges.filter(e => !currentIdentities.has(edgeIdentity(e)));
             console.log("Deleting dependencies...", edgesToDelete.length);
             for (const edge of edgesToDelete) {
@@ -629,13 +632,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 }
             }
 
-<<<<<<< HEAD
             // Find edges to CREATE (in current but not in original)
             const edgesToCreate = denormalizedEdges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
-=======
-            // Find edges to CREATE (in current but identity not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalByIdentity.has(edgeIdentity(e)));
->>>>>>> dcc3f81c3a983e0f333a9459b33aeb9ad420db49
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // Metadata Encoding for persistence
@@ -645,7 +643,6 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 const statusConfig = (edge.data as any)?.statusConfig;
                 const editorMeta: Record<string, unknown> = {};
 
-<<<<<<< HEAD
                 if (offsets && offsets.some(v => v !== 0)) {
                     editorMeta.o = offsets;
                 }
@@ -667,39 +664,6 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 } catch (err) {
                     console.error("Failed to create dependency:", edge.source, "->", edge.target, err);
                 }
-=======
-                // Serialize statusConfig for backend
-                const statusConfig = (edge.data as any)?.statusConfig;
-                const statusConfigContent = statusConfig ? JSON.stringify(statusConfig) : undefined;
-
-                await AdminService.createStepDependency(edge.target, edge.source, encodedAction, statusConfigContent);
-            }
-
-            // Find edges to UPDATE (same identity but different key = offsets or statusConfig changed)
-            const edgesToUpdate = workflow.edges.filter(e => {
-                const orig = originalByIdentity.get(edgeIdentity(e));
-                if (!orig) return false; // new edge, handled above
-                return edgeKey(e) !== edgeKey(orig);
-            });
-            console.log("Updating dependencies...", edgesToUpdate.length);
-            for (const edge of edgesToUpdate) {
-                const orig = originalByIdentity.get(edgeIdentity(edge));
-                if (!orig?.id) continue;
-
-                const offsets = (edge.data as any)?.offsets as number[] | undefined;
-                const baseAction = (edge.sourceHandle as string) || '';
-                const encodedAction = (offsets && offsets.some(v => v !== 0))
-                    ? `${baseAction}|${JSON.stringify({ o: offsets })}`
-                    : baseAction;
-
-                const statusConfig = (edge.data as any)?.statusConfig;
-                const statusConfigContent = statusConfig ? JSON.stringify(statusConfig) : undefined;
-
-                await AdminService.updateStepDependency(orig.id, {
-                    action: encodedAction || undefined,
-                    statusConfigContent,
-                });
->>>>>>> dcc3f81c3a983e0f333a9459b33aeb9ad420db49
             }
 
             // 3. Save Form Schemas at Request Type level

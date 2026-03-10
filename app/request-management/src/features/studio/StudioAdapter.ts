@@ -248,8 +248,10 @@ export const StudioAdapter = {
                             offsets = [0, 0, 0];
                         }
 
-                        // Parse statusConfigContent from backend
-                        const statusConfig = parseJson<any>((pred as any).statusConfigContent, null);
+                        // Parse statusConfigContent from backend if not already handled
+                        if (!statusConfig && (pred as any).statusConfigContent) {
+                            statusConfig = parseJson<any>((pred as any).statusConfigContent, null);
+                        }
 
                         edges.push({
                             id: pred.ID,
