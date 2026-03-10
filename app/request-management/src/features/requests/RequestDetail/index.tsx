@@ -220,24 +220,27 @@ export function RequestDetail() {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) extractBound(item.fields);
                         else if (item.type === 'table' && item.columns) {
-                            // Handle table-level bindTo for array data
-                            if (item.bindTo) {
-                                const tableData = otherPayload[item.bindTo] || otherPayload[item.id];
-                                if (Array.isArray(tableData) && tableData.length > 0) {
-                                    // Normalize row keys: column.id → column.bindTo
-                                    const colBindMap: Record<string, string> = {};
-                                    for (const col of item.columns) {
-                                        if (col.bindTo) colBindMap[col.id] = col.bindTo;
+                            // Handle table-level data sharing (with or without bindTo)
+                            const tableKey = item.bindTo || item.id;
+                            const tableData = otherPayload[tableKey] || otherPayload[item.id] || (item.bindTo ? otherPayload[item.bindTo] : null);
+                            if (Array.isArray(tableData) && tableData.length > 0) {
+                                // Normalize row keys: column.id → column.bindTo
+                                const colBindMap: Record<string, string> = {};
+                                for (const col of item.columns) {
+                                    if (col.bindTo) colBindMap[col.id] = col.bindTo;
+                                }
+                                const normalizedRows = tableData.map((row: any) => {
+                                    const newRow: any = { id: row.id };
+                                    for (const [key, val] of Object.entries(row)) {
+                                        if (key === 'id') continue;
+                                        newRow[colBindMap[key] || key] = val;
                                     }
-                                    const normalizedRows = tableData.map((row: any) => {
-                                        const newRow: any = { id: row.id };
-                                        for (const [key, val] of Object.entries(row)) {
-                                            if (key === 'id') continue;
-                                            newRow[colBindMap[key] || key] = val;
-                                        }
-                                        return newRow;
-                                    });
-                                    globalContext[item.bindTo] = normalizedRows;
+                                    return newRow;
+                                });
+                                // Store under both bindTo and id for reliable lookup
+                                globalContext[tableKey] = normalizedRows;
+                                if (item.bindTo && item.id !== item.bindTo) {
+                                    globalContext[item.id] = normalizedRows;
                                 }
                             }
                             extractBound(item.columns);
@@ -263,16 +266,14 @@ export function RequestDetail() {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) injectBound(item.fields);
                         else if (item.type === 'table' && item.columns) {
-                            // Always remap table row column keys to destination column IDs.
-                            // Global context has normalized rows (column.id → bindTo names).
-                            // Backend inputMapping may have raw source column IDs that don't match dest.
-                            // Always prefer global context (normalized) over raw payload data.
+                            // Remap table row column keys to destination column IDs.
+                            // Prefer user's current edits over global context to allow
+                            // recipients to add/edit/delete rows in editable tables.
                             const dataKey = item.bindTo || item.id;
-                            const gcRows = item.bindTo ? globalContext[item.bindTo] : null;
+                            const gcRows = globalContext[item.bindTo] || globalContext[item.id] || null;
                             const existingRows = merged[dataKey];
-                            const sourceRows = gcRows || existingRows; // prefer global context
                             
-                            if (Array.isArray(sourceRows) && sourceRows.length > 0 && item.columns?.length > 0) {
+                            if (item.columns?.length > 0) {
                                 // Build destination column map: bindTo → dest column.id
                                 const destColMap: Record<string, string> = {};
                                 const destColIds = new Set<string>();
@@ -281,26 +282,46 @@ export function RequestDetail() {
                                     if (col.bindTo) destColMap[col.bindTo] = col.id;
                                 }
                                 
-                                // Check if rows need remapping (any key not matching dest column IDs)
-                                const firstRow = sourceRows[0];
-                                const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
-                                const needsRemap = rowKeys.some(k => !destColIds.has(k));
+                                // Determine best source: gcRows are normalized (bindTo keys),
+                                // existingRows may have source column UUIDs that can't be remapped.
+                                let bestSource: any[] | null = null;
                                 
-                                if (needsRemap) {
-                                    merged[dataKey] = sourceRows.map((row: any) => {
-                                        const newRow: any = { id: row.id };
-                                        for (const [key, val] of Object.entries(row)) {
-                                            if (key === 'id') continue;
-                                            // Try destColMap (bindTo → dest column.id) first
-                                            newRow[destColMap[key] || key] = val;
-                                        }
-                                        return newRow;
-                                    });
-                                } else if (gcRows && gcRows !== existingRows) {
-                                    merged[dataKey] = sourceRows;
+                                if (Array.isArray(existingRows) && existingRows.length > 0) {
+                                    const firstRow = existingRows[0];
+                                    const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
+                                    const keysMatchDest = rowKeys.every(k => destColIds.has(k));
+                                    
+                                    if (keysMatchDest) {
+                                        bestSource = existingRows;
+                                    } else if (Array.isArray(gcRows) && gcRows.length > 0) {
+                                        bestSource = gcRows;
+                                    } else {
+                                        bestSource = existingRows;
+                                    }
+                                } else if (Array.isArray(gcRows) && gcRows.length > 0) {
+                                    bestSource = gcRows;
                                 }
-                            } else if (!existingRows && item.bindTo && globalContext[item.bindTo] !== undefined) {
-                                merged[dataKey] = globalContext[item.bindTo];
+                                
+                                if (bestSource && bestSource.length > 0) {
+                                    const firstRow = bestSource[0];
+                                    const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
+                                    const needsRemap = rowKeys.some(k => !destColIds.has(k));
+                                    
+                                    if (needsRemap) {
+                                        merged[dataKey] = bestSource.map((row: any) => {
+                                            const newRow: any = { id: row.id };
+                                            for (const [key, val] of Object.entries(row)) {
+                                                if (key === 'id') continue;
+                                                newRow[destColMap[key] || key] = val;
+                                            }
+                                            return newRow;
+                                        });
+                                    } else {
+                                        merged[dataKey] = bestSource;
+                                    }
+                                }
+                            } else if (existingRows === undefined && (globalContext[dataKey] !== undefined)) {
+                                merged[dataKey] = globalContext[dataKey];
                             }
                             injectBound(item.columns);
                         }
@@ -321,13 +342,13 @@ export function RequestDetail() {
 
     // Handle step form submission
     const handleStepSubmit = (step: any, _stepDef: any) => {
-        const rawFormData = stepFormData[step.ID] || (() => {
-            try {
-                return step.data?.payload ? JSON.parse(step.data.payload) : {};
-            } catch {
-                return {};
-            }
+        // Merge saved payload with user edits so all fields are preserved
+        const savedPayload = (() => {
+            try { return step.data?.payload ? JSON.parse(step.data.payload) : {}; } catch { return {}; }
         })();
+        const rawFormData = stepFormData[step.ID]
+            ? { ...savedPayload, ...stepFormData[step.ID] }
+            : savedPayload;
 
         // Merge bound global values so they persist in the step payload
         const mergedPayload = buildFormDataWithGlobalContext(step, rawFormData);
@@ -419,13 +440,13 @@ export function RequestDetail() {
                             (step.status === 'IN_CLARIFICATION' && (isRequester || isStepOwner))) && canEditStep;
 
                         // Build form data with globally-bound values pre-filled
-                        const rawStepFormData = stepFormData[step.ID] || (() => {
-                            try {
-                                return step.data?.payload ? JSON.parse(step.data.payload) : {};
-                            } catch {
-                                return {};
-                            }
+                        // Merge saved payload with user edits so table data isn't lost
+                        const savedPayload = (() => {
+                            try { return step.data?.payload ? JSON.parse(step.data.payload) : {}; } catch { return {}; }
                         })();
+                        const rawStepFormData = stepFormData[step.ID]
+                            ? { ...savedPayload, ...stepFormData[step.ID] }
+                            : savedPayload;
                         const currentStepFormData = buildFormDataWithGlobalContext(step, rawStepFormData);
 
                         return (

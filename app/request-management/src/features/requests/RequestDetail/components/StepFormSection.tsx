@@ -154,9 +154,6 @@ export function StepFormSection({
                             const isTableEditable = isEditable && !table.readOnly;
                             return (
                                 <div key={table.id || index} className="space-y-2">
-                                    <label className="block text-sm font-medium text-slate-700">
-                                        {table.label}
-                                    </label>
                                     {isTableEditable ? (
                                         <DynamicTableField
                                             tableId={table.id}
@@ -167,12 +164,18 @@ export function StepFormSection({
                                             }))}
                                             value={(formData[table.bindTo || table.id] as any[]) || []}
                                             onChange={(rows) => onFieldChange(table.bindTo || table.id, rows)}
+                                            headerActions={table.headerActions}
                                         />
                                     ) : (
-                                        <DisplayTableField
-                                            columns={table.columns}
-                                            rows={(formData[table.bindTo || table.id] as any[]) || []}
-                                        />
+                                        <>
+                                            <label className="block text-sm font-medium text-slate-700">
+                                                {table.label}
+                                            </label>
+                                            <DisplayTableField
+                                                columns={table.columns}
+                                                rows={(formData[table.bindTo || table.id] as any[]) || []}
+                                            />
+                                        </>
                                     )}
                                 </div>
                             );
