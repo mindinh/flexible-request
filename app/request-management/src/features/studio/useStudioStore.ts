@@ -17,6 +17,13 @@ import { StudioAdapter } from './StudioAdapter';
 import { AdminService } from '../../services/AdminService';
 import { syncOutputsFromForm } from './workflowIOHelpers';
 import { generateStatusFlow } from './statusFlowGenerator';
+import {
+    collectRequesterFormUiState,
+    isRequesterRequestFormNode,
+    syncRequesterRequestFormNode,
+    getRequesterRequestFormNode,
+    type RequesterFormUiState,
+} from './requestFormNode';
 
 interface StudioState {
     // Data
@@ -32,6 +39,7 @@ interface StudioState {
     rules: UiRule[];
     statusNetwork: { nodes: UiStatusNode[], edges: UiStatusEdge[] };
     statusFlow: StatusFlowModel;
+    requesterFormUiState: Record<string, RequesterFormUiState>;
 
     // UI State
     activeTab: string;
@@ -133,6 +141,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     rules: [],
     statusNetwork: { nodes: [], edges: [] },
     statusFlow: { title: '', lanes: [], phases: [], transitions: [] },
+    requesterFormUiState: {},
 
     activeTab: 'data-schema',
     isLoading: false,
@@ -253,7 +262,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 StudioAdapter.toUiRules(step.approverRules, step.ID)
             ) || [];
 
-            const workflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
+            const persistedWorkflow = StudioAdapter.toUiWorkflow(fullDraft.steps);
+            const workflow = syncRequesterRequestFormNode(
+                persistedWorkflow.nodes,
+                persistedWorkflow.edges,
+                get().requesterFormUiState
+            );
 
             // Load forms from formSchemasContent
             let forms: UiForm[] = [];
@@ -322,14 +336,15 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 rules,
                 originalRules: rules,
                 workflow,
-                originalNodes: workflow.nodes,
-                originalEdges: workflow.edges,
+                originalNodes: persistedWorkflow.nodes,
+                originalEdges: persistedWorkflow.edges,
                 forms,
                 activeFormId,
                 schema,
                 activeStepId,
                 statusNetwork,
                 statusFlow,
+                requesterFormUiState: collectRequesterFormUiState(workflow.nodes, workflow.edges),
                 dataSchema,
                 isDirty: false,
                 isLoading: false
@@ -423,18 +438,50 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 actionNode: 'action',
                 conditionNode: 'condition',
             };
+            const resolveDependencyAction = (edge: UiWorkflowEdge) => {
+                const sourceNode = workflow.nodes.find((node) => node.id === edge.source);
+                const sourceHandle = edge.sourceHandle as string | undefined;
+
+                if (!sourceNode || !sourceHandle) {
+                    return { action: '', sourceHandleMeta: sourceHandle };
+                }
+
+                if (sourceNode.type === 'conditionNode') {
+                    const isDecisionHandle = sourceHandle === 'true' || sourceHandle === 'false';
+                    return {
+                        action: isDecisionHandle ? sourceHandle : '',
+                        sourceHandleMeta: isDecisionHandle ? undefined : sourceHandle,
+                    };
+                }
+
+                const formActions = (sourceNode.data.formActions as Array<{ id?: string }> | undefined) || [];
+                const isFormActionHandle = formActions.some((action) => action.id === sourceHandle);
+
+                return {
+                    action: isFormActionHandle ? sourceHandle : '',
+                    sourceHandleMeta: isFormActionHandle ? undefined : sourceHandle,
+                };
+            };
 
             console.log("Processing steps...", workflow.nodes.length);
             for (const node of workflow.nodes) {
+                // Skip the virtual "Requester: Request Form" node - it's not a real backend step
+                if (isRequesterRequestFormNode(node)) {
+                    console.log("Skipping virtual requester form node:", node.id);
+                    continue;
+                }
                 const inputs = (node.data.inputs as UiNodeInput[]) || [];
                 const outputs = (node.data.outputs as UiNodeOutput[]) || [];
+                const persistedActionSubType = node.data.actionSubType === 'background_task'
+                    ? ((node.data.backgroundTaskType as string) || null)
+                    : (node.data.actionSubType as string) || null;
                 const stepData = {
                     ID: node.id,
                     stepName: node.data.label,
                     isStartStep: node.data.isStart,
                     slaDays: node.data.sla,
                     stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
-                    actionSubType: node.data.actionSubType || null,
+                    actionSubType: persistedActionSubType,
                     formId: node.data.formId || null,
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     inputMapping: (node.data.inputMapping as string) || null,
@@ -530,14 +577,42 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             // Compare current edges with original to determine adds/deletes
             const { originalEdges } = get();
 
+            // Find Start and Requester nodes for de-normalization
+            const startNode = workflow.nodes.find(n => n.type === 'startNode' || n.data?.isStart);
+            const requesterNode = getRequesterRequestFormNode(workflow.nodes, startNode?.id);
+
+            // De-normalize edges: point any edge coming from the virtual requester node back to the start node
+            const denormalizedEdges = workflow.edges.map(edge => {
+                let source = edge.source;
+                let target = edge.target;
+
+                if (requesterNode && edge.source === requesterNode.id) {
+                    source = startNode!.id;
+                }
+                if (requesterNode && edge.target === requesterNode.id && !(edge.data as any)?.isRequesterBridge) {
+                    target = startNode!.id;
+                }
+
+                if (source !== edge.source || target !== edge.target) {
+                    return { ...edge, source, target };
+                }
+                return edge;
+            }).filter(edge => {
+                // Skip the bridge edge between Start and Requester
+                if (requesterNode && edge.source === startNode?.id && edge.target === requesterNode.id) {
+                    return false;
+                }
+                return true;
+            });
+
             // Helper to create edge key for comparison - include offsets to detect wiggle changes
             const edgeKey = (e: any) => {
                 const offsets = e.data?.offsets || [0, 0, 0];
-                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${JSON.stringify(offsets)}`;
+                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${e.targetHandle || ''}|${JSON.stringify(offsets)}`;
             };
 
             // Build sets for comparison
-            const currentEdgeKeys = new Set(workflow.edges.map(e => edgeKey(e)));
+            const currentEdgeKeys = new Set(denormalizedEdges.map(e => edgeKey(e)));
             const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e)));
 
             // Find edges to DELETE (in original but not in current)
@@ -550,17 +625,37 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
 
             // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = workflow.edges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
+            const edgesToCreate = denormalizedEdges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // Metadata Encoding for persistence
                 const offsets = (edge.data as any)?.offsets as number[] | undefined;
-                const baseAction = (edge.sourceHandle as string) || '';
-                const encodedAction = (offsets && offsets.some(v => v !== 0))
-                    ? `${baseAction}|${JSON.stringify({ o: offsets })}`
-                    : baseAction;
+                const { action: baseAction, sourceHandleMeta } = resolveDependencyAction(edge);
+                const targetHandle = (edge.targetHandle as string) || undefined;
+                const statusConfig = (edge.data as any)?.statusConfig;
+                const editorMeta: Record<string, unknown> = {};
 
-                await AdminService.createStepDependency(edge.target, edge.source, encodedAction);
+                if (offsets && offsets.some(v => v !== 0)) {
+                    editorMeta.o = offsets;
+                }
+                if (sourceHandleMeta) {
+                    editorMeta.s = sourceHandleMeta;
+                }
+                if (targetHandle) {
+                    editorMeta.t = targetHandle;
+                }
+                const statusConfigPayload = Object.keys(editorMeta).length > 0 || statusConfig
+                    ? JSON.stringify({
+                        ...(Object.keys(editorMeta).length > 0 ? { editor: editorMeta } : {}),
+                        ...(statusConfig ? { statusConfig } : {}),
+                    })
+                    : undefined;
+
+                try {
+                    await AdminService.createStepDependency(edge.target, edge.source, baseAction || undefined, statusConfigPayload);
+                } catch (err) {
+                    console.error("Failed to create dependency:", edge.source, "->", edge.target, err);
+                }
             }
 
             // 3. Save Form Schemas at Request Type level
@@ -708,6 +803,10 @@ export const useStudioStore = create<StudioState>((set, get) => ({
 
     deleteStep: (stepId) => set(state => {
         const nodeToDelete = state.workflow.nodes.find(n => n.id === stepId);
+        if (nodeToDelete && isRequesterRequestFormNode(nodeToDelete)) {
+            return {};
+        }
+
         const isStartNode = nodeToDelete?.type === 'startNode' || nodeToDelete?.data?.isStart;
         const formIdToDelete = isStartNode ? nodeToDelete?.data?.formId : null;
 
@@ -730,12 +829,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             }
         }
 
+        // Apply synchronization to handle virtual nodes (e.g., removing requester form if start is deleted)
+        const { nodes: syncedNodes, edges: syncedEdges } = syncRequesterRequestFormNode(newNodes, newEdges);
+
         return {
-            workflow: { nodes: newNodes, edges: newEdges },
+            workflow: { nodes: syncedNodes, edges: syncedEdges },
             forms: newForms,
             activeFormId: newActiveFormId,
             schema: newSchema,
             activeStepId: state.activeStepId === stepId ? null : state.activeStepId,
+            requesterFormUiState: collectRequesterFormUiState(syncedNodes, syncedEdges),
             isDirty: true
         };
     }),
@@ -749,10 +852,12 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     }),
 
     updateWorkflow: (nodes, edges) => set(state => {
-        const statusFlow = generateStatusFlow(nodes, edges, state.forms);
+        const normalizedWorkflow = syncRequesterRequestFormNode(nodes, edges);
+        const statusFlow = generateStatusFlow(normalizedWorkflow.nodes, normalizedWorkflow.edges, state.forms);
         return {
-            workflow: { nodes, edges },
+            workflow: normalizedWorkflow,
             statusFlow,
+            requesterFormUiState: collectRequesterFormUiState(normalizedWorkflow.nodes, normalizedWorkflow.edges),
             isDirty: true,
         };
     }),
@@ -872,17 +977,19 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         // Not marked dirty – Status Flow is auto-derived, always regenerated on save
     }),
 
-    updateNodeData: (nodeId, data) => set(state => ({
-        workflow: {
-            ...state.workflow,
-            nodes: state.workflow.nodes.map(n =>
-                n.id === nodeId
-                    ? { ...n, data: { ...n.data, ...data } }
-                    : n
-            ),
-        },
-        isDirty: true,
-    })),
+    updateNodeData: (nodeId, data) => set(state => {
+        const nextNodes = state.workflow.nodes.map(n =>
+            n.id === nodeId
+                ? { ...n, data: { ...n.data, ...data } }
+                : n
+        );
+        const normalizedWorkflow = syncRequesterRequestFormNode(nextNodes, state.workflow.edges);
+        return {
+            workflow: normalizedWorkflow,
+            requesterFormUiState: collectRequesterFormUiState(normalizedWorkflow.nodes, normalizedWorkflow.edges),
+            isDirty: true,
+        };
+    }),
     updateForms: (forms) => set({ forms, isDirty: true }),
 
     // Simulation Actions
@@ -893,11 +1000,16 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             set({ error: 'Cannot start simulation: No start node found.' });
             return;
         }
+        const requesterFormNode = getRequesterRequestFormNode(workflow.nodes, startNode.id);
+        const triggerType = (startNode.data?.triggerType as string) || 'FORM_SUB';
+        const initialActiveNodeId = triggerType === 'FORM_SUB' && requesterFormNode
+            ? requesterFormNode.id
+            : startNode.id;
         set({
             isSimulationMode: true,
             isSimulationAutoPlaying: false,
-            simulationActiveNodeId: startNode.id,
-            simulationHistory: [startNode.id],
+            simulationActiveNodeId: initialActiveNodeId,
+            simulationHistory: initialActiveNodeId === startNode.id ? [startNode.id] : [startNode.id, initialActiveNodeId],
             simulationVariables: {},
             simulationPendingBranches: null,
             error: null

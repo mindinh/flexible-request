@@ -21,6 +21,7 @@ import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
 import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeOutput } from './types';
 import { findAllAncestors } from './workflowIOHelpers';
+import { REQUESTER_REQUEST_FORM_SUBTYPE, getRequesterRequestFormNode, isRequesterRequestFormNode } from './requestFormNode';
 import { AVAILABLE_ICONS, ICON_CATEGORIES, getAllIcons, type IconCategory } from '../../config/iconConfig';
 import { cn } from '@/lib/utils';
 
@@ -131,7 +132,7 @@ function PredecessorItem({
 }
 
 // ─── Node type icon + color mapping ───────────────────────────────────────
-function getNodeTypeInfo(nodeType?: string, subType?: string) {
+function getNodeTypeInfo(nodeType?: string, subType?: string, backgroundTaskType?: string) {
     switch (nodeType) {
         case 'startNode':
             return { icon: Play, color: 'var(--brand-red)', label: 'Start Node' };
@@ -149,9 +150,21 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
                     return { icon: Mail, color: 'var(--brand-red)', label: 'Email Step' };
                 case 'approval':
                     return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
+                case 'background_task':
+                    return {
+                        icon: Layers,
+                        color: '#0f172a',
+                        label: backgroundTaskType === 'formula'
+                            ? 'Background Task · Formula'
+                            : backgroundTaskType === 'api_call'
+                                ? 'Background Task · API Call'
+                                : 'Background Task',
+                    };
+                case REQUESTER_REQUEST_FORM_SUBTYPE:
+                    return { icon: FileEdit, color: 'var(--brand-red)', label: 'Requester: Request Form' };
                 case 'apiCall':
                 case 'api_call':
-                    return { icon: Globe, color: '#0ea5e9', label: 'Background Step' };
+                    return { icon: Globe, color: '#0ea5e9', label: 'API Call' };
                 case 'formula':
                     return { icon: Calculator, color: 'var(--brand-red)', label: 'Formula' };
                 default:
@@ -1689,7 +1702,7 @@ function ApiConfigurationDialog({
                             <Globe size={20} />
                         </div>
                         <div>
-                            <DialogTitle className="text-lg font-bold text-slate-900">Background Step Configuration</DialogTitle>
+                            <DialogTitle className="text-lg font-bold text-slate-900">API Call Configuration</DialogTitle>
                             <DialogDescription className="text-xs text-slate-500">Configure external HTTP request settings</DialogDescription>
                         </div>
                     </div>
@@ -2100,12 +2113,20 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
 
     const nodeType = node.type || 'actionNode';
     const subType = node.data?.actionSubType as string | undefined;
+    const backgroundTaskType = node.data?.backgroundTaskType as string | undefined;
+    const resolvedActionType = subType === 'background_task' ? backgroundTaskType : subType;
     const triggerType = (node.data?.triggerType as string) || 'FORM_SUB';
 
     const isUserTask = subType === 'user_task' || subType === 'userTask' || subType === 'form';
-    const isApiCall = subType === 'api_call' || subType === 'apiCall';
-    const isFormula = subType === 'formula';
+    const isBackgroundTask = subType === 'background_task';
+    const isRequesterRequestForm = subType === REQUESTER_REQUEST_FORM_SUBTYPE;
+    const isApiCall = resolvedActionType === 'api_call' || resolvedActionType === 'apiCall';
+    const isFormula = resolvedActionType === 'formula';
     const isApproval = subType === 'approval';
+    const showLegacyTaskForm = !isUserTask && !isFormula && !isApproval && !isApiCall && !isBackgroundTask && !isRequesterRequestForm;
+    const requesterRequestFormNode = nodeType === 'startNode'
+        ? getRequesterRequestFormNode(allNodes, node.id)
+        : null;
 
     // --- Data Resolvers for IO Mapping ---
 
@@ -2114,7 +2135,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         const fields: UiFormField[] = [];
         const isStart = node.data.isStart || node.type === 'startNode';
 
-        if (isStart) {
+        if (isStart || isRequesterRequestForm) {
             // Include system-level outputs ONLY for Form Submission
             if (triggerType === 'FORM_SUB') {
                 SYSTEM_OUTPUT_FIELDS.forEach(sf => {
@@ -2123,7 +2144,8 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             }
 
             if (triggerType === 'FORM_SUB') {
-                const currentFormId = node.data?.formId as string | undefined;
+                const currentFormId = (node.data?.formId as string | undefined)
+                    || (requesterRequestFormNode?.data?.formId as string | undefined);
                 const currentForm = currentFormId ? forms.find(f => f.id === currentFormId) : null;
                 if (currentForm) {
                     currentForm.items.forEach(item => {
@@ -2167,7 +2189,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             }
         }
         return fields;
-    }, [node.data?.formId, forms, node.data.isStart, node.type, triggerType, node.data.apiPayload]);
+    }, [node.data?.formId, forms, node.data.isStart, node.type, triggerType, node.data.apiPayload, isRequesterRequestForm, requesterRequestFormNode?.data?.formId]);
 
     // 2. Get available source fields from ALL previous steps (Ancestors)
     const availableSources = useMemo(() => {
@@ -2269,7 +2291,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         }
         updateNodeData(node.id, { inputMapping: JSON.stringify(newMapping) });
     };
-    const info = getNodeTypeInfo(nodeType, subType);
+    const info = getNodeTypeInfo(nodeType, subType, backgroundTaskType);
     const Icon = info.icon;
 
     // ── Shared helpers ────────────────────────────────────────────────────
@@ -2421,114 +2443,6 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             onChange={(val) => updateNodeData(node.id, { triggerType: val })}
                         />
                     </Card>
-
-                    <Card className="p-4 space-y-3">
-                        <Label variant="section">Trigger Settings</Label>
-                        {triggerType === 'FORM_SUB' ? (
-                            <>
-                                {currentForm ? (
-                                    <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                        <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                        <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
-                                )}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleEditFormLayout}
-                                    className="w-full gap-1.5"
-                                >
-                                    <ExternalLink size={14} />
-                                    {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
-                                </Button>
-                            </>
-                        ) : (
-                            <>
-                                <ApiTriggerSettingsDialog
-                                    open={isApiSettingsOpen}
-                                    onOpenChange={setIsApiSettingsOpen}
-                                    endpoint={(node.data.apiEndpoint as string) || ''}
-                                    payload={(node.data.apiPayload as string) || ''}
-                                    onSave={(endpoint, payload) => {
-                                        updateNodeData(node.id, {
-                                            apiEndpoint: endpoint,
-                                            apiPayload: payload
-                                        });
-                                    }}
-                                />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setIsApiSettingsOpen(true)}
-                                    className="w-full gap-1.5 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                >
-                                    <GitBranch size={14} />
-                                    Open API Setting
-                                </Button>
-                            </>
-                        )}
-                    </Card>
-
-                    <Card className="p-4 space-y-3">
-                        <div className="flex flex-col">
-                            <Label variant="section">Outputs</Label>
-                            <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                            {/* System Fields - ONLY for Form Submission */}
-                            {triggerType === 'FORM_SUB' && (
-                                <>
-                                    {targetFields.filter(f => f.id.startsWith('__')).length > 0 && (
-                                        <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">System</p>
-                                    )}
-                                    {targetFields.filter(f => f.id.startsWith('__')).map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-blue-100 bg-blue-50/50">
-                                            <Database size={12} className="text-blue-400" />
-                                            <span className="text-xs font-medium text-blue-700">{f.label}</span>
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-
-                            {/* Form Fields */}
-                            {triggerType === 'FORM_SUB' && (
-                                <>
-                                    {targetFields.filter(f => !f.id.startsWith('__')).length > 0 && (
-                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-1">Form Fields</p>
-                                    )}
-                                    {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
-                                            <Database size={12} className="text-slate-400" />
-                                            <span className="text-xs font-medium text-slate-600">{f.label}</span>
-                                        </div>
-                                    ))}
-                                    {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
-                                        <p className="text-xs text-slate-400 italic">No fields defined for this form.</p>
-                                    )}
-                                </>
-                            )}
-
-                            {/* API Fields */}
-                            {triggerType === 'API_TRIGGER' && (
-                                <>
-                                    {targetFields.filter(f => (f as any).type === 'api').length > 0 && (
-                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider mt-1">API Variables</p>
-                                    )}
-                                    {targetFields.filter(f => (f as any).type === 'api').map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-emerald-100 bg-emerald-50/50">
-                                            <Database size={12} className="text-emerald-500" />
-                                            <span className="text-xs font-medium text-emerald-700">{f.label}</span>
-                                        </div>
-                                    ))}
-                                    {targetFields.filter(f => (f as any).type === 'api').length === 0 && (
-                                        <p className="text-xs text-slate-400 italic">No valid JSON payload defined.</p>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </Card>
                 </>
             )}
 
@@ -2562,7 +2476,99 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Task Form Configuration ──────────── */}
-                    {(!isUserTask && !isFormula && !isApproval) && (
+                    {isBackgroundTask && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">Background Task Type</Label>
+                            <p className="text-[11px] text-slate-400">
+                                Choose what this automated step executes when the workflow reaches it.
+                            </p>
+                            <Select
+                                value={backgroundTaskType || 'none'}
+                                onValueChange={(val) => updateNodeData(node.id, {
+                                    backgroundTaskType: val === 'none' ? null : val,
+                                })}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select a background task type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Select type...</SelectItem>
+                                    <SelectItem value="api_call">API Call</SelectItem>
+                                    <SelectItem value="formula">Formula</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {!backgroundTaskType && (
+                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
+                                    <Info size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-[10px] text-amber-700 font-medium">
+                                        Select API Call or Formula to unlock the step configuration for this node.
+                                    </p>
+                                </div>
+                            )}
+                        </Card>
+                    )}
+
+                    {isRequesterRequestForm && (
+                        <>
+                            <Card className="p-4 space-y-3">
+                                <Label variant="section">Trigger Settings</Label>
+                                <p className="text-[11px] text-slate-400">
+                                    This step is auto-generated from the Start node. The workflow continues only after the requester submits this form.
+                                </p>
+                                {currentForm ? (
+                                    <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                                        <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                        <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleEditFormLayout}
+                                    className="w-full gap-1.5"
+                                >
+                                    <ExternalLink size={14} />
+                                    {currentForm ? 'Open Request Form Editor' : 'Create & Edit Request Form'}
+                                </Button>
+                            </Card>
+
+                            <Card className="p-4 space-y-4">
+                                <Label variant="section">Output Fields</Label>
+                                <p className="text-[11px] text-slate-400 -mt-1">
+                                    These fields are captured when the requester creates or resubmits the request.
+                                </p>
+                                <div className="space-y-2">
+                                    {targetFields.filter(f => f.id.startsWith('__')).length > 0 && (
+                                        <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">System</p>
+                                    )}
+                                    {targetFields.filter(f => f.id.startsWith('__')).map(f => (
+                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-blue-100 bg-blue-50/50">
+                                            <Database size={12} className="text-blue-400" />
+                                            <span className="text-xs font-medium text-blue-700">{f.label}</span>
+                                        </div>
+                                    ))}
+                                    {targetFields.filter(f => !f.id.startsWith('__')).length > 0 && (
+                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-1">Form Fields</p>
+                                    )}
+                                    {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
+                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
+                                            <Database size={12} className="text-slate-400" />
+                                            <span className="text-xs font-medium text-slate-600">{f.label}</span>
+                                        </div>
+                                    ))}
+                                    {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
+                                        <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">
+                                            <p className="text-xs text-slate-400 italic">No fields defined for this form.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </Card>
+                        </>
+                    )}
+
+                    {showLegacyTaskForm && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Task Form</Label>
                             {currentForm ? (
@@ -2589,7 +2595,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Approvers Card ────────────────────── */}
-                    {(!isUserTask && !isFormula && !isApproval) && (
+                    {showLegacyTaskForm && (
                         <Card className="p-4 space-y-3">
                             <Label variant="section">Approvers</Label>
                             <p className="text-[11px] text-slate-400">
@@ -2716,7 +2722,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
                             >
                                 <Globe size={16} />
-                                Configure Background Step
+                                Configure API Call
                             </Button>
 
                             {!(node.data.apiMethod && node.data.apiUrl) && (
@@ -3086,7 +3092,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Shared: SLA + Owner (Visible for all node types EXCEPT UserTask/Approval where it's moved to General Tab) ────────────────── */}
-                    {!(isApproval || isUserTask || isFormula) && (
+                    {!(isApproval || isUserTask || isFormula || isRequesterRequestForm) && (
                         <>
                             <Card className="p-4 space-y-4">
                                 <FormField label="SLA" hint="Time limit in days">
@@ -3196,7 +3202,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             )}
 
             {/* Delete Node Button (not for start) */}
-            {nodeType !== 'startNode' && (
+            {nodeType !== 'startNode' && !isRequesterRequestFormNode(node as UiWorkflowNode) && (
                 <div className="pt-4 mt-4 border-t border-slate-100">
                     <Button
                         onClick={() => setShowDeleteConfirm(true)}

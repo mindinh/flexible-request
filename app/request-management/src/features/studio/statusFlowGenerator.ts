@@ -19,6 +19,7 @@ import type {
     StatusFlowTransition,
     IndividualStatus,
 } from './types';
+import { REQUESTER_REQUEST_FORM_SUBTYPE } from './requestFormNode';
 
 // ─── Step Classification ────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ interface ClassifiedStep {
 
 function classifyStep(node: UiWorkflowNode, forms: UiForm[]): ClassifiedStep {
     const data = node.data;
-    if (node.type === 'startNode' || data?.isStart || node.type === 'endNode') {
+    if (node.type === 'startNode' || data?.isStart || node.type === 'endNode' || data?.actionSubType === REQUESTER_REQUEST_FORM_SUBTYPE) {
         return { node, stepType: 'REQUESTOR_STEP', actorLabel: 'Requestor' };
     }
     const subType = (data?.actionSubType as string) || '';

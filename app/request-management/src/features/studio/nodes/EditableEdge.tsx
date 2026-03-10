@@ -3,10 +3,23 @@ import {
     BaseEdge,
     type EdgeProps,
     EdgeLabelRenderer,
+    MarkerType,
     Position,
     useReactFlow,
 } from '@xyflow/react';
 import { useStudioStore } from '../useStudioStore';
+
+function buildOrthogonalPath(points: Array<{ x: number; y: number }>) {
+    const compactPoints = points.filter((point, index) => {
+        if (index === 0) return true;
+        const previous = points[index - 1];
+        return previous.x !== point.x || previous.y !== point.y;
+    });
+
+    return compactPoints.map((point, index) => (
+        `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+    )).join(' ');
+}
 
 export function EditableEdge({
     id,
@@ -55,71 +68,77 @@ export function EditableEdge({
     if (isTB) {
         // Alignment Tolerance: If nodes are very close to vertical center and user hasn't manual offset
         const alignmentTolerance = 15;
+        const isNearlyStraight = Math.abs(sx - tx) <= 1 && offMid === 0;
         const autoAlignX = (Math.abs(sx - tx) <= alignmentTolerance && offMid === 0) ? sx : (sx + tx) / 2 + offMid;
 
         const midX = Math.round(autoAlignX);
         const p1 = { x: sx, y: sy };
-        const p2 = { x: sx, y: sy + off1 };
-        const p3 = { x: midX, y: sy + off1 };
-        const p4 = { x: midX, y: ty - off2 };
-        const p5 = { x: tx, y: ty - off2 };
-        const p6 = { x: tx, y: ty };
 
-        path = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y} L ${p4.x} ${p4.y} L ${p5.x} ${p5.y} L ${p6.x} ${p6.y}`;
+        if (isNearlyStraight && off1 === 0 && off2 === 0) {
+            // Perfectly vertical line
+            const p6 = { x: sx, y: ty };
+            path = buildOrthogonalPath([p1, p6]);
+            handles = [
+                { x: sx, y: Math.round((sy + ty) / 2), group: 1, axis: 'x', emphasized: true },
+            ];
+        } else {
+            const p2 = { x: sx, y: sy + off1 };
+            const p3 = { x: midX, y: sy + off1 };
+            const p4 = { x: midX, y: ty - off2 };
+            const p5 = { x: tx, y: ty - off2 };
+            const p6 = { x: tx, y: ty };
 
-        handles = [
-            { x: p1.x, y: Math.round((p1.y + p2.y) / 2), group: 0, axis: 'y' },
-            { x: Math.round((p2.x + p3.x) / 2), y: p2.y, group: 0, axis: 'y' },
-            { x: midX, y: Math.round((p3.y + p4.y) / 2), group: 1, axis: 'x', emphasized: true },
-            { x: Math.round((p4.x + p5.x) / 2), y: p4.y, group: 2, axis: 'y' },
-            { x: p6.x, y: Math.round((p5.y + p6.y) / 2), group: 2, axis: 'y' },
-        ];
+            path = buildOrthogonalPath([p1, p2, p3, p4, p5, p6]);
 
-        if (Math.abs(p1.y - p2.y) < 8) {
-            handles[0].x -= 8;
-        }
-        if (Math.abs(p2.x - p3.x) < 8) {
-            handles[1].x += (midX >= sx ? 8 : -8);
-        }
-        if (Math.abs(p4.x - p5.x) < 8) {
-            handles[3].x -= (tx >= midX ? 8 : -8);
-        }
-        if (Math.abs(p5.y - p6.y) < 8) {
-            handles[4].x += 8;
+            handles = [
+                { x: p1.x, y: Math.round((p1.y + p2.y) / 2), group: 0, axis: 'y' },
+                { x: Math.round((p2.x + p3.x) / 2), y: p2.y, group: 0, axis: 'y' },
+                { x: midX, y: Math.round((p3.y + p4.y) / 2), group: 1, axis: 'x', emphasized: true },
+                { x: Math.round((p4.x + p5.x) / 2), y: p4.y, group: 2, axis: 'y' },
+                { x: p6.x, y: Math.round((p5.y + p6.y) / 2), group: 2, axis: 'y' },
+            ];
+
+            if (Math.abs(p1.y - p2.y) < 8) handles[0].x -= 8;
+            if (Math.abs(p2.x - p3.x) < 8) handles[1].x += (midX >= sx ? 8 : -8);
+            if (Math.abs(p4.x - p5.x) < 8) handles[3].x -= (tx >= midX ? 8 : -8);
+            if (Math.abs(p5.y - p6.y) < 8) handles[4].x += 8;
         }
     } else {
         const alignmentTolerance = 15;
+        const isNearlyStraight = Math.abs(sy - ty) <= 1 && offMid === 0;
         const autoAlignY = (Math.abs(sy - ty) <= alignmentTolerance && offMid === 0) ? sy : (sy + ty) / 2 + offMid;
 
         const midY = Math.round(autoAlignY);
         const p1 = { x: sx, y: sy };
-        const p2 = { x: sx + off1, y: sy };
-        const p3 = { x: sx + off1, y: midY };
-        const p4 = { x: tx - off2, y: midY };
-        const p5 = { x: tx - off2, y: ty };
-        const p6 = { x: tx, y: ty };
 
-        path = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y} L ${p4.x} ${p4.y} L ${p5.x} ${p5.y} L ${p6.x} ${p6.y}`;
+        if (isNearlyStraight && off1 === 0 && off2 === 0) {
+            // Perfectly horizontal line
+            const p6 = { x: tx, y: sy };
+            path = buildOrthogonalPath([p1, p6]);
+            handles = [
+                { x: Math.round((sx + tx) / 2), y: sy, group: 1, axis: 'y', emphasized: true },
+            ];
+        } else {
+            const p2 = { x: sx + off1, y: sy };
+            const p3 = { x: sx + off1, y: midY };
+            const p4 = { x: tx - off2, y: midY };
+            const p5 = { x: tx - off2, y: ty };
+            const p6 = { x: tx, y: ty };
 
-        handles = [
-            { x: Math.round((p1.x + p2.x) / 2), y: p1.y, group: 0, axis: 'x' },
-            { x: p2.x, y: Math.round((p2.y + p3.y) / 2), group: 0, axis: 'x' },
-            { x: Math.round((p3.x + p4.x) / 2), y: midY, group: 1, axis: 'y', emphasized: true },
-            { x: p4.x, y: Math.round((p4.y + p5.y) / 2), group: 2, axis: 'x' },
-            { x: Math.round((p5.x + p6.x) / 2), y: p6.y, group: 2, axis: 'x' },
-        ];
+            path = buildOrthogonalPath([p1, p2, p3, p4, p5, p6]);
 
-        if (Math.abs(p1.x - p2.x) < 8) {
-            handles[0].y -= 8;
-        }
-        if (Math.abs(p2.y - p3.y) < 8) {
-            handles[1].y += (midY >= sy ? 8 : -8);
-        }
-        if (Math.abs(p4.y - p5.y) < 8) {
-            handles[3].y -= (ty >= midY ? 8 : -8);
-        }
-        if (Math.abs(p5.x - p6.x) < 8) {
-            handles[4].y += 8;
+            handles = [
+                { x: Math.round((p1.x + p2.x) / 2), y: p1.y, group: 0, axis: 'x' },
+                { x: p2.x, y: Math.round((p2.y + p3.y) / 2), group: 0, axis: 'x' },
+                { x: Math.round((p3.x + p4.x) / 2), y: midY, group: 1, axis: 'y', emphasized: true },
+                { x: p4.x, y: Math.round((p4.y + p5.y) / 2), group: 2, axis: 'x' },
+                { x: Math.round((p5.x + p6.x) / 2), y: p6.y, group: 2, axis: 'x' },
+            ];
+
+            if (Math.abs(p1.x - p2.x) < 8) handles[0].y -= 8;
+            if (Math.abs(p2.y - p3.y) < 8) handles[1].y += (midY >= sy ? 8 : -8);
+            if (Math.abs(p4.y - p5.y) < 8) handles[3].y -= (ty >= midY ? 8 : -8);
+            if (Math.abs(p5.x - p6.x) < 8) handles[4].y += 8;
         }
     }
 
@@ -131,6 +150,16 @@ export function EditableEdge({
         strokeWidth: selected ? 2.5 : 2,
         strokeDasharray: selected ? '5,5' : undefined,
     };
+    const resolvedMarkerEnd =
+        typeof markerEnd === 'string'
+            ? markerEnd
+            : {
+                type: MarkerType.ArrowClosed,
+                width: 18,
+                height: 18,
+                color: (edgeStyle.stroke as string) || '#0f172a',
+                ...(markerEnd || {}),
+            };
 
     const resetOffsets = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -161,7 +190,7 @@ export function EditableEdge({
         setEdges((eds) =>
             eds.map((e) => {
                 if (e.id === id) {
-                    const newOffsets = [...(e.data?.offsets as number[] || [0, 0, 0])];
+                    const newOffsets = [...((e.data as any)?.offsets as number[] || [0, 0, 0])];
                     const SNAP_VOLTAGE = 20;
 
                     if (isTB) {
@@ -229,7 +258,7 @@ export function EditableEdge({
 
     return (
         <>
-            <BaseEdge id={id} path={path} style={edgeStyle} markerEnd={markerEnd} />
+            <BaseEdge id={id} path={path} style={edgeStyle} markerEnd={resolvedMarkerEnd} />
             {showHandles && (
                 <EdgeLabelRenderer>
                     {handles.map((handle, index) => (

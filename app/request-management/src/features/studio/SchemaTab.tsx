@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStudioStore } from './useStudioStore';
+import { REQUESTER_REQUEST_FORM_SUBTYPE } from './requestFormNode';
 import type { UiCanvasItem, UiSection, UiFormField, UiTableField, UiForm, UiFormAction } from './types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -697,7 +698,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
     const isUserTaskForm = Boolean(
         activeFormId &&
         workflow.nodes.some(
-            (n) => (n.data.subType === 'user_task' || n.data.actionSubType === 'user_task' || n.data.actionSubType === 'form') && n.data.formId === activeFormId
+            (n) => (n.data.subType === 'user_task' || n.data.actionSubType === 'user_task' || n.data.actionSubType === 'form' || n.data.actionSubType === REQUESTER_REQUEST_FORM_SUBTYPE) && n.data.formId === activeFormId
         )
     );
     const renderStartFormActions = (compact = false) => (

@@ -220,6 +220,7 @@ export interface UiWorkflowEdge {
     target: string;
     type?: string;
     sourceHandle?: string;  // Maps to UiFormAction.id for conditional branching
+    targetHandle?: string;
     label?: string;         // Edge label (e.g. 'Approve')
     data?: {
         statusConfig?: EdgeStatusConfig;

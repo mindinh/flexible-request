@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Plus, Trash2, Search, AlertTriangle, Link2, ArrowDownToLine, ArrowUpFromLine, RefreshCw } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
+import { REQUESTER_REQUEST_FORM_SUBTYPE } from './requestFormNode';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
@@ -375,7 +376,17 @@ export function DataMappingTabContent() {
 
     const inputs = (node.data.inputs as UiNodeInput[]) || [];
     const outputs = (node.data.outputs as UiNodeOutput[]) || [];
-    const isUserTask = (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask') || node.type === 'actionNode' && (node.data.actionSubType === 'form' || node.data.actionSubType === 'user_task' || node.data.actionSubType === 'userTask');
+    const isUserTask = (
+        node.data.actionSubType === 'form' ||
+        node.data.actionSubType === 'user_task' ||
+        node.data.actionSubType === 'userTask' ||
+        node.data.actionSubType === REQUESTER_REQUEST_FORM_SUBTYPE
+    ) || node.type === 'actionNode' && (
+        node.data.actionSubType === 'form' ||
+        node.data.actionSubType === 'user_task' ||
+        node.data.actionSubType === 'userTask' ||
+        node.data.actionSubType === REQUESTER_REQUEST_FORM_SUBTYPE
+    );
 
     // Flatten available fields from data schema
     const availableFields = flattenDataFields(dataSchema);
