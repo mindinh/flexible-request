@@ -32,13 +32,26 @@ import type { StatusFlowModel } from './types';
 
 // ─── Layout Constants ───────────────────────────────────────────────────
 
+const ORIENTATION: 'horizontal' | 'vertical' = 'vertical';
+
 const LANE_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
-const LANE_HEIGHT = 200;
+
 const CARD_WIDTH = 150;
 const CARD_HEIGHT = 44;
+
+// Horizontal layout (legacy)
+const LANE_HEIGHT = 200;
 const CARD_GAP = 130;
 const LANE_HEADER_WIDTH = 140;
 const FIRST_CARD_X = LANE_HEADER_WIDTH + 30;
+
+// Vertical layout (default)
+const LANE_WIDTH = 360;
+const LANE_TOP_PADDING = 16;
+const LANE_LEFT_PADDING = 16;
+const LANE_HEADER_HEIGHT = 70;
+const FIRST_CARD_Y = LANE_TOP_PADDING + LANE_HEADER_HEIGHT + 22;
+const ROW_GAP = 130;
 
 // ─── Custom Node: Lane Header ───────────────────────────────────────────
 
@@ -67,6 +80,8 @@ function SimpleStatusCard({ data }: { data: any }) {
     const bgColor = data.bgColor || '#f8fafc';
     const borderColor = data.borderColor || '#e2e8f0';
     const handleStyle = { background: '#94a3b8', width: 6, height: 6, border: '2px solid white' };
+    const orientation = (data?.orientation as typeof ORIENTATION | undefined) || ORIENTATION;
+    const isVertical = orientation === 'vertical';
 
     return (
         <div
@@ -74,11 +89,11 @@ function SimpleStatusCard({ data }: { data: any }) {
             style={{ backgroundColor: bgColor, borderColor }}
         >
             {/* Forward handles */}
-            <Handle type="target" position={Position.Left} id="left" style={handleStyle} />
-            <Handle type="source" position={Position.Right} id="right" style={handleStyle} />
+            <Handle type="target" position={Position.Left} id="left" style={{ ...handleStyle, opacity: isVertical ? 0 : 1 }} />
+            <Handle type="source" position={Position.Right} id="right" style={{ ...handleStyle, opacity: isVertical ? 0 : 1 }} />
             {/* Reverse handles — top receives back-edges, bottom sends back-edges */}
-            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...handleStyle, opacity: 0 }} />
-            <Handle type="target" position={Position.Top} id="top" style={{ ...handleStyle, opacity: 0 }} />
+            <Handle type="source" position={Position.Bottom} id="bottom" style={{ ...handleStyle, opacity: isVertical ? 1 : 0 }} />
+            <Handle type="target" position={Position.Top} id="top" style={{ ...handleStyle, opacity: isVertical ? 1 : 0 }} />
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor }} />
             <span className="text-[11px] font-bold whitespace-nowrap" style={{ color: statusColor }}>
                 {data.statusName}
@@ -90,12 +105,15 @@ function SimpleStatusCard({ data }: { data: any }) {
 // ─── Custom Node: Lane Separator Line ───────────────────────────────────
 
 function LaneSeparatorNode({ data }: { data: any }) {
+    const orientation = (data?.orientation as typeof ORIENTATION | undefined) || ORIENTATION;
+    const isVertical = orientation === 'vertical';
     return (
         <div
             style={{
-                width: data.width || 1400,
-                height: 0,
-                borderTop: '1.5px dashed #cbd5e1',
+                width: isVertical ? 0 : (data.width || 1400),
+                height: isVertical ? (data.height || 900) : 0,
+                borderTop: isVertical ? undefined : '1.5px dashed #cbd5e1',
+                borderLeft: isVertical ? '1.5px dashed #cbd5e1' : undefined,
             }}
         />
     );
@@ -108,7 +126,7 @@ function ReverseEdge({
 }: EdgeProps) {
     const laneCount = (data as any)?.laneCount ?? 4;
     // Route below all lanes with padding
-    const bottomY = laneCount * LANE_HEIGHT + 40;
+    const bottomY = (data as any)?.bottomY ?? (laneCount * LANE_HEIGHT + 40);
     const radius = 14; // corner radius
 
     // Direction: source is to the right, target is to the left
@@ -182,6 +200,150 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
     const edges: Edge[] = [];
 
     if (lanes.length === 0) return { nodes, edges };
+
+    if (ORIENTATION === 'vertical') {
+        // Vertical layout: lanes become columns; phaseNumber becomes row.
+        // Compress sparse phaseNumber space to keep layout compact (phaseNumber in the model is "column-like").
+        const uniquePhaseNumbers = Array.from(new Set(phases.map(p => p.phaseNumber))).sort((a, b) => a - b);
+        const rowIndex = new Map<number, number>();
+        uniquePhaseNumbers.forEach((n, idx) => rowIndex.set(n, idx));
+
+        const maxRowIdx = Math.max(0, uniquePhaseNumbers.length - 1);
+        const totalHeight = FIRST_CARD_Y + (maxRowIdx + 2) * (CARD_HEIGHT + ROW_GAP);
+        const bottomY = totalHeight + 40;
+
+        // Lane headers (top of each column)
+        for (let i = 0; i < lanes.length; i++) {
+            const laneX = LANE_LEFT_PADDING + i * LANE_WIDTH;
+            nodes.push({
+                id: `lane-header-${i}`,
+                type: 'laneHeader',
+                position: { x: laneX + (LANE_WIDTH - LANE_HEADER_WIDTH) / 2, y: LANE_TOP_PADDING },
+                data: { label: lanes[i].label, subtitle: lanes[i].subtitle, color: LANE_COLORS[i % LANE_COLORS.length] },
+                draggable: false, selectable: false, connectable: false,
+            });
+        }
+
+        // Lane separator lines (between lanes)
+        for (let i = 1; i < lanes.length; i++) {
+            const x = LANE_LEFT_PADDING + i * LANE_WIDTH - 1;
+            nodes.push({
+                id: `separator-${i}`,
+                type: 'laneSeparator',
+                position: { x, y: 0 },
+                data: { height: totalHeight, orientation: 'vertical' },
+                draggable: false, selectable: false, connectable: false,
+            });
+        }
+
+        // Status cards — detect branches at same (row, lane) and distribute horizontally
+        const posGroups = new Map<string, typeof phases>();
+        for (const phase of phases) {
+            const key = `${phase.phaseNumber}-${phase.laneIndex}`;
+            if (!posGroups.has(key)) posGroups.set(key, []);
+            posGroups.get(key)!.push(phase);
+        }
+
+        for (const group of posGroups.values()) {
+            const count = group.length;
+            const laneIdx = group[0].laneIndex;
+            const row = rowIndex.get(group[0].phaseNumber) ?? 0;
+            const laneX = LANE_LEFT_PADDING + laneIdx * LANE_WIDTH;
+            const baseX = laneX + (LANE_WIDTH - CARD_WIDTH) / 2;
+            const y = FIRST_CARD_Y + row * (CARD_HEIGHT + ROW_GAP);
+
+            if (count === 1) {
+                const phase = group[0];
+                const status = phase.statuses[0];
+                nodes.push({
+                    id: phase.id,
+                    type: 'statusCard',
+                    position: { x: baseX, y },
+                    data: {
+                        statusName: phase.label,
+                        statusColor: status?.color || '#475569',
+                        bgColor: status?.bgColor || '#f8fafc',
+                        borderColor: status?.borderColor || '#e2e8f0',
+                        orientation: 'vertical',
+                    },
+                    draggable: false, selectable: false, connectable: false,
+                });
+            } else {
+                const gap = 16;
+                const startX = baseX - ((count - 1) * (CARD_WIDTH + gap)) / 2;
+                for (let i = 0; i < count; i++) {
+                    const phase = group[i];
+                    const status = phase.statuses[0];
+                    nodes.push({
+                        id: phase.id,
+                        type: 'statusCard',
+                        position: { x: startX + i * (CARD_WIDTH + gap), y },
+                        data: {
+                            statusName: phase.label,
+                            statusColor: status?.color || '#475569',
+                            bgColor: status?.bgColor || '#f8fafc',
+                            borderColor: status?.borderColor || '#e2e8f0',
+                            orientation: 'vertical',
+                        },
+                        draggable: false, selectable: false, connectable: false,
+                    });
+                }
+            }
+        }
+
+        // Transition edges (vertical routing)
+        for (const t of transitions) {
+            const hasAction = !!t.action;
+            const isReverse = !!t.isReverse;
+
+            if (isReverse) {
+                edges.push({
+                    id: t.id,
+                    source: t.from,
+                    target: t.to,
+                    sourceHandle: 'bottom',
+                    targetHandle: 'top',
+                    type: 'reverse',
+                    animated: false,
+                    label: hasAction ? `â†© ${t.action}` : undefined,
+                    style: {
+                        stroke: '#1e293b',
+                        strokeWidth: 1.5,
+                    },
+                    markerEnd: { type: MarkerType.ArrowClosed, color: '#1e293b', width: 14, height: 14 },
+                    data: { bottomY },
+                });
+            } else {
+                edges.push({
+                    id: t.id,
+                    source: t.from,
+                    target: t.to,
+                    sourceHandle: 'bottom',
+                    targetHandle: 'top',
+                    type: 'smoothstep',
+                    animated: false,
+                    label: hasAction ? t.action : undefined,
+                    style: {
+                        stroke: hasAction ? '#64748b' : '#94a3b8',
+                        strokeWidth: hasAction ? 2 : 1.5,
+                        strokeDasharray: hasAction ? undefined : '6 3',
+                    },
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
+                        color: hasAction ? '#64748b' : '#94a3b8',
+                        width: 14,
+                        height: 14,
+                    },
+                    labelStyle: hasAction ? { fontSize: 10, fontWeight: 700, fill: '#475569' } : undefined,
+                    labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
+                    labelBgPadding: hasAction ? [3, 6] as [number, number] : undefined,
+                    labelBgBorderRadius: hasAction ? 6 : undefined,
+                });
+            }
+        }
+
+        return { nodes, edges };
+    }
 
     // Max column for width calculation
     const maxCol = Math.max(...phases.map(p => p.phaseNumber), 0);

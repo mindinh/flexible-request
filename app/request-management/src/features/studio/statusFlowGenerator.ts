@@ -6,7 +6,7 @@
  *  - Exit status   = edge statusConfig when edge has a sourceHandle, else default
  *  - Action label  = edge sourceHandle → form action label, or form's first action
  *  - Branching     = one exit card per outgoing edge with distinct action
- *  - Request Completed = terminal card added after any exit that targets an END node
+ *  - Request Completed/Rejected = terminal card added after any exit that targets an END node
  *  - Cross-lane    = connects via pendingConnections map (not simple prevExitId)
  */
 import type {
@@ -60,6 +60,16 @@ function buildActionIdToLabel(forms: UiForm[]): Map<string, string> {
         form.actions?.forEach(a => { if (a.id && a.label) map.set(a.id, a.label); });
     }
     return map;
+}
+
+function isRejectLike(text: string | undefined | null): boolean {
+    const t = (text || '').trim().toLowerCase();
+    if (!t) return false;
+    // Common labels in this project
+    if (t === 'reject' || t === 'rejected') return true;
+    if (t === 'ko' || t === 'k.o' || t === 'k.o.') return true;
+    // Fallback heuristics
+    return t.includes('reject') || t.includes('ko');
 }
 
 // ─── Topological Sort ───────────────────────────────────────────────────
@@ -295,12 +305,15 @@ export function generateStatusFlow(
                         });
                     }
                 } else if (targetsEnd) {
-                    // "Request Completed" terminal card
+                    // Terminal card (overall request outcome)
                     hasRcCard = true;
                     const rcId = `card-${step.node.id}-rc-${bi}`;
+                    const isRejectedTerminal = isRejectLike(actionLabel) || isRejectLike(exitName);
+                    const rcLabel = isRejectedTerminal ? 'Request Rejected' : 'Request Completed';
+                    const rcColor = isRejectedTerminal ? '#dc2626' : '#6366f1';
                     phases.push({
-                        id: rcId, phaseNumber: exitCol + 1, label: 'Request Completed', laneIndex: laneIdx,
-                        statuses: [makeChip('Request Completed', '#6366f1')],
+                        id: rcId, phaseNumber: exitCol + 1, label: rcLabel, laneIndex: laneIdx,
+                        statuses: [makeChip(rcLabel, rcColor)],
                         sourceStepIds: [step.node.id],
                     });
                     transitions.push({ id: `tr-${exitId}-${rcId}`, from: exitId, to: rcId, action: '' });
