@@ -198,24 +198,62 @@ export function RequestDetail() {
                 const otherStepDef = request.requestType?.steps?.find(
                     (s: any) => s.ID === otherStep.stepDefinition_ID
                 );
-                if (!otherStepDef?.formId) continue;
-                const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
-                if (!otherForm?.items) continue;
+                if (!otherStepDef) continue;
+
+                // Resolve schema items using both formId AND legacy schemaContent paths
+                let otherSchemaItems: any[] = [];
+                if (otherStepDef.formId) {
+                    const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
+                    otherSchemaItems = otherForm?.items || [];
+                }
+                if (otherSchemaItems.length === 0 && otherStepDef.schemaContent) {
+                    try {
+                        const parsed = JSON.parse(otherStepDef.schemaContent);
+                        otherSchemaItems = Array.isArray(parsed) ? parsed : (parsed?.items || []);
+                    } catch { /* ignore */ }
+                }
+                if (otherSchemaItems.length === 0) continue;
+
                 let otherPayload: Record<string, any> = {};
                 try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
                 const extractBound = (items: any[]) => {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) extractBound(item.fields);
-                        else if (item.type === 'table' && item.columns) extractBound(item.columns);
+                        else if (item.type === 'table' && item.columns) {
+                            // Handle table-level data sharing (with or without bindTo)
+                            const tableKey = item.bindTo || item.id;
+                            const tableData = otherPayload[tableKey] || otherPayload[item.id] || (item.bindTo ? otherPayload[item.bindTo] : null);
+                            if (Array.isArray(tableData) && tableData.length > 0) {
+                                // Normalize row keys: column.id → column.bindTo
+                                const colBindMap: Record<string, string> = {};
+                                for (const col of item.columns) {
+                                    if (col.bindTo) colBindMap[col.id] = col.bindTo;
+                                }
+                                const normalizedRows = tableData.map((row: any) => {
+                                    const newRow: any = { id: row.id };
+                                    for (const [key, val] of Object.entries(row)) {
+                                        if (key === 'id') continue;
+                                        newRow[colBindMap[key] || key] = val;
+                                    }
+                                    return newRow;
+                                });
+                                // Store under both bindTo and id for reliable lookup
+                                globalContext[tableKey] = normalizedRows;
+                                if (item.bindTo && item.id !== item.bindTo) {
+                                    globalContext[item.id] = normalizedRows;
+                                }
+                            }
+                            extractBound(item.columns);
+                        }
                         else if (item.bindTo) {
-                            const value = otherPayload[item.id];
+                            const value = otherPayload[item.bindTo] ?? otherPayload[item.id];
                             if (value !== undefined && value !== null) {
                                 globalContext[item.bindTo] = value;
                             }
                         }
                     }
                 };
-                extractBound(otherForm.items);
+                extractBound(otherSchemaItems);
             }
 
             if (Object.keys(globalContext).length === 0) return rawFormData;
@@ -227,7 +265,66 @@ export function RequestDetail() {
                 const injectBound = (items: any[]) => {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) injectBound(item.fields);
-                        else if (item.type === 'table' && item.columns) injectBound(item.columns);
+                        else if (item.type === 'table' && item.columns) {
+                            // Remap table row column keys to destination column IDs.
+                            // Prefer user's current edits over global context to allow
+                            // recipients to add/edit/delete rows in editable tables.
+                            const dataKey = item.bindTo || item.id;
+                            const gcRows = globalContext[item.bindTo] || globalContext[item.id] || null;
+                            const existingRows = merged[dataKey];
+                            
+                            if (item.columns?.length > 0) {
+                                // Build destination column map: bindTo → dest column.id
+                                const destColMap: Record<string, string> = {};
+                                const destColIds = new Set<string>();
+                                for (const col of item.columns) {
+                                    destColIds.add(col.id);
+                                    if (col.bindTo) destColMap[col.bindTo] = col.id;
+                                }
+                                
+                                // Determine best source: gcRows are normalized (bindTo keys),
+                                // existingRows may have source column UUIDs that can't be remapped.
+                                let bestSource: any[] | null = null;
+                                
+                                if (Array.isArray(existingRows) && existingRows.length > 0) {
+                                    const firstRow = existingRows[0];
+                                    const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
+                                    const keysMatchDest = rowKeys.every(k => destColIds.has(k));
+                                    
+                                    if (keysMatchDest) {
+                                        bestSource = existingRows;
+                                    } else if (Array.isArray(gcRows) && gcRows.length > 0) {
+                                        bestSource = gcRows;
+                                    } else {
+                                        bestSource = existingRows;
+                                    }
+                                } else if (Array.isArray(gcRows) && gcRows.length > 0) {
+                                    bestSource = gcRows;
+                                }
+                                
+                                if (bestSource && bestSource.length > 0) {
+                                    const firstRow = bestSource[0];
+                                    const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
+                                    const needsRemap = rowKeys.some(k => !destColIds.has(k));
+                                    
+                                    if (needsRemap) {
+                                        merged[dataKey] = bestSource.map((row: any) => {
+                                            const newRow: any = { id: row.id };
+                                            for (const [key, val] of Object.entries(row)) {
+                                                if (key === 'id') continue;
+                                                newRow[destColMap[key] || key] = val;
+                                            }
+                                            return newRow;
+                                        });
+                                    } else {
+                                        merged[dataKey] = bestSource;
+                                    }
+                                }
+                            } else if (existingRows === undefined && (globalContext[dataKey] !== undefined)) {
+                                merged[dataKey] = globalContext[dataKey];
+                            }
+                            injectBound(item.columns);
+                        }
                         else if (item.bindTo && globalContext[item.bindTo] !== undefined) {
                             if (merged[item.id] === undefined || merged[item.id] === null) {
                                 merged[item.id] = globalContext[item.bindTo];
@@ -245,13 +342,13 @@ export function RequestDetail() {
 
     // Handle step form submission
     const handleStepSubmit = (step: any, _stepDef: any) => {
-        const rawFormData = stepFormData[step.ID] || (() => {
-            try {
-                return step.data?.payload ? JSON.parse(step.data.payload) : {};
-            } catch {
-                return {};
-            }
+        // Merge saved payload with user edits so all fields are preserved
+        const savedPayload = (() => {
+            try { return step.data?.payload ? JSON.parse(step.data.payload) : {}; } catch { return {}; }
         })();
+        const rawFormData = stepFormData[step.ID]
+            ? { ...savedPayload, ...stepFormData[step.ID] }
+            : savedPayload;
 
         // Merge bound global values so they persist in the step payload
         const mergedPayload = buildFormDataWithGlobalContext(step, rawFormData);
@@ -343,13 +440,13 @@ export function RequestDetail() {
                             (step.status === 'IN_CLARIFICATION' && (isRequester || isStepOwner))) && canEditStep;
 
                         // Build form data with globally-bound values pre-filled
-                        const rawStepFormData = stepFormData[step.ID] || (() => {
-                            try {
-                                return step.data?.payload ? JSON.parse(step.data.payload) : {};
-                            } catch {
-                                return {};
-                            }
+                        // Merge saved payload with user edits so table data isn't lost
+                        const savedPayload = (() => {
+                            try { return step.data?.payload ? JSON.parse(step.data.payload) : {}; } catch { return {}; }
                         })();
+                        const rawStepFormData = stepFormData[step.ID]
+                            ? { ...savedPayload, ...stepFormData[step.ID] }
+                            : savedPayload;
                         const currentStepFormData = buildFormDataWithGlobalContext(step, rawStepFormData);
 
                         return (

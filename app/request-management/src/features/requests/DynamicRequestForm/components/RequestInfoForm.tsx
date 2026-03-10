@@ -6,13 +6,14 @@ import type { FormData, FieldValue } from '../../../../types';
 interface RequestInfoFormProps {
     formData: FormData;
     onFieldChange: (fieldId: string, value: FieldValue) => void;
+    isNewRequest?: boolean;
 }
 
 /**
  * Request metadata form section
  * Contains title, priority, justification, and coordinator fields
  */
-export function RequestInfoForm({ formData, onFieldChange }: RequestInfoFormProps) {
+export function RequestInfoForm({ formData, onFieldChange, isNewRequest }: RequestInfoFormProps) {
     // Convert stored coordinator data to Principal format
     const coordinatorValue: Principal | null = formData.coordinatorId ? {
         id: formData.coordinatorId as string,
@@ -85,6 +86,7 @@ export function RequestInfoForm({ formData, onFieldChange }: RequestInfoFormProp
                             value={coordinatorValue}
                             onChange={handleCoordinatorChange}
                             placeholder="Assign a coordinator (optional)"
+                            disabled={isNewRequest}
                         />
                         <p className="text-xs text-slate-500 mt-1">
                             Person responsible for managing this request's workflow

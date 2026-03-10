@@ -308,7 +308,7 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
     onFieldSelect: (fieldId: string) => void;
     onFieldDelete: (fieldId: string) => void;
     onDelete: () => void;
-    onFieldDrop: (fieldType: string, fieldLabel: string, key?: string) => void;
+    onFieldDrop: (fieldType: string, fieldLabel: string, key?: string, required?: boolean) => void;
     onSwapFields: (fromId: string, toId: string) => void;
     dragOverFieldId: string | null;
     setDragOverFieldId: (id: string | null) => void;
@@ -339,7 +339,7 @@ function SectionCard({ section, isSelected, selectedFieldId, onSelect, onFieldSe
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type && data.label && data.type !== 'section' && data.type !== 'table') {
-                onFieldDrop(data.type, data.label, data.dataFieldKey);
+                onFieldDrop(data.type, data.label, data.dataFieldKey, data.required);
             }
         } catch {
             // Not a palette drop, ignore
@@ -496,7 +496,7 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
     onColumnSelect: (columnId: string) => void;
     onColumnDelete: (columnId: string) => void;
     onDelete: () => void;
-    onColumnDrop: (fieldType: string, fieldLabel: string, key?: string) => void;
+    onColumnDrop: (fieldType: string, fieldLabel: string, key?: string, required?: boolean) => void;
     onSwapColumns: (fromId: string, toId: string) => void;
     dragOverColumnId: string | null;
     setDragOverColumnId: (id: string | null) => void;
@@ -526,7 +526,7 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type && data.label && data.type !== 'section' && data.type !== 'table') {
-                onColumnDrop(data.type, data.label, data.dataFieldKey);
+                onColumnDrop(data.type, data.label, data.dataFieldKey, data.required);
             }
         } catch {
             // Not a palette drop, ignore
@@ -597,12 +597,11 @@ function TableCard({ table, isSelected, selectedColumnId, onSelect, onColumnSele
                     <Copy size={12} className="mr-1.5" />
                     Duplicate
                 </Button>
-                {table.headerActions?.downloadTemplate && (
+                {/* Download — always visible */}
                     <Button variant="outline" size="sm" className="h-7 text-xs bg-slate-50 hover:bg-white" disabled>
                         <Download size={12} className="mr-1.5" />
                         Download
                     </Button>
-                )}
                 {table.headerActions?.uploadExcel && (
                     <Button variant="outline" size="sm" className="h-7 text-xs bg-slate-50 hover:bg-white" disabled>
                         <Upload size={12} className="mr-1.5" />
@@ -823,12 +822,12 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         setItems(currentSchema);
     }, [currentSchema]);
 
-    const addItem = (type: string, label: string, key?: string) => {
+    const addItem = (type: string, label: string, key?: string, required?: boolean) => {
         const newItem: UiCanvasItem = {
             id: `${type}-${Date.now()}`,
             type,
             label,
-            required: false,
+            required: required || false,
             key: key || undefined,
             bindTo: key || undefined,
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),
@@ -857,13 +856,13 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         onFieldSelect?.(id);
     };
 
-    const addFieldToSection = (sectionId: string, fieldType: string, fieldLabel: string, key?: string) => {
+    const addFieldToSection = (sectionId: string, fieldType: string, fieldLabel: string, key?: string, required?: boolean) => {
         const defaultColSpan = ['textarea', 'radio'].includes(fieldType) ? 12 : 6;
         const newField: UiFormField = {
             id: `${fieldType}-${Date.now()}`,
             type: fieldType as any,
             label: fieldLabel,
-            required: false,
+            required: required || false,
             key: key || undefined,
             bindTo: key || undefined,
             colSpan: defaultColSpan as 3 | 6 | 9 | 12,
@@ -897,11 +896,12 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         }
     };
 
-    const addColumnToTable = (tableId: string, fieldType: string, fieldLabel: string, key?: string) => {
+    const addColumnToTable = (tableId: string, fieldType: string, fieldLabel: string, key?: string, required?: boolean) => {
         const newColumn = {
             id: `col-${Date.now()}`,
             type: fieldType as any,
             label: fieldLabel,
+            required: required || false,
             key: key || undefined,
             bindTo: key || undefined,
         };
@@ -1089,7 +1089,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                             try {
                                                 const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                                 if (data.type && data.label) {
-                                                    addItem(data.type, data.label, data.dataFieldKey);
+                                                    addItem(data.type, data.label, data.dataFieldKey, data.required);
                                                 }
                                             } catch {
                                                 // ignore
@@ -1122,7 +1122,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                             onFieldSelect={(fieldId) => selectField(fieldId)}
                                                             onFieldDelete={(fieldId) => deleteFieldFromSection(item.id, fieldId)}
                                                             onDelete={() => deleteItem(item.id)}
-                                                            onFieldDrop={(type: string, label: string, key?: string) => addFieldToSection(item.id, type, label, key)}
+                                                            onFieldDrop={(type: string, label: string, key?: string, required?: boolean) => addFieldToSection(item.id, type, label, key, required)}
                                                             onSwapFields={(fromId, toId) => handleSwapSectionFields(item.id, fromId, toId)}
                                                             dragOverFieldId={dragOverFieldId}
                                                             setDragOverFieldId={setDragOverFieldId}
@@ -1143,7 +1143,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                                             onColumnSelect={(columnId) => selectField(columnId)}
                                                             onColumnDelete={(columnId) => deleteColumnFromTable(item.id, columnId)}
                                                             onDelete={() => deleteItem(item.id)}
-                                                            onColumnDrop={(type: string, label: string, key?: string) => addColumnToTable(item.id, type, label, key)}
+                                                            onColumnDrop={(type: string, label: string, key?: string, required?: boolean) => addColumnToTable(item.id, type, label, key, required)}
                                                             onSwapColumns={(fromId, toId) => handleSwapTableColumns(item.id, fromId, toId)}
                                                             dragOverColumnId={dragOverColumnId}
                                                             setDragOverColumnId={setDragOverColumnId}

@@ -61,6 +61,7 @@ export interface SchemaTable {
     label: string;
     bindTo?: string; // Data Schema field key for array binding
     columns: SchemaField[];
+    readOnly?: boolean;
     headerActions?: {
         downloadTemplate?: boolean;
         uploadExcel?: boolean;

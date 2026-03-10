@@ -110,6 +110,7 @@ export interface UiTableField {
         downloadTemplate?: boolean;
         uploadExcel?: boolean;
     };
+    readOnly?: boolean;
 }
 
 export type UiCanvasItem = UiFormField | UiSection | UiTableField;

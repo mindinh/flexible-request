@@ -177,6 +177,7 @@ export function DynamicRequestForm() {
                         <RequestInfoForm
                             formData={formData}
                             onFieldChange={handleFieldChange}
+                            isNewRequest={!isEditMode}
                         />
 
                         {/* Step Assignment Header - Shows SELECTED step */}
