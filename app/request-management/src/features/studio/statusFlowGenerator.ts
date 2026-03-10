@@ -133,6 +133,16 @@ export function generateStatusFlow(
     const sorted = topologicalSort(workflowNodes, workflowEdges);
     const orderedSteps = sorted.map(id => classMap.get(id)!).filter(Boolean);
 
+    // Detect the virtual requester form node – if present, the canonical
+    // startNode should be excluded from card generation to avoid duplicate
+    // Draft→Submitted cards.  The requester node already covers that lane.
+    const hasRequesterFormNode = workflowNodes.some(
+        n => n.data?.actionSubType === REQUESTER_REQUEST_FORM_SUBTYPE
+    );
+    const startNodeId = workflowNodes.find(
+        n => n.type === 'startNode' || n.data?.isStart
+    )?.id;
+
     // ── Lanes ────────────────────────────────────────────────────────
     const lanes: StatusFlowLane[] = [];
     const laneMap = new Map<string, number>();
@@ -164,7 +174,13 @@ export function generateStatusFlow(
     // ── Cards & Transitions ──────────────────────────────────────────
     const phases: StatusFlowPhase[] = [];
     const transitions: StatusFlowTransition[] = [];
-    const stepsToShow = orderedSteps.filter(s => s.node.type !== 'endNode');
+    // When a requester form node is present, skip the canonical startNode
+    // to avoid generating duplicate entry / exit status cards.
+    const stepsToShow = orderedSteps.filter(s => {
+        if (s.node.type === 'endNode') return false;
+        if (hasRequesterFormNode && s.node.id === startNodeId && (s.node.type === 'startNode' || s.node.data?.isStart)) return false;
+        return true;
+    });
 
     const isEndNode = (id: string) => {
         const n = nodeMap.get(id);

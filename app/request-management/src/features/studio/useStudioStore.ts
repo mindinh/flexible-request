@@ -65,6 +65,8 @@ interface StudioState {
     // Editor sub-tabs
     isFormEditorOpen: boolean;
     isEmailEditorOpen: boolean;
+    isFormPreviewOpen: boolean;
+    previewFormId: string | null;
 
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
@@ -115,6 +117,8 @@ interface StudioState {
     setIsFormEditorOpen: (open: boolean) => void;
     updateForms: (forms: UiForm[]) => void;
     setIsEmailEditorOpen: (open: boolean) => void;
+    setIsFormPreviewOpen: (open: boolean) => void;
+    setPreviewFormId: (id: string | null) => void;
     // I/O mapping actions
     updateNodeInputs: (nodeId: string, inputs: UiNodeInput[]) => void;
     updateNodeOutputs: (nodeId: string, outputs: UiNodeOutput[]) => void;
@@ -165,6 +169,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Editor sub-tabs
     isFormEditorOpen: false,
     isEmailEditorOpen: false,
+    isFormPreviewOpen: false,
+    previewFormId: null,
 
     // Draft Conflict
     draftConflict: false,
@@ -182,7 +188,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     setActiveTab: (tab) => {
         const BASE_TABS = ['data-schema', 'workflow', 'value-help', 'statuses', 'status-flow'];
         if (BASE_TABS.includes(tab)) {
-            set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false });
+            set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false, isFormPreviewOpen: false });
         } else {
             set({ activeTab: tab });
         }
@@ -205,6 +211,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     setSelectedDataFieldId: (id) => set({ selectedDataFieldId: id }),
     setIsFormEditorOpen: (open) => set({ isFormEditorOpen: open }),
     setIsEmailEditorOpen: (open) => set({ isEmailEditorOpen: open }),
+    setIsFormPreviewOpen: (open) => set({ isFormPreviewOpen: open }),
+    setPreviewFormId: (id) => set({ previewFormId: id }),
 
     loadRequestType: async (id: string) => {
         // Guard: Skip if already loading the same request type
@@ -466,6 +474,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 };
             };
 
+            // Resolve the formId held by the virtual requester node so it
+            // can be persisted on the real startNode (the sync layer strips
+            // formId from the startNode and moves it to the virtual node).
+            const _startNodeForForm = workflow.nodes.find(n => n.type === 'startNode' || n.data?.isStart);
+            const _requesterNodeForForm = _startNodeForForm
+                ? getRequesterRequestFormNode(workflow.nodes, _startNodeForForm.id)
+                : null;
+            const _resolvedStartFormId = (_requesterNodeForForm?.data?.formId as string)
+                || (_startNodeForForm?.data?.formId as string)
+                || null;
+
             console.log("Processing steps...", workflow.nodes.length);
             for (const node of workflow.nodes) {
                 // Skip the virtual "Requester: Request Form" node - it's not a real backend step
@@ -478,6 +497,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 const persistedActionSubType = node.data.actionSubType === 'background_task'
                     ? ((node.data.backgroundTaskType as string) || null)
                     : (node.data.actionSubType as string) || null;
+
+                // For start nodes, use the formId resolved from the virtual
+                // requester node so the form reference survives the save.
+                const isStartNode = node.type === 'startNode' || !!node.data.isStart;
+                const resolvedFormId = isStartNode
+                    ? _resolvedStartFormId
+                    : (node.data.formId as string) || null;
+
                 const stepData = {
                     ID: node.id,
                     stepName: node.data.label,
@@ -485,7 +512,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     slaDays: node.data.sla,
                     stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
                     actionSubType: persistedActionSubType,
-                    formId: node.data.formId || null,
+                    formId: resolvedFormId,
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     inputMapping: (node.data.inputMapping as string) || null,
                     // Canvas position
