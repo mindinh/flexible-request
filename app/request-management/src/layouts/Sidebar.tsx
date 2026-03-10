@@ -27,9 +27,9 @@ const navItems: NavItem[] = [
 
 /** Sub-items inside Request Configuration */
 const configSubItems: NavItem[] = [
-    { path: '/studio', label: 'Request Type List', icon: <ListOrdered style={{ width: '18px', height: '18px' }} /> },
-    { path: '/settings', label: 'Request Number Range', icon: <Hash style={{ width: '18px', height: '18px' }} /> },
     { path: '/organization', label: 'Organization Structure', icon: <Building2 style={{ width: '18px', height: '18px' }} /> },
+    { path: '/studio', label: 'Request Type List', icon: <ListOrdered style={{ width: '18px', height: '18px' }} /> },
+    { path: '/settings', label: 'Request Number Range', icon: <Hash style={{ width: '18px', height: '18px' }} /> }
 ];
 
 /** Paths that belong to the Request Configuration group */

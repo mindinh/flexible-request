@@ -474,6 +474,17 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 };
             };
 
+            // Resolve the formId held by the virtual requester node so it
+            // can be persisted on the real startNode (the sync layer strips
+            // formId from the startNode and moves it to the virtual node).
+            const _startNodeForForm = workflow.nodes.find(n => n.type === 'startNode' || n.data?.isStart);
+            const _requesterNodeForForm = _startNodeForForm
+                ? getRequesterRequestFormNode(workflow.nodes, _startNodeForForm.id)
+                : null;
+            const _resolvedStartFormId = (_requesterNodeForForm?.data?.formId as string)
+                || (_startNodeForForm?.data?.formId as string)
+                || null;
+
             console.log("Processing steps...", workflow.nodes.length);
             for (const node of workflow.nodes) {
                 // Skip the virtual "Requester: Request Form" node - it's not a real backend step
@@ -486,6 +497,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 const persistedActionSubType = node.data.actionSubType === 'background_task'
                     ? ((node.data.backgroundTaskType as string) || null)
                     : (node.data.actionSubType as string) || null;
+
+                // For start nodes, use the formId resolved from the virtual
+                // requester node so the form reference survives the save.
+                const isStartNode = node.type === 'startNode' || !!node.data.isStart;
+                const resolvedFormId = isStartNode
+                    ? _resolvedStartFormId
+                    : (node.data.formId as string) || null;
+
                 const stepData = {
                     ID: node.id,
                     stepName: node.data.label,
@@ -493,7 +512,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                     slaDays: node.data.sla,
                     stepType: NODE_TO_STEP_TYPE[node.type || 'actionNode'] || 'action',
                     actionSubType: persistedActionSubType,
-                    formId: node.data.formId || null,
+                    formId: resolvedFormId,
                     syncTrigger: node.data.syncTrigger || 'NONE',
                     inputMapping: (node.data.inputMapping as string) || null,
                     // Canvas position

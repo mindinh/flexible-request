@@ -1,7 +1,10 @@
-# Status Flow Reverse Flow Implementation Plan
+# Update Request Coordinator & Studio Panel
 
-- [x] Update `StatusFlowTransition` interface in `types.ts` to include `isReverse?: boolean`.
-- [x] Modify `statusFlowGenerator.ts` to implement 3-phase Data Entry lifecycle: `Draft` -> `In Progress` -> `Exit`.
-- [x] Implement back-edge detection in `statusFlowGenerator.ts` using topological sort processing order.
-- [x] Connect reverse transitions to the correct target card (`In Progress` for Data Entry, `Pending` for Approval).
-- [x] Update `StatusFlowTab.tsx` to visually distinguish reverse edges (red dashed + animated) and add arrow markers to ALL edges.
+## 1. Request Coordinator
+- [ ] Make the Coordinator dropdown disabled when creating a new request (`RequestInfoForm.tsx` & `DynamicRequestForm/index.tsx`)
+- [ ] Ensure it pre-fills with the person creating the request.
+
+## 2. User Task Property Panel in Studio
+- [ ] Remove "Default Owner" field (`WorkflowNodeProperties.tsx`).
+- [ ] Move "SLA Days" to be inside the same card as "Recipients".
+- [ ] Re-add the "User Task Type" (Data Entry / Approval) dropdown at the top of the General tab without icons.
