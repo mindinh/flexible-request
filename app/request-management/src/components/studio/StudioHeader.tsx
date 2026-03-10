@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Pencil, Check, X, ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -226,27 +226,23 @@ export function StudioHeader({
                                     if (e.key === 'Enter') handleSaveTitle();
                                     if (e.key === 'Escape') { setEditTitleValue(title); setIsEditingTitle(false); }
                                 }}
+                                onBlur={handleSaveTitle}
                             />
-                            <Button size="icon" onClick={handleSaveTitle} className="h-8 w-8">
-                                <Check size={14} />
-                            </Button>
-                            <Button variant="outline" size="icon" onClick={() => { setEditTitleValue(title); setIsEditingTitle(false); }} className="h-8 w-8">
-                                <X size={14} />
-                            </Button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2 group">
-                            <h1 className="text-xl font-semibold text-slate-900 truncate">{title}</h1>
-                            {onTitleChange && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => { setEditTitleValue(title); setIsEditingTitle(true); }}
-                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-[#b10e10] hover:bg-red-50"
-                                >
-                                    <Pencil size={14} />
-                                </Button>
-                            )}
+                            <h1
+                                className={`text-xl font-semibold text-slate-900 truncate ${onTitleChange ? 'cursor-pointer hover:text-[#b10e10] transition-colors' : ''}`}
+                                onDoubleClick={() => {
+                                    if (onTitleChange) {
+                                        setEditTitleValue(title);
+                                        setIsEditingTitle(true);
+                                    }
+                                }}
+                                title={onTitleChange ? 'Double-click to edit' : undefined}
+                            >
+                                {title}
+                            </h1>
                         </div>
                     )}
 
@@ -264,32 +260,23 @@ export function StudioHeader({
                                     if (e.key === 'Enter') handleSaveDesc();
                                     if (e.key === 'Escape') { setEditDescValue(description || ''); setIsEditingDesc(false); }
                                 }}
+                                onBlur={handleSaveDesc}
                             />
-                            <Button size="icon" onClick={handleSaveDesc} className="h-7 w-7">
-                                <Check size={12} />
-                            </Button>
-                            <Button variant="outline" size="icon" onClick={() => { setEditDescValue(description || ''); setIsEditingDesc(false); }} className="h-7 w-7">
-                                <X size={12} />
-                            </Button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2 group mt-0.5 min-w-0">
                             <p
-                                className="text-xs text-slate-500 truncate max-w-[600px]"
-                                title={description}
+                                className={`text-xs text-slate-500 truncate max-w-[600px] ${onDescriptionChange ? 'cursor-pointer hover:text-[#b10e10] transition-colors' : ''}`}
+                                onDoubleClick={() => {
+                                    if (onDescriptionChange) {
+                                        setEditDescValue(description || '');
+                                        setIsEditingDesc(true);
+                                    }
+                                }}
+                                title={onDescriptionChange ? 'Double-click to edit' : description}
                             >
                                 {description || 'No description'}
                             </p>
-                            {onDescriptionChange && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => { setEditDescValue(description || ''); setIsEditingDesc(true); }}
-                                    className="h-5 w-5 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-[#b10e10] hover:bg-red-50"
-                                >
-                                    <Pencil size={10} />
-                                </Button>
-                            )}
                         </div>
                     )}
                 </div>

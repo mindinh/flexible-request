@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Save, Loader2, AlertTriangle, Settings2, Type, ArrowRight } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -83,11 +83,14 @@ function StudioContent() {
         // Email Editor sub-tab
         isEmailEditorOpen,
         setIsEmailEditorOpen,
+        // Form Preview sub-tab
+        isFormPreviewOpen,
+        setIsFormPreviewOpen,
+        previewFormId,
+        setPreviewFormId,
     } = useStudioStore();
 
-    // Form Preview tab state
-    const [isFormPreviewOpen, setIsFormPreviewOpen] = useState(false);
-    const [previewFormId, setPreviewFormId] = useState<string | null>(null);
+
 
     // Build sub-tabs list (Form Editor, Form Preview) — rendered in a second row
     const subTabs: TabDef[] = [];

@@ -54,6 +54,8 @@ interface StudioState {
     // Editor sub-tabs
     isFormEditorOpen: boolean;
     isEmailEditorOpen: boolean;
+    isFormPreviewOpen: boolean;
+    previewFormId: string | null;
 
     draftConflict: boolean;               // True when a 409 conflict was detected
     draftConflictMessage: string | null;   // The conflict message to display
@@ -104,6 +106,8 @@ interface StudioState {
     setIsFormEditorOpen: (open: boolean) => void;
     updateForms: (forms: UiForm[]) => void;
     setIsEmailEditorOpen: (open: boolean) => void;
+    setIsFormPreviewOpen: (open: boolean) => void;
+    setPreviewFormId: (id: string | null) => void;
     // I/O mapping actions
     updateNodeInputs: (nodeId: string, inputs: UiNodeInput[]) => void;
     updateNodeOutputs: (nodeId: string, outputs: UiNodeOutput[]) => void;
@@ -153,6 +157,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     // Editor sub-tabs
     isFormEditorOpen: false,
     isEmailEditorOpen: false,
+    isFormPreviewOpen: false,
+    previewFormId: null,
 
     // Draft Conflict
     draftConflict: false,
@@ -170,7 +176,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     setActiveTab: (tab) => {
         const BASE_TABS = ['data-schema', 'workflow', 'value-help', 'statuses', 'status-flow'];
         if (BASE_TABS.includes(tab)) {
-            set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false });
+            set({ activeTab: tab, isFormEditorOpen: false, isEmailEditorOpen: false, isFormPreviewOpen: false });
         } else {
             set({ activeTab: tab });
         }
@@ -193,6 +199,8 @@ export const useStudioStore = create<StudioState>((set, get) => ({
     setSelectedDataFieldId: (id) => set({ selectedDataFieldId: id }),
     setIsFormEditorOpen: (open) => set({ isFormEditorOpen: open }),
     setIsEmailEditorOpen: (open) => set({ isEmailEditorOpen: open }),
+    setIsFormPreviewOpen: (open) => set({ isFormPreviewOpen: open }),
+    setPreviewFormId: (id) => set({ previewFormId: id }),
 
     loadRequestType: async (id: string) => {
         // Guard: Skip if already loading the same request type
