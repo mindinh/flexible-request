@@ -154,7 +154,7 @@ export function syncRequesterRequestFormNode(
             if (node.id === startNode.id) {
                 const nextData = { ...node.data };
                 if (triggerType === 'FORM_SUB') {
-                    delete nextData.formId;
+                    nextData.formId = sharedFormId; // Keep formId on startNode so it saves to backend
                 } else {
                     nextData.formId = sharedFormId;
                 }

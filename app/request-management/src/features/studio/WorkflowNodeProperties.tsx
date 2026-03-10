@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Trash2, Play, Flag, FileEdit, Mail, Shield, Bell, MessageSquare, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, Search, Users, AlertCircle, FileText, ChevronDown, Calculator, Hash, Type, RotateCcw } from 'lucide-react';
+import { Trash2, Play, Flag, FileEdit, Mail, Shield, Bell, MessageSquare, GitBranch, Layers, ExternalLink, Clock, Database, ClipboardCheck, X, Globe, Plus, Info, Search, Users, AlertCircle, FileText, ChevronDown, Calculator, Hash, Type, RotateCcw, Settings2 } from 'lucide-react';
 import { useStudioStore } from './useStudioStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -7,9 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/DropdownMenu';
 import { FormField, ConfirmDialog } from '@/components/studio';
 import { PrincipalSelect, type Principal } from '@/components/shared/PrincipalSelect';
 import { OrgHierarchySelect } from '@/components/shared/OrgHierarchySelect';
+import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/Dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/Popover';
@@ -2309,6 +2311,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             const existingForm = forms.find(f => f.id === existingFormId);
             if (existingForm) return existingFormId;
         }
+
+        // Just in case it was assigned but not in forms array yet (store sync)
+        // Check if ANY node has a form with this ID to avoid orphans, but primarily trust forms array
+
         // Create a skeleton form named after the step, ensuring uniqueness
         const stepLabel = (node.data.label as string) || 'Untitled Step';
         const baseName = `${stepLabel} Form`;
@@ -2320,6 +2326,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         }
 
         addForm(uniqueName);
+        // We use the store state directly after addForm to get the absolute latest ID
         const latestForms = useStudioStore.getState().forms;
         const newForm = latestForms[latestForms.length - 1];
         if (newForm) {
@@ -2580,35 +2587,107 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 <p className="text-[11px] text-slate-400">
                                     This step is auto-generated. The workflow continues after the requester submits this form.
                                 </p>
-                                {currentForm ? (
-                                    <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                        <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                        <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-400 italic">No form created yet.</p>
-                                )}
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleEditFormLayout}
-                                    className="w-full gap-1.5"
-                                >
-                                    <ExternalLink size={14} />
-                                    {currentForm ? 'Open Request Form Editor' : 'Create & Edit Request Form'}
-                                </Button>
+
+                                <div className="space-y-3">
+                                    <Label className="text-[10px] text-slate-400 font-semibold uppercase">Selected Form</Label>
+                                    <Select
+                                        value={node.data?.formId as string || "none"}
+                                        onValueChange={(val) => {
+                                            const newFormId = val === "none" ? null : val;
+                                            updateNodeData(node.id, { formId: newFormId });
+                                            if (newFormId) selectForm(newFormId);
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full h-10 bg-slate-50/50 border-slate-200 rounded-xl focus:ring-0">
+                                            <div className="flex items-center gap-2 truncate">
+                                                <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                                <SelectValue placeholder="Select a form..." />
+                                            </div>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none" className="text-slate-500 italic">(None) No Form</SelectItem>
+                                            {forms.filter(f => f.id === node.data?.formId).map(f => (
+                                                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {node.data?.formId ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleEditFormLayout}
+                                            className="w-full gap-2 font-semibold h-10 border-slate-200"
+                                        >
+                                            <FileEdit size={14} />
+                                            Open Request Form Editor
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                const formId = ensureFormForNode();
+                                                if (formId) selectForm(formId);
+                                            }}
+                                            className="w-full gap-2 font-semibold h-10 border-slate-200 border-dashed hover:border-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 text-slate-500 hover:text-[var(--brand-red)]"
+                                        >
+                                            <Plus size={14} />
+                                            Create New Form
+                                        </Button>
+                                    )}
+                                </div>
                             </Card>
 
                             <Card className="p-4 space-y-4">
-                                <Label variant="section">Output Fields</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label variant="section">Output Fields</Label>
+                                    <Badge variant="outline" className="text-[10px] uppercase tracking-wider bg-slate-50">
+                                        {targetFields.length} Fields
+                                    </Badge>
+                                </div>
                                 <p className="text-[11px] text-slate-400 -mt-1">Captured fields available as subsequent step inputs.</p>
-                                <div className="space-y-2">
-                                    {targetFields.map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
-                                            <Database size={12} className="text-slate-400" />
-                                            <span className="text-xs font-medium text-slate-600">{f.label}</span>
+
+                                <div className="space-y-4 pt-1">
+                                    {/* System Fields */}
+                                    {targetFields.some(f => (f as any).type === 'system') && (
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5 px-1">
+                                                <Settings2 size={10} />
+                                                System Fields
+                                            </Label>
+                                            <div className="grid grid-cols-1 gap-1.5">
+                                                {targetFields.filter(f => (f as any).type === 'system').map(f => (
+                                                    <div key={f.id} className="flex items-center gap-2.5 p-2 rounded-xl border border-slate-100 bg-slate-50/30 hover:bg-white hover:border-slate-200 transition-all group">
+                                                        <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
+                                                            <Database size={12} />
+                                                        </div>
+                                                        <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900">{f.label}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
+
+                                    {/* Form Fields */}
+                                    {targetFields.some(f => (f as any).type !== 'system') && (
+                                        <div className="space-y-2">
+                                            <Label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5 px-1">
+                                                <Layers size={10} />
+                                                Form Fields
+                                            </Label>
+                                            <div className="grid grid-cols-1 gap-1.5">
+                                                {targetFields.filter(f => (f as any).type !== 'system').map(f => (
+                                                    <div key={f.id} className="flex items-center gap-2.5 p-2 rounded-xl border border-slate-100 bg-slate-50/30 hover:bg-white hover:border-slate-200 transition-all group">
+                                                        <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-red-50 group-hover:text-[var(--brand-red)] transition-colors">
+                                                            <Database size={12} />
+                                                        </div>
+                                                        <span className="text-[11px] font-semibold text-slate-600 group-hover:text-slate-900">{f.label}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </Card>
                         </>
@@ -2683,7 +2762,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="none" className="text-slate-500 italic">(None) No Form</SelectItem>
-                                                {forms.filter(f => f.id !== (allNodes.find(n => n.type === 'startNode' || n.data?.isStart)?.data?.formId)).map(f => (
+                                                {forms.filter(f => f.id === node.data?.formId).map(f => (
                                                     <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -2720,31 +2799,60 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     <Card className="p-4 space-y-4">
                                         <Label variant="section">Notifications</Label>
                                         <p className="text-[11px] text-slate-400 -mt-1">Choose how stakeholders are notified.</p>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {[
-                                                { id: 'email', icon: Mail, label: 'EMAIL' },
-                                                { id: 'bell', icon: Bell, label: 'BELL' },
-                                                { id: 'teams', icon: MessageSquare, label: 'TEAMS' },
-                                            ].map((channel) => {
-                                                const notificationTypes = (node.data.notificationTypes as string[]) || [];
-                                                const isActive = notificationTypes.includes(channel.id);
-                                                const ChannelIcon = channel.icon;
-                                                return (
-                                                    <button
-                                                        key={channel.id}
-                                                        onClick={() => {
-                                                            const current = (node.data.notificationTypes as string[]) || [];
-                                                            const next = current.includes(channel.id) ? current.filter(c => c !== channel.id) : [...current, channel.id];
-                                                            updateNodeData(node.id, { notificationTypes: next });
-                                                        }}
-                                                        className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isActive ? 'border-[var(--brand-red)] bg-white shadow-sm' : 'border-slate-100 bg-slate-50/50 grayscale opacity-60'}`}
-                                                    >
-                                                        <ChannelIcon size={18} className={isActive ? 'text-[var(--brand-red)]' : 'text-slate-400'} />
-                                                        <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>{channel.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full justify-between h-10 border-slate-200 bg-slate-50/50 hover:bg-white transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        <Mail size={14} className="text-slate-400 group-hover:text-[var(--brand-red)]" />
+                                                        <div className="flex gap-1.5 overflow-hidden">
+                                                            {((node.data.notificationTypes as string[]) || []).length === 0 ? (
+                                                                <span className="text-slate-400 text-xs">Select channels...</span>
+                                                            ) : (
+                                                                ((node.data.notificationTypes as string[]) || []).map(id => {
+                                                                    const label = id === 'email' ? 'Email' : id === 'bell' ? 'Bell' : 'Teams';
+                                                                    return (
+                                                                        <span key={id} className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-[var(--brand-red)]/5 text-[var(--brand-red)] text-[10px] font-bold border border-[var(--brand-red)]/20 whitespace-nowrap uppercase tracking-wider">
+                                                                            {label}
+                                                                        </span>
+                                                                    );
+                                                                })
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown size={14} className="text-slate-400 opacity-50" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                                                <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-slate-400">Notification Channels</DropdownMenuLabel>
+                                                <DropdownMenuSeparator />
+                                                {[
+                                                    { id: 'email', icon: Mail, label: 'Email' },
+                                                    { id: 'bell', icon: Bell, label: 'In-app Bell' },
+                                                    { id: 'teams', icon: MessageSquare, label: 'Microsoft Teams' },
+                                                ].map((channel) => {
+                                                    const notificationTypes = (node.data.notificationTypes as string[]) || [];
+                                                    const isActive = notificationTypes.includes(channel.id);
+                                                    return (
+                                                        <DropdownMenuCheckboxItem
+                                                            key={channel.id}
+                                                            checked={isActive}
+                                                            onCheckedChange={() => {
+                                                                const current = (node.data.notificationTypes as string[]) || [];
+                                                                const next = current.includes(channel.id) ? current.filter(c => c !== channel.id) : [...current, channel.id];
+                                                                updateNodeData(node.id, { notificationTypes: next });
+                                                            }}
+                                                            className="gap-2 py-2.5"
+                                                        >
+                                                            <channel.icon size={14} className={isActive ? 'text-[var(--brand-red)]' : 'text-slate-400'} />
+                                                            <span className="text-sm">{channel.label}</span>
+                                                        </DropdownMenuCheckboxItem>
+                                                    );
+                                                })}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                         {((node.data.notificationTypes as string[]) || []).includes('email') && (
                                             <EmailTemplateEditor
                                                 subject={(node.data.emailSubject as string) || ''}
