@@ -35,6 +35,8 @@ import type { StatusFlowModel } from './types';
 const ORIENTATION: 'horizontal' | 'vertical' = 'vertical';
 
 const LANE_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
+const ARROW_COLOR = '#64748b';
+const EDGE_COLOR = ARROW_COLOR;
 
 const CARD_WIDTH = 150;
 const CARD_HEIGHT = 44;
@@ -307,10 +309,10 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
                     animated: false,
                     label: hasAction ? `â†© ${t.action}` : undefined,
                     style: {
-                        stroke: '#1e293b',
-                        strokeWidth: 1.5,
+                        stroke: EDGE_COLOR,
+                        strokeWidth: 1.1,
                     },
-                    markerEnd: { type: MarkerType.ArrowClosed, color: '#1e293b', width: 14, height: 14 },
+                    markerEnd: { type: MarkerType.ArrowClosed, color: ARROW_COLOR, width: 9, height: 9 },
                     data: { bottomY },
                 });
             } else {
@@ -324,15 +326,15 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
                     animated: false,
                     label: hasAction ? t.action : undefined,
                     style: {
-                        stroke: hasAction ? '#64748b' : '#94a3b8',
-                        strokeWidth: hasAction ? 2 : 1.5,
+                        stroke: EDGE_COLOR,
+                        strokeWidth: hasAction ? 1.25 : 1,
                         strokeDasharray: hasAction ? undefined : '6 3',
                     },
                     markerEnd: {
                         type: MarkerType.ArrowClosed,
-                        color: hasAction ? '#64748b' : '#94a3b8',
-                        width: 14,
-                        height: 14,
+                        color: ARROW_COLOR,
+                        width: 9,
+                        height: 9,
                     },
                     labelStyle: hasAction ? { fontSize: 10, fontWeight: 700, fill: '#475569' } : undefined,
                     labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
@@ -443,10 +445,10 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
                 animated: false,
                 label: hasAction ? `↩ ${t.action}` : undefined,
                 style: {
-                    stroke: '#1e293b',
-                    strokeWidth: 1.5,
+                    stroke: EDGE_COLOR,
+                    strokeWidth: 1.1,
                 },
-                markerEnd: { type: MarkerType.ArrowClosed, color: '#1e293b', width: 14, height: 14 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: ARROW_COLOR, width: 9, height: 9 },
                 data: { laneCount: lanes.length },
             });
         } else {
@@ -461,19 +463,19 @@ function modelToReactFlow(model: StatusFlowModel): { nodes: Node[]; edges: Edge[
                 animated: false,
                 label: hasAction ? t.action : undefined,
                 style: {
-                    stroke: hasAction ? '#64748b' : '#94a3b8',
-                    strokeWidth: hasAction ? 2 : 1.5,
+                    stroke: EDGE_COLOR,
+                    strokeWidth: hasAction ? 1.25 : 1,
                     strokeDasharray: hasAction ? undefined : '6 3',
                 },
-                markerEnd: {
-                    type: MarkerType.ArrowClosed,
-                    color: hasAction ? '#64748b' : '#94a3b8',
-                    width: 14,
-                    height: 14,
-                },
-                labelStyle: hasAction ? { fontSize: 10, fontWeight: 700, fill: '#475569' } : undefined,
-                labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
-                labelBgPadding: hasAction ? [3, 6] as [number, number] : undefined,
+            markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: ARROW_COLOR,
+                width: 9,
+                height: 9,
+            },
+            labelStyle: hasAction ? { fontSize: 10, fontWeight: 700, fill: '#475569' } : undefined,
+            labelBgStyle: hasAction ? { fill: '#ffffff', stroke: '#e2e8f0', strokeWidth: 1 } : undefined,
+            labelBgPadding: hasAction ? [3, 6] as [number, number] : undefined,
                 labelBgBorderRadius: hasAction ? 6 : undefined,
             });
         }

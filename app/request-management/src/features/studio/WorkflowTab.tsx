@@ -321,6 +321,11 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                         const statusColor = (e as any).data?.statusConfig?.statusColor;
                         const baseLabel = statusName || (e as any).label || undefined;
 
+                        const isSimulatedTraversal =
+                            isSimulationMode &&
+                            simulationHistory.includes(e.source) &&
+                            simulationHistory.includes(e.target);
+
                         return {
                             ...e,
                             label: baseLabel,
@@ -328,12 +333,12 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                                 type: MarkerType.ArrowClosed,
                                 width: 18,
                                 height: 18,
-                                color: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
-                                    ? '#10b981'
-                                    : statusColor || '#0f172a',
+                                // Arrow color is intentionally NOT tied to Status Color config.
+                                // Keep it stable (except simulation highlight).
+                                color: isSimulatedTraversal ? '#10b981' : '#0f172a',
                             },
-                            animated: isSimulationMode ? simulationHistory.includes(e.source) && simulationHistory.includes(e.target) : e.animated,
-                            style: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
+                            animated: isSimulationMode ? isSimulatedTraversal : e.animated,
+                            style: isSimulationMode && isSimulatedTraversal
                                 ? { stroke: '#10b981', strokeWidth: 3 }
                                 : e.style,
                             labelStyle: statusName ? {

@@ -2201,6 +2201,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     // 2. Get available source fields from ALL previous steps (Ancestors)
     const availableSources = useMemo(() => {
         const sources: Array<{ stepId: string; stepName: string; fieldId: string; fieldName: string; type?: string }> = [];
+        const hasRequesterRequestFormNode = allNodes.some(n => isRequesterRequestFormNode(n as any));
 
         // 1. Always add System Fields
         SYSTEM_OUTPUT_FIELDS.forEach(sf => {
@@ -2221,12 +2222,15 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             if (!ancestor) return;
 
             const stepName = (ancestor.data.label as string) || 'Untitled Step';
+            const isStartAncestor = ancestor.type === 'startNode' || (ancestor.data as any)?.isStart;
 
             // Form fields (for Start / User Task / Approval)
             const formId = ancestor.data.formId as string | undefined;
             const form = formId ? forms.find(f => f.id === formId) : null;
 
-            if (form) {
+            // When the requester form node exists, the Start node is only a technical trigger holder.
+            // Avoid duplicating the same fields under both "Requester: Request Form" and "Start".
+            if (form && !(hasRequesterRequestFormNode && isStartAncestor)) {
                 form.items.forEach(item => {
                     if (item.type === 'section') {
                         (item as UiSection).fields.forEach(f => sources.push({
