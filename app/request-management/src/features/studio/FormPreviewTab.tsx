@@ -140,12 +140,11 @@ export function PreviewTable({ table }: { table: UiTableField }) {
                     <h2 className="text-lg font-bold text-slate-900">{table.label}</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                    {table.headerActions?.downloadTemplate && (
-                        <Button variant="outline" size="sm" className="text-slate-600 gap-1.5 text-xs">
-                            <Download size={13} />
-                            Template
-                        </Button>
-                    )}
+                    {/* Download — always visible */}
+                    <Button variant="outline" size="sm" className="text-slate-600 gap-1.5 text-xs">
+                        <Download size={13} />
+                        Template
+                    </Button>
                     {table.headerActions?.uploadExcel && (
                         <Button variant="outline" size="sm" className="text-slate-600 gap-1.5 text-xs">
                             <Upload size={13} />

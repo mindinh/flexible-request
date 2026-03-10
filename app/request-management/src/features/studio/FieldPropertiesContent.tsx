@@ -446,6 +446,26 @@ export function FieldPropertiesContent({ schema, selectedFieldId, onUpdate, onDu
                     </div>
                 )}
 
+                {/* ── Table Field State (only for tables) ── */}
+                {isTable && (
+                    <div className="space-y-1.5">
+                        <SectionLabel>Field State</SectionLabel>
+                        <Select
+                            value={(selectedItem as UiTableField).readOnly ? 'readonly' : 'editable'}
+                            onValueChange={(val) => {
+                                onUpdate(selectedItem!.id, { readOnly: val === 'readonly' } as any);
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="editable">Editable</SelectItem>
+                                <SelectItem value="readonly">Read-Only</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
                 {/* ── Table Data Binding (only for tables) ── */}
                 {isTable && (() => {
                     const dataSchema = useStudioStore.getState().dataSchema;

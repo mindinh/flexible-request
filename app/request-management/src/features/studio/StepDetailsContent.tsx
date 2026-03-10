@@ -8,10 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { FormField, ConfirmDialog } from '@/components/studio';
-import { PrincipalSelect, type Principal } from '@/components/shared/PrincipalSelect';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MappingSelector } from './components/MappingSelector';
-import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection } from './types';
+import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiTableField } from './types';
 
 // SLA Input with suffix
 function SlaInput({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -95,7 +94,14 @@ export function StepDetailsContent({
         currentForm.items.forEach(item => {
             if (item.type === 'section') {
                 targetFields.push(...(item as UiSection).fields);
-            } else if (item.type !== 'table') {
+            } else if (item.type === 'table') {
+                const tableItem = item as UiTableField;
+                targetFields.push({
+                    id: tableItem.bindTo || tableItem.id,
+                    type: 'table',
+                    label: tableItem.label,
+                } as UiFormField);
+            } else {
                 targetFields.push(item as UiFormField);
             }
         });
@@ -118,7 +124,15 @@ export function StepDetailsContent({
                             fieldId: f.id,
                             fieldName: f.label
                         }));
-                    } else if (item.type !== 'table') {
+                    } else if (item.type === 'table') {
+                        const tableItem = item as UiTableField;
+                        sources.push({
+                            stepId: startNode.id,
+                            stepName: startNode.data.label as string,
+                            fieldId: tableItem.bindTo || tableItem.id,
+                            fieldName: tableItem.label
+                        });
+                    } else {
                         const f = item as UiFormField;
                         sources.push({
                             stepId: startNode.id,
@@ -166,28 +180,7 @@ export function StepDetailsContent({
         onUpdate(node.id, { isStart });
     };
 
-    // Get current step owner as Principal
-    const stepOwner: Principal | null = node.data.owner_ID ? {
-        id: node.data.owner_ID as string,
-        type: (node.data.ownerType as string) || 'USER',
-        displayName: (node.data.ownerName as string) || 'Unknown',
-    } : null;
 
-    const handleOwnerChange = (principal: Principal | null) => {
-        if (principal) {
-            onUpdate(node.id, {
-                owner_ID: principal.id,
-                ownerType: principal.type,
-                ownerName: principal.displayName,
-            });
-        } else {
-            onUpdate(node.id, {
-                owner_ID: null,
-                ownerType: null,
-                ownerName: null,
-            });
-        }
-    };
 
     const handlePredecessorToggle = (targetNodeId: string, isSelected: boolean) => {
         const existingEdge = edges.find(e => e.source === targetNodeId && e.target === node.id);
@@ -307,19 +300,8 @@ export function StepDetailsContent({
     const renderApproversTab = () => (
         <div className="space-y-4">
             <Card className="p-4 space-y-4">
-                <FormField label="Default Owner" hint="Who is responsible for this step">
-                    <PrincipalSelect
-                        value={stepOwner}
-                        onChange={handleOwnerChange}
-                        placeholder="Inherit from coordinator"
-                    />
-                    <p className="text-[11px] text-slate-400 italic mt-1">
-                        Leave empty to default to the request coordinator
-                    </p>
-                </FormField>
-
                 {onManageRules && (
-                    <div className="pt-2">
+                    <div>
                         <Button
                             variant="default"
                             size="sm"
@@ -399,15 +381,6 @@ export function StepDetailsContent({
             ) : (
                 <>
                     {renderGeneralTab()}
-                    <Card className="p-4">
-                        <FormField label="Default Owner" hint="Step responsibility">
-                            <PrincipalSelect
-                                value={stepOwner}
-                                onChange={handleOwnerChange}
-                                placeholder="Inherit from coordinator"
-                            />
-                        </FormField>
-                    </Card>
                     {onEditSchema && (
                         <Button
                             variant="outline"
