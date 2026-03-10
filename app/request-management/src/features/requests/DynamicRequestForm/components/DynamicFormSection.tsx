@@ -184,12 +184,14 @@ export function DynamicFormSection({
                                             return (
                                                 <div
                                                     key={field.id}
-                                                    className={`space-y-2 min-w-0 ${spanClass}`}
+                                                    className={`min-w-0 ${spanClass} ${field.controlType === 'checkbox' ? 'flex items-center' : 'space-y-2'}`}
                                                 >
-                                                    <label className="block text-sm font-medium text-slate-700 truncate">
-                                                        {field.label}
-                                                        {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
-                                                    </label>
+                                                    {field.controlType !== 'checkbox' && (
+                                                        <label className="block text-sm font-medium text-slate-700 truncate">
+                                                            {field.label}
+                                                            {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
+                                                        </label>
+                                                    )}
                                                     <DynamicField
                                                         field={field}
                                                         value={formData[field.id]}
@@ -226,6 +228,7 @@ export function DynamicFormSection({
                                         </h2>
                                         <div className="flex items-center gap-2">
                                             {/* Add Row Button */}
+                                            {!table.readOnly && (
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -245,8 +248,10 @@ export function DynamicFormSection({
                                                 <Plus size={14} className="mr-2" />
                                                 Add Row
                                             </Button>
+                                            )}
 
                                             {/* Duplicate Button */}
+                                            {!table.readOnly && (
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -270,9 +275,9 @@ export function DynamicFormSection({
                                                 <Copy size={14} className="mr-2" />
                                                 Duplicate
                                             </Button>
+                                            )}
 
-                                            {/* Download Template */}
-                                            {table.headerActions?.downloadTemplate && (
+                                            {/* Download Template — always visible */}
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -283,10 +288,9 @@ export function DynamicFormSection({
                                                     <Download size={14} className="mr-2" />
                                                     Download
                                                 </Button>
-                                            )}
 
                                             {/* Upload Excel */}
-                                            {table.headerActions?.uploadExcel && (
+                                            {!table.readOnly && table.headerActions?.uploadExcel && (
                                                 <>
                                                     <input
                                                         type="file"
@@ -309,6 +313,7 @@ export function DynamicFormSection({
                                             )}
 
                                             {/* Delete Selected */}
+                                            {!table.readOnly && (
                                             <Button
                                                 type="button"
                                                 variant="outline-destructive"
@@ -326,6 +331,7 @@ export function DynamicFormSection({
                                                 <Trash2 size={14} className="mr-2" />
                                                 Delete
                                             </Button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -339,9 +345,10 @@ export function DynamicFormSection({
                                         }))}
                                         value={(formData[dataKey] as any[]) || []}
                                         onChange={(rows) => onFieldChange(dataKey, rows)}
+                                        disabled={!!table.readOnly}
                                         hideAddButton={true}
                                         selectedIds={rowSelections[table.id] || []}
-                                        onSelectionChange={(ids) => setRowSelections({ ...rowSelections, [table.id]: ids })}
+                                        onSelectionChange={!table.readOnly ? (ids) => setRowSelections({ ...rowSelections, [table.id]: ids }) : undefined}
                                     />
                                 </div>
                             </Card>
@@ -353,11 +360,13 @@ export function DynamicFormSection({
                 const field = item as SchemaField;
                 return (
                     <Card key={field.id} className="p-6">
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium text-slate-700">
-                                {field.label}
-                                {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
-                            </label>
+                        <div className={field.controlType === 'checkbox' ? 'flex items-center' : 'space-y-2'}>
+                            {field.controlType !== 'checkbox' && (
+                                <label className="block text-sm font-medium text-slate-700">
+                                    {field.label}
+                                    {field.required && !field.readOnly && <span className="text-destructive ml-1">*</span>}
+                                </label>
+                            )}
                             <DynamicField
                                 field={field}
                                 value={formData[field.id]}

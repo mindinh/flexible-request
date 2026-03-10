@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import {
-    LayoutGrid, Table, Rows3, ScrollText, Database,
-    Type, Hash, ToggleLeft, Calendar, Box
+    LayoutGrid, Table, Table as TableIcon, Rows3, ScrollText, Database,
+    Type, Hash, ToggleLeft, Calendar
 } from 'lucide-react';
 import type { SimpleDataType } from './types';
 import { useStudioStore } from './useStudioStore';
@@ -12,7 +12,7 @@ function getSchemaFieldIcon(schemaType: SimpleDataType) {
         case 'Number': return Hash;
         case 'Boolean': return ToggleLeft;
         case 'DateTime': return Calendar;
-        case 'Object': return Box;
+        case 'Object': return TableIcon;
         default: return Database;
     }
 }
@@ -50,6 +50,7 @@ function PaletteCard({
     label,
     type,
     dataFieldKey,
+    required,
     isCollapsed,
     onClick,
 }: {
@@ -57,11 +58,12 @@ function PaletteCard({
     label: string;
     type: string;
     dataFieldKey?: string;
+    required?: boolean;
     isCollapsed?: boolean;
     onClick: () => void;
 }) {
     const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-        e.dataTransfer.setData('application/json', JSON.stringify({ type, label, dataFieldKey }));
+        e.dataTransfer.setData('application/json', JSON.stringify({ type, label, dataFieldKey, required }));
         e.dataTransfer.effectAllowed = 'copy';
     };
 
@@ -95,9 +97,9 @@ function PaletteCard({
 export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
     const { addSchemaItem, activeStepId, dataSchema } = useStudioStore();
 
-    const handleAdd = (type: string, label: string, key?: string) => {
+    const handleAdd = (type: string, label: string, key?: string, required?: boolean) => {
         if (!activeStepId) return;
-        addSchemaItem(type, label, key);
+        addSchemaItem(type, label, key, required);
     };
 
     return (
@@ -153,7 +155,8 @@ export function SchemaPalette({ isCollapsed = false }: SchemaPaletteProps) {
                                     icon={getSchemaFieldIcon(field.type)}
                                     isCollapsed={isCollapsed}
                                     dataFieldKey={field.key}
-                                    onClick={() => handleAdd(mappedType, field.label, field.key)}
+                                    required={field.required}
+                                    onClick={() => handleAdd(mappedType, field.label, field.key, field.required)}
                                 />
                             );
                         })}

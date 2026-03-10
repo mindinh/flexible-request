@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/TextArea';
 import { MappingSelector } from './components/MappingSelector';
 import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
-import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeOutput } from './types';
+import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeOutput, UiTableField } from './types';
 import { findAllAncestors } from './workflowIOHelpers';
 import { REQUESTER_REQUEST_FORM_SUBTYPE, getRequesterRequestFormNode, isRequesterRequestFormNode } from './requestFormNode';
 import { AVAILABLE_ICONS, ICON_CATEGORIES, getAllIcons, type IconCategory } from '../../config/iconConfig';
@@ -2158,7 +2158,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     currentForm.items.forEach(item => {
                         if (item.type === 'section') {
                             fields.push(...(item as UiSection).fields);
-                        } else if (item.type !== 'table') {
+                        } else if (item.type === 'table') {
+                            const tbl = item as UiTableField;
+                            fields.push({ id: tbl.bindTo || tbl.id, label: tbl.label, type: 'table' } as unknown as UiFormField);
+                        } else {
                             fields.push(item as UiFormField);
                         }
                     });
@@ -2189,7 +2192,10 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 currentForm.items.forEach(item => {
                     if (item.type === 'section') {
                         fields.push(...(item as UiSection).fields);
-                    } else if (item.type !== 'table') {
+                    } else if (item.type === 'table') {
+                        const tbl = item as UiTableField;
+                        fields.push({ id: tbl.bindTo || tbl.id, label: tbl.label, type: 'table' } as unknown as UiFormField);
+                    } else {
                         fields.push(item as UiFormField);
                     }
                 });
@@ -2236,7 +2242,16 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             fieldName: f.label,
                             type: f.type
                         }));
-                    } else if (item.type !== 'table') {
+                    } else if (item.type === 'table') {
+                        const tbl = item as UiTableField;
+                        sources.push({
+                            stepId: id,
+                            stepName,
+                            fieldId: tbl.bindTo || tbl.id,
+                            fieldName: tbl.label,
+                            type: 'table'
+                        });
+                    } else {
                         const f = item as UiFormField;
                         sources.push({
                             stepId: id,
@@ -2705,6 +2720,23 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             </TabsList>
 
                             <TabsContent value="general" className="space-y-4 focus-visible:outline-none">
+                                <Card className="p-4 space-y-3">
+                                    <Label variant="section">Task Type</Label>
+                                    <p className="text-[11px] text-slate-400 -mt-1">Choose whether this is a data entry task or an approval step.</p>
+                                    <Select
+                                        value={subType === 'approval' ? 'approval' : 'user_task'}
+                                        onValueChange={(val) => updateNodeData(node.id, { actionSubType: val })}
+                                    >
+                                        <SelectTrigger className="w-full h-10 bg-slate-50/50 border-slate-200 rounded-xl focus:ring-0">
+                                            <SelectValue placeholder="Select task type..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="user_task">Data Entry</SelectItem>
+                                            <SelectItem value="approval">Approval</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </Card>
+
                                 <Card className="p-4 space-y-4">
                                     <Label variant="section">Recipients</Label>
                                     <p className="text-[11px] text-slate-400 -mt-1">Select users or groups responsible for this step.</p>
@@ -2741,6 +2773,12 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                         placeholder="Add recipient(s)..."
                                         excludeIds={stepApprover ? [stepApprover.id] : []}
                                     />
+
+                                    <div className="pt-3 mt-3 border-t border-slate-100">
+                                        <FormField label="SLA" hint="Time limit (days)">
+                                            <SlaInput value={(node.data.sla as number) || 0} onChange={(val) => updateNodeData(node.id, { sla: val })} />
+                                        </FormField>
+                                    </div>
                                 </Card>
 
                                 <Card className="p-4 space-y-3">
@@ -2875,14 +2913,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     </Card>
                                 )}
 
-                                <Card className="p-4 space-y-4">
-                                    <FormField label="SLA" hint="Time limit (days)">
-                                        <SlaInput value={(node.data.sla as number) || 0} onChange={(val) => updateNodeData(node.id, { sla: val })} />
-                                    </FormField>
-                                    <FormField label="Default Owner" hint="Responsible user/group">
-                                        <PrincipalSelect value={stepOwner} onChange={handleOwnerChange} placeholder="Inherit from coordinator" />
-                                    </FormField>
-                                </Card>
+
 
                                 <Card className="p-4 space-y-2">
                                     <Label variant="section">Sync Trigger</Label>

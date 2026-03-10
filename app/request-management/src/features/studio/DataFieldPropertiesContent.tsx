@@ -44,9 +44,10 @@ export function DataFieldPropertiesContent() {
 
     const handleTypeChange = (type: SimpleDataType) => {
         const updates: Partial<UiDataField> = { type };
-        // When changing to Object, ensure children array exists
+        // When changing to Object, ensure children array exists and default to list
         if (type === 'Object' && !field.children) {
             updates.children = [];
+            updates.isList = true;
         }
         // When changing away from Object, remove children
         if (type !== 'Object') {

@@ -94,7 +94,7 @@ interface StudioState {
     updateMetadata: (data: Partial<UiRequestTypeDetails>) => void;
     updateWorkflow: (nodes: UiWorkflowNode[], edges: UiWorkflowEdge[]) => void;
     updateSchema: (items: UiCanvasItem[]) => void;
-    addSchemaItem: (type: string, label: string, key?: string) => void;
+    addSchemaItem: (type: string, label: string, key?: string, required?: boolean) => void;
     // Form CRUD
     addForm: (name: string) => void;
     deleteForm: (formId: string) => void;
@@ -907,7 +907,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         };
     }),
 
-    addSchemaItem: (type, label, key) => set(state => {
+    addSchemaItem: (type, label, key, required) => set(state => {
         const { activeFormId, forms } = state;
         if (!activeFormId) return {};
 
@@ -915,7 +915,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
             id: `${type}-${Date.now()}`,
             type,
             label,
-            required: false,
+            required: required || false,
             key: key || undefined, // Local key
             bindTo: key || undefined, // Global binding
             ...(type === 'section' ? { fields: [], collapsed: false } : {}),

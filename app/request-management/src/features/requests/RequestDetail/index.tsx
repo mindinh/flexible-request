@@ -198,24 +198,59 @@ export function RequestDetail() {
                 const otherStepDef = request.requestType?.steps?.find(
                     (s: any) => s.ID === otherStep.stepDefinition_ID
                 );
-                if (!otherStepDef?.formId) continue;
-                const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
-                if (!otherForm?.items) continue;
+                if (!otherStepDef) continue;
+
+                // Resolve schema items using both formId AND legacy schemaContent paths
+                let otherSchemaItems: any[] = [];
+                if (otherStepDef.formId) {
+                    const otherForm = allForms.find((f: any) => f.id === otherStepDef.formId);
+                    otherSchemaItems = otherForm?.items || [];
+                }
+                if (otherSchemaItems.length === 0 && otherStepDef.schemaContent) {
+                    try {
+                        const parsed = JSON.parse(otherStepDef.schemaContent);
+                        otherSchemaItems = Array.isArray(parsed) ? parsed : (parsed?.items || []);
+                    } catch { /* ignore */ }
+                }
+                if (otherSchemaItems.length === 0) continue;
+
                 let otherPayload: Record<string, any> = {};
                 try { otherPayload = JSON.parse(otherStep.data.payload); } catch { continue; }
                 const extractBound = (items: any[]) => {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) extractBound(item.fields);
-                        else if (item.type === 'table' && item.columns) extractBound(item.columns);
+                        else if (item.type === 'table' && item.columns) {
+                            // Handle table-level bindTo for array data
+                            if (item.bindTo) {
+                                const tableData = otherPayload[item.bindTo] || otherPayload[item.id];
+                                if (Array.isArray(tableData) && tableData.length > 0) {
+                                    // Normalize row keys: column.id → column.bindTo
+                                    const colBindMap: Record<string, string> = {};
+                                    for (const col of item.columns) {
+                                        if (col.bindTo) colBindMap[col.id] = col.bindTo;
+                                    }
+                                    const normalizedRows = tableData.map((row: any) => {
+                                        const newRow: any = { id: row.id };
+                                        for (const [key, val] of Object.entries(row)) {
+                                            if (key === 'id') continue;
+                                            newRow[colBindMap[key] || key] = val;
+                                        }
+                                        return newRow;
+                                    });
+                                    globalContext[item.bindTo] = normalizedRows;
+                                }
+                            }
+                            extractBound(item.columns);
+                        }
                         else if (item.bindTo) {
-                            const value = otherPayload[item.id];
+                            const value = otherPayload[item.bindTo] ?? otherPayload[item.id];
                             if (value !== undefined && value !== null) {
                                 globalContext[item.bindTo] = value;
                             }
                         }
                     }
                 };
-                extractBound(otherForm.items);
+                extractBound(otherSchemaItems);
             }
 
             if (Object.keys(globalContext).length === 0) return rawFormData;
@@ -227,7 +262,48 @@ export function RequestDetail() {
                 const injectBound = (items: any[]) => {
                     for (const item of items) {
                         if (item.type === 'section' && item.fields) injectBound(item.fields);
-                        else if (item.type === 'table' && item.columns) injectBound(item.columns);
+                        else if (item.type === 'table' && item.columns) {
+                            // Always remap table row column keys to destination column IDs.
+                            // Global context has normalized rows (column.id → bindTo names).
+                            // Backend inputMapping may have raw source column IDs that don't match dest.
+                            // Always prefer global context (normalized) over raw payload data.
+                            const dataKey = item.bindTo || item.id;
+                            const gcRows = item.bindTo ? globalContext[item.bindTo] : null;
+                            const existingRows = merged[dataKey];
+                            const sourceRows = gcRows || existingRows; // prefer global context
+                            
+                            if (Array.isArray(sourceRows) && sourceRows.length > 0 && item.columns?.length > 0) {
+                                // Build destination column map: bindTo → dest column.id
+                                const destColMap: Record<string, string> = {};
+                                const destColIds = new Set<string>();
+                                for (const col of item.columns) {
+                                    destColIds.add(col.id);
+                                    if (col.bindTo) destColMap[col.bindTo] = col.id;
+                                }
+                                
+                                // Check if rows need remapping (any key not matching dest column IDs)
+                                const firstRow = sourceRows[0];
+                                const rowKeys = Object.keys(firstRow).filter(k => k !== 'id');
+                                const needsRemap = rowKeys.some(k => !destColIds.has(k));
+                                
+                                if (needsRemap) {
+                                    merged[dataKey] = sourceRows.map((row: any) => {
+                                        const newRow: any = { id: row.id };
+                                        for (const [key, val] of Object.entries(row)) {
+                                            if (key === 'id') continue;
+                                            // Try destColMap (bindTo → dest column.id) first
+                                            newRow[destColMap[key] || key] = val;
+                                        }
+                                        return newRow;
+                                    });
+                                } else if (gcRows && gcRows !== existingRows) {
+                                    merged[dataKey] = sourceRows;
+                                }
+                            } else if (!existingRows && item.bindTo && globalContext[item.bindTo] !== undefined) {
+                                merged[dataKey] = globalContext[item.bindTo];
+                            }
+                            injectBound(item.columns);
+                        }
                         else if (item.bindTo && globalContext[item.bindTo] !== undefined) {
                             if (merged[item.id] === undefined || merged[item.id] === null) {
                                 merged[item.id] = globalContext[item.bindTo];
