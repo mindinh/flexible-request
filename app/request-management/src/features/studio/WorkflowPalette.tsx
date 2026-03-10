@@ -1,19 +1,34 @@
-import { Play, Flag, GitBranch, ClipboardCheck, Globe } from 'lucide-react';
+import { Play, Flag, GitBranch, ClipboardCheck, Layers } from 'lucide-react';
 
 type WorkflowNodeType = 'START' | 'END' | 'ACTION' | 'CONDITION';
-// Palette node definitions matching reference design
 const TRIGGER_TERMINAL_NODES = [
-    { id: 'start', label: 'Start', icon: Play, nodeType: 'START' as any, defaultLabel: 'Start' },
-    { id: 'end', label: 'End', icon: Flag, nodeType: 'END' as any, defaultLabel: 'End' },
+    { id: 'start', label: 'Start', icon: Play, nodeType: 'START' as const, defaultLabel: 'Start' },
+    { id: 'end', label: 'End', icon: Flag, nodeType: 'END' as const, defaultLabel: 'End' },
 ];
 
 const ACTION_NODES = [
-    { id: 'action-user-task', label: 'User Task', icon: ClipboardCheck, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'User Task', subType: 'user_task' },
-    { id: 'action-background-task', label: 'Background Task', icon: Globe, nodeType: 'ACTION' as WorkflowNodeType, defaultLabel: 'Background Task', subType: 'background_task' },
+    {
+        id: 'action-user-task',
+        label: 'User Task',
+        icon: ClipboardCheck,
+        nodeType: 'ACTION' as WorkflowNodeType,
+        defaultLabel: 'User Task',
+        subType: 'user_task',
+        accentColor: 'var(--brand-red)',
+    },
+    {
+        id: 'action-background',
+        label: 'Background Task',
+        icon: Layers,
+        nodeType: 'ACTION' as WorkflowNodeType,
+        defaultLabel: 'Background Task',
+        subType: 'background_task',
+        accentColor: 'var(--brand-red)',
+    },
 ];
 
 const LOGIC_NODES = [
-    { id: 'logic-condition', label: 'Condition', icon: GitBranch, nodeType: 'CONDITION' as any, defaultLabel: 'Condition' },
+    { id: 'logic-condition', label: 'Condition', icon: GitBranch, nodeType: 'CONDITION' as const, defaultLabel: 'Condition' },
 ];
 
 const NODE_GROUPS = [
@@ -69,7 +84,7 @@ function PaletteCard({
         <div
             draggable
             onDragStart={handleDragStart}
-            className="flex items-center gap-3 p-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm transition-all cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm transition-all cursor-grab active:cursor-grabbing p-2.5"
         >
             <div
                 className="flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0"
@@ -101,15 +116,15 @@ export function WorkflowPalette({ isCollapsed = false }: WorkflowPaletteProps) {
                         </span>
                     )}
                     <div className={`flex flex-col gap-1.5 ${isCollapsed ? 'px-1' : ''}`}>
-                        {group.items.map(item => (
+                        {group.items.map((item) => (
                             <PaletteCard
                                 key={item.id}
                                 icon={item.icon}
                                 label={item.label}
                                 nodeType={item.nodeType}
                                 defaultLabel={item.defaultLabel}
-                                subType={'subType' in item ? (item as any).subType as string : undefined}
-                                accentColor={group.color}
+                                subType={item.subType}
+                                accentColor={item.accentColor || group.color}
                                 isCollapsed={isCollapsed}
                             />
                         ))}

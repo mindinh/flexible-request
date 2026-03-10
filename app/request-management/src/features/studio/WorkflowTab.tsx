@@ -7,6 +7,7 @@ import {
     useEdgesState,
     addEdge,
     type Edge,
+    MarkerType,
     type Node,
     type OnConnect,
     useReactFlow,
@@ -16,7 +17,6 @@ import {
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
 import { Wand2, Play, Pause, X, ChevronRight, RotateCcw, Send, FileEdit, FileCode2, Code, AlertTriangle } from 'lucide-react';
-import dagre from 'dagre';
 import { useStudioStore } from './useStudioStore';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -26,6 +26,8 @@ import { PreviewField, PreviewSection, PreviewTable } from './FormPreviewTab';
 import { WorkflowPalette } from './WorkflowPalette';
 import { nodeTypes } from './nodes';
 import { EditableEdge } from './nodes/EditableEdge';
+import { getLayoutedWorkflowElements } from './actionNodeLayout';
+import { getRequesterRequestFormNode, isRequesterRequestFormNode } from './requestFormNode';
 import type { UiFormAction } from './types';
 
 const edgeTypes = {
@@ -38,46 +40,6 @@ const PALETTE_TO_NODE_TYPE: Record<string, string> = {
     END: 'endNode',
     ACTION: 'actionNode',
     CONDITION: 'conditionNode',
-};
-
-// Dagre layout helper — different sizes per node type
-const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
-    startNode: { width: 160, height: 52 },
-    endNode: { width: 140, height: 52 },
-    actionNode: { width: 220, height: 60 },
-    conditionNode: { width: 140, height: 70 },
-    stepNode: { width: 220, height: 60 }, // legacy fallback
-};
-
-const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({ rankdir: direction, nodesep: 60, ranksep: 100, edgesep: 40 });
-
-    nodes.forEach((node) => {
-        const dims = NODE_DIMENSIONS[node.type || 'actionNode'] || NODE_DIMENSIONS.actionNode;
-        dagreGraph.setNode(node.id, dims);
-    });
-
-    edges.forEach((edge) => {
-        dagreGraph.setEdge(edge.source, edge.target);
-    });
-
-    dagre.layout(dagreGraph);
-
-    const layoutedNodes = nodes.map((node) => {
-        const nodeWithPosition = dagreGraph.node(node.id);
-        const dims = NODE_DIMENSIONS[node.type || 'actionNode'] || NODE_DIMENSIONS.actionNode;
-        return {
-            ...node,
-            position: {
-                x: nodeWithPosition.x - dims.width / 2,
-                y: nodeWithPosition.y - dims.height / 2,
-            },
-        };
-    });
-
-    return { nodes: layoutedNodes, edges };
 };
 
 interface WorkflowTabProps {
@@ -108,7 +70,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     const setActiveEdgeId = useStudioStore(s => s.setActiveEdgeId);
     const activeEdgeId = useStudioStore(s => s.activeEdgeId);
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
-    const { screenToFlowPosition, getNodes, getEdges } = useReactFlow();
+    const { screenToFlowPosition, getNodes, getEdges, fitView } = useReactFlow();
     const [showJson, setShowJson] = useState(false);
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
@@ -145,7 +107,7 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         const isUnpositioned = workflow.nodes.length > 0 && workflow.nodes.every(n => n.position.x === 0 && n.position.y === 0);
 
         if (isUnpositioned) {
-            return getLayoutedElements(workflow.nodes as unknown as Node[], workflow.edges as unknown as Edge[], 'TB');
+            return getLayoutedWorkflowElements(workflow.nodes as unknown as Node[], workflow.edges as unknown as Edge[], 'TB');
         }
         return { nodes: workflow.nodes as unknown as Node[], edges: workflow.edges as unknown as Edge[] };
     }, [workflow.nodes, workflow.edges]);
@@ -183,6 +145,12 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                     type: 'editableEdge',
                     animated: false,
                     style: { stroke: '#0f172a', strokeWidth: 2 },
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
+                        width: 18,
+                        height: 18,
+                        color: '#0f172a',
+                    },
                     // Ensure no label is added
                     label: undefined,
                     data: { offsets: [0, 0, 0] }
@@ -294,7 +262,10 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         const startNode = autoLayoutedNodes.find(n => n.type === 'startNode' || n.data.isStart);
         if (startNode) {
             const triggerType = (startNode.data.triggerType as string) || 'FORM_SUB';
-            if (triggerType === 'FORM_SUB' && !startNode.data.formId) {
+            const requesterFormNode = getRequesterRequestFormNode(autoLayoutedNodes as any, startNode.id);
+            const requestFormId = (requesterFormNode?.data?.formId as string | undefined)
+                || (startNode.data.formId as string | undefined);
+            if (triggerType === 'FORM_SUB' && !requestFormId) {
                 alert('A Form must be assigned to the Start step (Form Submission) before running the simulation.');
                 return;
             }
@@ -303,15 +274,18 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
     }, [startSimulation, autoLayoutedNodes]);
 
     const onLayout = useCallback(() => {
-        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-            nodes,
-            edges,
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedWorkflowElements(
+            getNodes(),
+            getEdges(),
             'TB'
         );
         setNodes([...layoutedNodes]);
         setEdges([...layoutedEdges]);
         updateWorkflow(layoutedNodes as any, layoutedEdges as any);
-    }, [nodes, edges, setNodes, setEdges, updateWorkflow]);
+        requestAnimationFrame(() => {
+            void fitView({ padding: 0.2, duration: 350, maxZoom: 1 });
+        });
+    }, [getNodes, getEdges, setNodes, setEdges, updateWorkflow, fitView]);
 
     return (
         <div className="flex h-full w-full" style={{ height: 'calc(100vh - 250px)' }}>
@@ -350,6 +324,14 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                         return {
                             ...e,
                             label: baseLabel,
+                            markerEnd: {
+                                type: MarkerType.ArrowClosed,
+                                width: 18,
+                                height: 18,
+                                color: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
+                                    ? '#10b981'
+                                    : statusColor || '#0f172a',
+                            },
                             animated: isSimulationMode ? simulationHistory.includes(e.source) && simulationHistory.includes(e.target) : e.animated,
                             style: isSimulationMode && simulationHistory.includes(e.source) && simulationHistory.includes(e.target)
                                 ? { stroke: '#10b981', strokeWidth: 3 }
@@ -390,6 +372,12 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                     defaultEdgeOptions={{
                         type: 'editableEdge',
                         style: { stroke: '#0f172a', strokeWidth: 2 },
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                            width: 18,
+                            height: 18,
+                            color: '#0f172a',
+                        },
                         data: { offsets: [0, 0, 0] }
                     }}
                     edgeTypes={edgeTypes}
@@ -498,17 +486,21 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
                             </Panel>
 
 
-                            {/* Rendering Form if Active Node is Start AND its trigger is FORM_SUB */}
+                            {/* Rendering Form if Active Node is the requester request form */}
                             {(() => {
                                 if (!simulationActiveNodeId) return null;
                                 const activeNode = nodes.find(n => n.id === simulationActiveNodeId);
                                 if (!activeNode) return null;
 
                                 const isStart = activeNode.type === 'startNode' || activeNode.data.isStart;
+                                const requesterNode = isStart
+                                    ? getRequesterRequestFormNode(nodes as any, activeNode.id)
+                                    : (isRequesterRequestFormNode(activeNode as any) ? activeNode : null);
                                 const triggerType = (activeNode.data.triggerType as string) || 'FORM_SUB';
-                                const formId = activeNode.data.formId as string | undefined;
+                                const formId = (requesterNode?.data?.formId as string | undefined)
+                                    || (activeNode.data.formId as string | undefined);
 
-                                if (isStart && triggerType === 'FORM_SUB' && formId) {
+                                if (((isStart && triggerType === 'FORM_SUB' && requesterNode) || requesterNode) && formId) {
                                     const form = forms.find(f => f.id === formId);
                                     if (form && form.items) {
                                         return (

@@ -7,6 +7,12 @@ import { Square } from 'lucide-react';
  */
 export function EndNode({ data, selected }: NodeProps) {
     const accent = '#64748b';
+    const sideHandleStyle = {
+        width: '10px',
+        height: '10px',
+        backgroundColor: '#fff',
+        border: `2px solid ${accent}`,
+    } as const;
 
     return (
         <div
@@ -65,13 +71,32 @@ export function EndNode({ data, selected }: NodeProps) {
                 type="target"
                 position={Position.Top}
                 style={{
-                    width: '10px',
-                    height: '10px',
-                    backgroundColor: '#fff',
-                    border: `2px solid ${accent}`,
+                    ...sideHandleStyle,
                     top: '-5px',
                     left: '50%',
                     transform: 'translateX(-50%)',
+                }}
+            />
+            <Handle
+                type="target"
+                position={Position.Left}
+                id="left"
+                style={{
+                    ...sideHandleStyle,
+                    left: '-5px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                }}
+            />
+            <Handle
+                type="target"
+                position={Position.Right}
+                id="right"
+                style={{
+                    ...sideHandleStyle,
+                    right: '-5px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
                 }}
             />
         </div>

@@ -2,13 +2,25 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { GitBranch } from 'lucide-react';
 
 /**
- * ConditionNode — compact diamond card with the app's brand red accent.
- * Has one input handle (Top) and two labelled output handles:
- * - TRUE (Bottom, Green)
- * - FALSE (Right, Red)
+ * ConditionNode — standardized diamonds with inputs on Top/Left/Right 
+ * and dual labelled source handles on Bottom.
  */
 export function ConditionNode({ data, selected }: NodeProps) {
-    const accent = '#b10e10'; // Matching app brand red (User Task color)
+    const accent = '#b10e10';
+    const targetHandleStyle = {
+        width: '10px',
+        height: '10px',
+        backgroundColor: '#fff',
+        border: `2px solid ${accent}`,
+        zIndex: 20,
+    } as const;
+    const sourceHandleStyle = {
+        width: '10px',
+        height: '10px',
+        backgroundColor: accent,
+        border: '2px solid #fff',
+        zIndex: 20,
+    } as const;
 
     return (
         <div
@@ -63,73 +75,89 @@ export function ConditionNode({ data, selected }: NodeProps) {
                 </div>
             </div>
 
-            {/* Input handle (Top) */}
+            {/* Input handles (Top, Left, Right) */}
             <Handle
                 type="target"
                 position={Position.Top}
                 style={{
-                    width: '10px',
-                    height: '10px',
-                    backgroundColor: '#fff',
-                    border: `2px solid ${accent}`,
+                    ...targetHandleStyle,
                     top: '-5px',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    zIndex: 20,
+                }}
+            />
+            <Handle
+                type="target"
+                position={Position.Left}
+                id="left-target"
+                style={{
+                    ...targetHandleStyle,
+                    left: '-5px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                }}
+            />
+            <Handle
+                type="target"
+                position={Position.Right}
+                id="right-target"
+                style={{
+                    ...targetHandleStyle,
+                    right: '-5px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
                 }}
             />
 
-            {/* TRUE output (Bottom) */}
+            {/* Outputs (Bottom - side by side) */}
             <div style={{
                 position: 'absolute',
-                bottom: '-30px',
+                bottom: '-28px',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '2px',
+                gap: '24px',
+                alignItems: 'flex-start'
             }}>
-                <Handle
-                    type="source"
-                    position={Position.Bottom}
-                    id="true"
-                    style={{
-                        position: 'static',
-                        width: '10px',
-                        height: '10px',
-                        backgroundColor: '#22c55e',
-                        border: '2px solid #fff',
-                        transform: 'none',
-                    }}
-                />
-                <span style={{ fontSize: '8px', fontStyle: 'italic', fontWeight: 800, color: '#22c55e' }}>TRUE</span>
-            </div>
+                {/* TRUE Branch */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                    <Handle
+                        type="source"
+                        position={Position.Bottom}
+                        id="true"
+                        style={{
+                            position: 'relative',
+                            width: '10px',
+                            height: '10px',
+                            backgroundColor: '#22c55e',
+                            border: '2px solid #fff',
+                            transform: 'none',
+                            left: 'auto',
+                            top: 'auto'
+                        }}
+                    />
+                    <span style={{ fontSize: '7px', fontWeight: 900, color: '#22c55e' }}>TRUE</span>
+                </div>
 
-            {/* FALSE output (Right) */}
-            <div style={{
-                position: 'absolute',
-                right: '-45px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-            }}>
-                <span style={{ fontSize: '8px', fontStyle: 'italic', fontWeight: 800, color: '#ef4444' }}>FALSE</span>
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id="false"
-                    style={{
-                        position: 'static',
-                        width: '10px',
-                        height: '10px',
-                        backgroundColor: '#ef4444',
-                        border: '2px solid #fff',
-                        transform: 'none',
-                    }}
-                />
+                {/* FALSE Branch */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                    <Handle
+                        type="source"
+                        position={Position.Bottom}
+                        id="false"
+                        style={{
+                            position: 'relative',
+                            width: '10px',
+                            height: '10px',
+                            backgroundColor: '#ef4444',
+                            border: '2px solid #fff',
+                            transform: 'none',
+                            left: 'auto',
+                            top: 'auto'
+                        }}
+                    />
+                    <span style={{ fontSize: '7px', fontWeight: 900, color: '#ef4444' }}>FALSE</span>
+                </div>
             </div>
         </div>
     );

@@ -21,6 +21,7 @@ import { AdminService } from '../../services/AdminService';
 import { ConditionEditorDialog, type ConditionLogic } from './components/ConditionEditorDialog';
 import type { UiWorkflowNode, UiWorkflowEdge, UiFormField, UiSection, UiNodeOutput } from './types';
 import { findAllAncestors } from './workflowIOHelpers';
+import { REQUESTER_REQUEST_FORM_SUBTYPE, getRequesterRequestFormNode, isRequesterRequestFormNode } from './requestFormNode';
 import { AVAILABLE_ICONS, ICON_CATEGORIES, getAllIcons, type IconCategory } from '../../config/iconConfig';
 import { cn } from '@/lib/utils';
 
@@ -131,7 +132,7 @@ function PredecessorItem({
 }
 
 // ─── Node type icon + color mapping ───────────────────────────────────────
-function getNodeTypeInfo(nodeType?: string, subType?: string) {
+function getNodeTypeInfo(nodeType?: string, subType?: string, backgroundTaskType?: string) {
     switch (nodeType) {
         case 'startNode':
             return { icon: Play, color: 'var(--brand-red)', label: 'Start Node' };
@@ -149,10 +150,21 @@ function getNodeTypeInfo(nodeType?: string, subType?: string) {
                     return { icon: Mail, color: 'var(--brand-red)', label: 'Email Step' };
                 case 'approval':
                     return { icon: Shield, color: 'var(--brand-red)', label: 'Approval Step' };
+                case 'background_task':
+                    return {
+                        icon: Layers,
+                        color: '#0f172a',
+                        label: backgroundTaskType === 'formula'
+                            ? 'Background Task · Formula'
+                            : backgroundTaskType === 'api_call'
+                                ? 'Background Task · API Call'
+                                : 'Background Task',
+                    };
+                case REQUESTER_REQUEST_FORM_SUBTYPE:
+                    return { icon: FileEdit, color: 'var(--brand-red)', label: 'Requester: Request Form' };
                 case 'apiCall':
                 case 'api_call':
-                case 'background_task':
-                    return { icon: Globe, color: '#0ea5e9', label: 'Background Task' };
+                    return { icon: Globe, color: '#0ea5e9', label: 'API Call' };
                 case 'formula':
                     return { icon: Calculator, color: 'var(--brand-red)', label: 'Background Task' };
                 default:
@@ -302,7 +314,7 @@ function EmailTemplateEditor({
             </Button>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="sm:max-w-[1100px] p-0 gap-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-[1500px] p-0 gap-0 overflow-hidden bg-white border-none shadow-2xl rounded-2xl">
                     {/* Header */}
                     <div className="flex items-center justify-between p-6 border-b border-slate-100">
                         <div className="flex items-center gap-4">
@@ -1690,7 +1702,7 @@ function ApiConfigurationDialog({
                             <Globe size={20} />
                         </div>
                         <div>
-                            <DialogTitle className="text-lg font-bold text-slate-900">Background Step Configuration</DialogTitle>
+                            <DialogTitle className="text-lg font-bold text-slate-900">API Call Configuration</DialogTitle>
                             <DialogDescription className="text-xs text-slate-500">Configure external HTTP request settings</DialogDescription>
                         </div>
                     </div>
@@ -2101,17 +2113,25 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
 
     const nodeType = node.type || 'actionNode';
     const subType = node.data?.actionSubType as string | undefined;
+    const backgroundTaskType = node.data?.backgroundTaskType as string | undefined;
+    const resolvedActionType = subType === 'background_task' ? backgroundTaskType : subType;
     const triggerType = (node.data?.triggerType as string) || 'FORM_SUB';
 
     const isUserTask = subType === 'user_task' || subType === 'userTask' || subType === 'form';
     const isBackgroundTask = subType === 'background_task' || subType === 'api_call' || subType === 'apiCall' || subType === 'formula';
+    const isRequesterRequestForm = subType === REQUESTER_REQUEST_FORM_SUBTYPE;
+
     // For background_task, determine the active mode from node data (default: api_call)
     const backgroundTaskMode = isBackgroundTask
         ? ((node.data.backgroundTaskMode as string) || (subType === 'formula' ? 'formula' : 'api_call'))
         : null;
-    const isApiCall = backgroundTaskMode === 'api_call';
-    const isFormula = backgroundTaskMode === 'formula';
+    const isApiCall = backgroundTaskMode === 'api_call' || resolvedActionType === 'api_call' || resolvedActionType === 'apiCall';
+    const isFormula = backgroundTaskMode === 'formula' || resolvedActionType === 'formula';
     const isApproval = subType === 'approval';
+    const showLegacyTaskForm = !isUserTask && !isFormula && !isApproval && !isApiCall && !isBackgroundTask && !isRequesterRequestForm;
+    const requesterRequestFormNode = nodeType === 'startNode'
+        ? getRequesterRequestFormNode(allNodes, node.id)
+        : null;
 
     // --- Data Resolvers for IO Mapping ---
 
@@ -2120,7 +2140,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         const fields: UiFormField[] = [];
         const isStart = node.data.isStart || node.type === 'startNode';
 
-        if (isStart) {
+        if (isStart || isRequesterRequestForm) {
             // Include system-level outputs ONLY for Form Submission
             if (triggerType === 'FORM_SUB') {
                 SYSTEM_OUTPUT_FIELDS.forEach(sf => {
@@ -2129,7 +2149,8 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             }
 
             if (triggerType === 'FORM_SUB') {
-                const currentFormId = node.data?.formId as string | undefined;
+                const currentFormId = (node.data?.formId as string | undefined)
+                    || (requesterRequestFormNode?.data?.formId as string | undefined);
                 const currentForm = currentFormId ? forms.find(f => f.id === currentFormId) : null;
                 if (currentForm) {
                     currentForm.items.forEach(item => {
@@ -2173,7 +2194,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
             }
         }
         return fields;
-    }, [node.data?.formId, forms, node.data.isStart, node.type, triggerType, node.data.apiPayload]);
+    }, [node.data?.formId, forms, node.data.isStart, node.type, triggerType, node.data.apiPayload, isRequesterRequestForm, requesterRequestFormNode?.data?.formId]);
 
     // 2. Get available source fields from ALL previous steps (Ancestors)
     const availableSources = useMemo(() => {
@@ -2275,7 +2296,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
         }
         updateNodeData(node.id, { inputMapping: JSON.stringify(newMapping) });
     };
-    const info = getNodeTypeInfo(nodeType, subType);
+    const info = getNodeTypeInfo(nodeType, subType, backgroundTaskType);
     const Icon = info.icon;
 
     // ── Shared helpers ────────────────────────────────────────────────────
@@ -2391,7 +2412,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
     // ── Render ────────────────────────────────────────────────────────────
     return (
         <div className="flex flex-col gap-4">
-            {/* Node Type Badge */}
+            {/* ─── NODE TYPE BADGE ────────────────────── */}
             <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/60">
                 <div
                     className="flex items-center justify-center w-9 h-9 rounded-lg"
@@ -2405,7 +2426,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </div>
             </div>
 
-            {/* Task Name / Step Label */}
+            {/* ─── TASK NAME / STEP LABEL ──────────────── */}
             <Card className="p-4 space-y-4">
                 <FormField label={nodeType === 'actionNode' ? 'Task Name' : 'Step Label'} hint="Display name on the canvas">
                     <Input
@@ -2417,28 +2438,155 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </FormField>
             </Card>
 
-            {/* ── START NODE ─────────────────────────────────── */}
+            {/* ─── START NODE ─────────────────────────────────── */}
             {nodeType === 'startNode' && (
-                <>
-                    <Card className="p-4 space-y-4">
-                        <Label variant="section">Trigger Type</Label>
-                        <TriggerTypeToggle
-                            value={(node.data.triggerType as string) || 'FORM_SUB'}
-                            onChange={(val) => updateNodeData(node.id, { triggerType: val })}
-                        />
-                    </Card>
+                <Card className="p-4 space-y-4">
+                    <Label variant="section">Trigger Type</Label>
+                    <TriggerTypeToggle
+                        value={(node.data.triggerType as string) || 'FORM_SUB'}
+                        onChange={(val) => updateNodeData(node.id, { triggerType: val })}
+                    />
+                </Card>
+            )}
 
-                    <Card className="p-4 space-y-3">
-                        <Label variant="section">Trigger Settings</Label>
-                        {triggerType === 'FORM_SUB' ? (
-                            <>
+            {/* ── ACTION NODE (User Task) ───────────────────── */}
+            {nodeType === 'actionNode' && (
+                <>
+                    {/* Background Task Selector */}
+                    {isBackgroundTask && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">Background Task Type</Label>
+                            <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                Choose the type of automated processing for this step.
+                            </p>
+                            <Select
+                                value={backgroundTaskMode || 'api_call'}
+                                onValueChange={(val) => updateNodeData(node.id, {
+                                    backgroundTaskMode: val,
+                                    backgroundTaskType: val,
+                                    actionSubType: 'background_task',
+                                })}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select task type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="api_call">🌐 API Call</SelectItem>
+                                    <SelectItem value="formula">🧮 Formula</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </Card>
+                    )}
+
+                    {/* API Configuration */}
+                    {isApiCall && (
+                        <Card className="p-4 space-y-3">
+                            <Label variant="section">API Configuration</Label>
+                            <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                Configure the external API endpoint and request parameters.
+                            </p>
+
+                            <ApiConfigurationDialog
+                                open={isApiSettingsOpen}
+                                onOpenChange={setIsApiSettingsOpen}
+                                method={(node.data.apiMethod as string) || 'GET'}
+                                url={(node.data.apiUrl as string) || ''}
+                                headers={(node.data.apiHeaders as any[]) || []}
+                                body={(node.data.apiBody as string) || ''}
+                                authType={(node.data.apiAuthType as string) || 'none'}
+                                authToken={(node.data.apiAuthToken as string) || ''}
+                                authUser={(node.data.apiAuthUser as string) || ''}
+                                authPass={(node.data.apiAuthPass as string) || ''}
+                                responseMapping={(node.data.apiResponseMapping as any[]) || []}
+                                onSave={(data) => {
+                                    updateNodeData(node.id, {
+                                        apiMethod: data.method,
+                                        apiUrl: data.url,
+                                        apiHeaders: data.headers,
+                                        apiBody: data.body,
+                                        apiAuthType: data.authType,
+                                        apiAuthToken: data.authToken,
+                                        apiAuthUser: data.authUser,
+                                        apiAuthPass: data.authPass,
+                                        apiResponseMapping: data.responseMapping,
+                                    });
+                                }}
+                            />
+
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsApiSettingsOpen(true)}
+                                className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
+                            >
+                                <Globe size={16} />
+                                Configure API Call
+                            </Button>
+
+                            {!(node.data.apiMethod && node.data.apiUrl) && (
+                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
+                                    <Info size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-[10px] text-amber-700 font-medium">
+                                        Method and URL are required for the workflow to execute this step correctly.
+                                    </p>
+                                </div>
+                            )}
+                        </Card>
+                    )}
+
+                    {/* Formula Configuration */}
+                    {isFormula && (
+                        <>
+                            <Card className="p-4 space-y-4">
+                                <Label variant="section">Formula Configuration</Label>
+                                <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
+                                    Calculate values dynamically based on outputs of previous steps.
+                                </p>
+                                <FormulaEditor
+                                    formulas={(node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: crypto.randomUUID(), resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : [])}
+                                    onSave={(formulas: FormulaItem[]) => updateNodeData(node.id, { formulas })}
+                                    availableSources={availableSources}
+                                />
+                            </Card>
+
+                            {(() => {
+                                const currentFormulas = (node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: 'legacy', resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : []);
+                                if (currentFormulas.length === 0) return null;
+                                return (
+                                    <Card className="p-4 space-y-3 mt-4">
+                                        <div className="flex flex-col">
+                                            <Label variant="section">Outputs</Label>
+                                            <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Formula Results</p>
+                                            {currentFormulas.map(f => (
+                                                <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
+                                                    <Database size={12} className="text-slate-400" />
+                                                    <span className="text-xs font-medium text-slate-600">{f.resultName || 'Unnamed Variable'}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Card>
+                                );
+                            })()}
+                        </>
+                    )}
+
+                    {/* Requester Request Form */}
+                    {isRequesterRequestForm && (
+                        <>
+                            <Card className="p-4 space-y-3">
+                                <Label variant="section">Trigger Settings</Label>
+                                <p className="text-[11px] text-slate-400">
+                                    This step is auto-generated. The workflow continues after the requester submits this form.
+                                </p>
                                 {currentForm ? (
                                     <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
                                         <Layers size={14} className="text-slate-400 flex-shrink-0" />
                                         <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
                                     </div>
                                 ) : (
-                                    <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
+                                    <p className="text-xs text-slate-400 italic">No form created yet.</p>
                                 )}
                                 <Button
                                     variant="outline"
@@ -2447,365 +2595,27 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     className="w-full gap-1.5"
                                 >
                                     <ExternalLink size={14} />
-                                    {currentForm ? 'Open Form Editor' : 'Create & Edit Form'}
+                                    {currentForm ? 'Open Request Form Editor' : 'Create & Edit Request Form'}
                                 </Button>
-                            </>
-                        ) : (
-                            <>
-                                <ApiTriggerSettingsDialog
-                                    open={isApiSettingsOpen}
-                                    onOpenChange={setIsApiSettingsOpen}
-                                    endpoint={(node.data.apiEndpoint as string) || ''}
-                                    payload={(node.data.apiPayload as string) || ''}
-                                    onSave={(endpoint, payload) => {
-                                        updateNodeData(node.id, {
-                                            apiEndpoint: endpoint,
-                                            apiPayload: payload
-                                        });
-                                    }}
-                                />
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setIsApiSettingsOpen(true)}
-                                    className="w-full gap-1.5 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                >
-                                    <GitBranch size={14} />
-                                    Open API Setting
-                                </Button>
-                            </>
-                        )}
-                    </Card>
+                            </Card>
 
-                    <Card className="p-4 space-y-3">
-                        <div className="flex flex-col">
-                            <Label variant="section">Outputs</Label>
-                            <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                            {/* System Fields - ONLY for Form Submission */}
-                            {triggerType === 'FORM_SUB' && (
-                                <>
-                                    {targetFields.filter(f => f.id.startsWith('__')).length > 0 && (
-                                        <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider">System</p>
-                                    )}
-                                    {targetFields.filter(f => f.id.startsWith('__')).map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-blue-100 bg-blue-50/50">
-                                            <Database size={12} className="text-blue-400" />
-                                            <span className="text-xs font-medium text-blue-700">{f.label}</span>
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-
-                            {/* Form Fields */}
-                            {triggerType === 'FORM_SUB' && (
-                                <>
-                                    {targetFields.filter(f => !f.id.startsWith('__')).length > 0 && (
-                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-1">Form Fields</p>
-                                    )}
-                                    {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
+                            <Card className="p-4 space-y-4">
+                                <Label variant="section">Output Fields</Label>
+                                <p className="text-[11px] text-slate-400 -mt-1">Captured fields available as subsequent step inputs.</p>
+                                <div className="space-y-2">
+                                    {targetFields.map(f => (
                                         <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
                                             <Database size={12} className="text-slate-400" />
                                             <span className="text-xs font-medium text-slate-600">{f.label}</span>
                                         </div>
                                     ))}
-                                    {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
-                                        <p className="text-xs text-slate-400 italic">No fields defined for this form.</p>
-                                    )}
-                                </>
-                            )}
-
-                            {/* API Fields */}
-                            {triggerType === 'API_TRIGGER' && (
-                                <>
-                                    {targetFields.filter(f => (f as any).type === 'api').length > 0 && (
-                                        <p className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider mt-1">API Variables</p>
-                                    )}
-                                    {targetFields.filter(f => (f as any).type === 'api').map(f => (
-                                        <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-emerald-100 bg-emerald-50/50">
-                                            <Database size={12} className="text-emerald-500" />
-                                            <span className="text-xs font-medium text-emerald-700">{f.label}</span>
-                                        </div>
-                                    ))}
-                                    {targetFields.filter(f => (f as any).type === 'api').length === 0 && (
-                                        <p className="text-xs text-slate-400 italic">No valid JSON payload defined.</p>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </Card>
-                </>
-            )}
-
-            {/* ── ACTION NODE (User Task) ───────────────────── */}
-            {nodeType === 'actionNode' && (
-                <>
-                    {/* ─── Task Type Selector (Status Flow REQ 1) ── */}
-                    {(isUserTask || isApproval) && (
-                        <Card className="p-4 space-y-3">
-                            <Label variant="section">Task Type</Label>
-                            <p className="text-[11px] text-slate-400">
-                                Determines the role swimlane and available actions in the Status Flow.
-                            </p>
-                            <Select
-                                value={(node.data.taskType as string) || (isApproval ? 'approval' : 'dataEntry')}
-                                onValueChange={(val) => updateNodeData(node.id, {
-                                    taskType: val,
-                                    // Persist via actionSubType (the DB-backed field)
-                                    actionSubType: val === 'approval' ? 'approval' : 'user_task',
-                                })}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select task type..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="dataEntry">📝 Data Entry</SelectItem>
-                                    <SelectItem value="approval">🛡️ Approval</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </Card>
-                    )}
-
-                    {/* ─── Task Form Configuration ──────────── */}
-                    {(!isUserTask && !isFormula && !isApproval) && (
-                        <Card className="p-4 space-y-3">
-                            <Label variant="section">Task Form</Label>
-                            {currentForm ? (
-                                <div className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/80">
-                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                    <span className="text-sm font-medium text-slate-700 flex-1 truncate">{currentForm.name}</span>
                                 </div>
-                            ) : (
-                                <p className="text-xs text-slate-400 italic">No form created yet. Click below to create one.</p>
-                            )}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleEditFormLayout}
-                                className="w-full gap-1.5"
-                            >
-                                <ExternalLink size={14} />
-                                {currentForm ? 'Open Task Editor' : 'Create & Edit Task Form'}
-                            </Button>
-                            <p className="text-[11px] text-slate-400 italic">
-                                Configure the task form layout in the Task Editor
-                            </p>
-                        </Card>
-                    )}
-
-                    {/* ─── Approvers Card ────────────────────── */}
-                    {(!isUserTask && !isFormula && !isApproval) && (
-                        <Card className="p-4 space-y-3">
-                            <Label variant="section">Approvers</Label>
-                            <p className="text-[11px] text-slate-400">
-                                Select individual users or groups who can approve this task.
-                            </p>
-
-                            {/* List of current approvers */}
-                            {(() => {
-                                const approvers = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
-                                return (
-                                    <>
-                                        {approvers.length > 0 && (
-                                            <div className="space-y-1.5">
-                                                {approvers.map((approver, idx) => {
-                                                    const ApproverIcon = approver.type === 'USER' ? FileEdit : Users;
-                                                    return (
-                                                        <div
-                                                            key={approver.id + '-' + idx}
-                                                            className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/80 group"
-                                                        >
-                                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${approver.type === 'USER' ? 'bg-blue-100' : 'bg-violet-100'
-                                                                }`}>
-                                                                <ApproverIcon size={14} className={
-                                                                    approver.type === 'USER' ? 'text-blue-600' : 'text-violet-600'
-                                                                } />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <span className="text-sm font-medium text-slate-700 truncate block">
-                                                                    {approver.displayName}
-                                                                </span>
-                                                                <span className="text-[10px] text-slate-400 uppercase">{approver.type}</span>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    const newApprovers = approvers.filter((_, i) => i !== idx);
-                                                                    updateNodeData(node.id, { approvers: newApprovers });
-                                                                }}
-                                                                className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-red-50"
-                                                            >
-                                                                <X size={14} />
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-
-                                        <PrincipalSelect
-                                            value={null}
-                                            onChange={(principal) => {
-                                                if (!principal) return;
-                                                const existing = (node.data.approvers as Array<{ id: string; type: string; displayName: string }>) || [];
-                                                // Avoid duplicates
-                                                if (existing.some(a => a.id === principal.id && a.type === principal.type)) return;
-                                                updateNodeData(node.id, {
-                                                    approvers: [...existing, {
-                                                        id: principal.id,
-                                                        type: principal.type,
-                                                        displayName: principal.displayName,
-                                                    }],
-                                                });
-                                            }}
-                                            placeholder="Add approver..."
-                                            excludeIds={
-                                                ((node.data.approvers as Array<{ id: string }>) || []).map(a => a.id)
-                                            }
-                                        />
-                                    </>
-                                );
-                            })()}
-                        </Card>
-                    )}
-
-                    {/* ─── BACKGROUND TASK (API Call / Formula) ───────── */}
-                    {isBackgroundTask && (
-                        <>
-                            {/* Task Mode Selector */}
-                            <Card className="p-4 space-y-3">
-                                <Label variant="section">Background Task Type</Label>
-                                <p className="text-[11px] text-slate-400 -mt-1">
-                                    Choose the type of automated processing for this step.
-                                </p>
-                                <Select
-                                    value={backgroundTaskMode || 'api_call'}
-                                    onValueChange={(val) => updateNodeData(node.id, {
-                                        backgroundTaskMode: val,
-                                        actionSubType: 'background_task',
-                                    })}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select task type..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="api_call">🌐 API Call</SelectItem>
-                                        <SelectItem value="formula">🧮 Formula</SelectItem>
-                                    </SelectContent>
-                                </Select>
                             </Card>
-
-                            {/* API Call Configuration */}
-                            {isApiCall && (
-                                <Card className="p-4 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <Label variant="section">API Configuration</Label>
-                                        {(node.data.apiMethod && node.data.apiUrl) && (
-                                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
-                                                <span className="text-[10px] font-bold text-emerald-600">{(node.data.apiMethod as string)}</span>
-                                                <div className="w-1 h-1 rounded-full bg-emerald-300" />
-                                                <span className="text-[10px] font-medium text-emerald-600/70 truncate max-w-[120px]">
-                                                    {(node.data.apiUrl as string).replace(/^https?:\/\//, '')}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
-                                        Configure the external API endpoint and request parameters for this automated step.
-                                    </p>
-
-                                    <ApiConfigurationDialog
-                                        open={isApiSettingsOpen}
-                                        onOpenChange={setIsApiSettingsOpen}
-                                        method={(node.data.apiMethod as string) || 'GET'}
-                                        url={(node.data.apiUrl as string) || ''}
-                                        headers={(node.data.apiHeaders as any[]) || []}
-                                        body={(node.data.apiBody as string) || ''}
-                                        authType={(node.data.apiAuthType as string) || 'none'}
-                                        authToken={(node.data.apiAuthToken as string) || ''}
-                                        authUser={(node.data.apiAuthUser as string) || ''}
-                                        authPass={(node.data.apiAuthPass as string) || ''}
-                                        responseMapping={(node.data.apiResponseMapping as any[]) || []}
-                                        onSave={(data) => {
-                                            updateNodeData(node.id, {
-                                                apiMethod: data.method,
-                                                apiUrl: data.url,
-                                                apiHeaders: data.headers,
-                                                apiBody: data.body,
-                                                apiAuthType: data.authType,
-                                                apiAuthToken: data.authToken,
-                                                apiAuthUser: data.authUser,
-                                                apiAuthPass: data.authPass,
-                                                apiResponseMapping: data.responseMapping,
-                                            });
-                                        }}
-                                    />
-
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => setIsApiSettingsOpen(true)}
-                                        className="w-full gap-2 font-semibold h-12 border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl"
-                                    >
-                                        <Globe size={16} />
-                                        Configure API Call
-                                    </Button>
-
-                                    {!(node.data.apiMethod && node.data.apiUrl) && (
-                                        <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex gap-2">
-                                            <Info size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                                            <p className="text-[10px] text-amber-700 font-medium">
-                                                Method and URL are required for the workflow to execute this step correctly.
-                                            </p>
-                                        </div>
-                                    )}
-                                </Card>
-                            )}
-
-                            {/* Formula Configuration */}
-                            {isFormula && (
-                                <Card className="p-4 space-y-4">
-                                    <Label variant="section">Formula Configuration</Label>
-                                    <p className="text-[11px] text-slate-400 -mt-1 leading-relaxed">
-                                        Calculate values dynamically based on outputs of previous steps.
-                                    </p>
-                                    <FormulaEditor
-                                        formulas={(node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: crypto.randomUUID(), resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : [])}
-                                        onSave={(formulas) => updateNodeData(node.id, { formulas })}
-                                        availableSources={availableSources}
-                                    />
-                                </Card>
-                            )}
-
-                            {/* Formula Outputs Card */}
-                            {isFormula && (
-                                (() => {
-                                    const currentFormulas = (node.data.formulas as FormulaItem[]) || (node.data.formulaResultName ? [{ id: 'legacy', resultName: node.data.formulaResultName as string, expression: node.data.formulaExpression as string }] : []);
-                                    if (currentFormulas.length === 0) return null;
-                                    return (
-                                        <Card className="p-4 space-y-3">
-                                            <div className="flex flex-col">
-                                                <Label variant="section">Outputs</Label>
-                                                <span className="text-[11px] text-slate-400">Captured variables available for mapping</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Formula Results</p>
-                                                {currentFormulas.map(f => (
-                                                    <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
-                                                        <Database size={12} className="text-slate-400" />
-                                                        <span className="text-xs font-medium text-slate-600">{f.resultName || 'Unnamed Variable'}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </Card>
-                                    );
-                                })()
-                            )}
                         </>
                     )}
 
-                    {/* ─── APPROVAL / USER TASK SUB-TYPE ──────────────────── */}
-                    {(isApproval || isUserTask) && (
+                    {/* User Task / Approval Tabs */}
+                    {(isUserTask || isApproval) && (
                         <Tabs defaultValue="general" className="w-full">
                             <TabsList className={`grid w-full ${isUserTask ? 'grid-cols-3' : 'grid-cols-2'} mb-4 bg-slate-100/50 p-1 rounded-lg`}>
                                 <TabsTrigger value="general" className="text-xs py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">General</TabsTrigger>
@@ -2818,9 +2628,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             <TabsContent value="general" className="space-y-4 focus-visible:outline-none">
                                 <Card className="p-4 space-y-4">
                                     <Label variant="section">Recipients</Label>
-                                    <p className="text-[11px] text-slate-400 -mt-1">
-                                        Select individual users or groups who are responsible for this task.
-                                    </p>
+                                    <p className="text-[11px] text-slate-400 -mt-1">Select users or groups responsible for this step.</p>
 
                                     {stepApprover ? (
                                         <div className="flex items-center justify-between p-3 rounded-xl border border-red-100 bg-red-50/30 group">
@@ -2836,7 +2644,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-8 w-8 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 -mr-1"
+                                                className="h-8 w-8 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50"
                                                 onClick={() => handleApproverChange(null)}
                                             >
                                                 <Trash2 size={14} />
@@ -2852,83 +2660,66 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                     <OrgHierarchySelect
                                         onChange={handleApproverChange}
                                         placeholder="Add recipient(s)..."
-                                        excludeIds={
-                                            stepApprover ? [stepApprover.id] : []
-                                        }
+                                        excludeIds={stepApprover ? [stepApprover.id] : []}
                                     />
                                 </Card>
 
-                                {(isUserTask || isApproval) && (
-                                    <Card className="p-4 space-y-3">
-                                        <Label variant="section">Task Form</Label>
-                                        <div className="space-y-3">
-                                            <Select
-                                                value={node.data?.formId as string || "none"}
-                                                onValueChange={(val) => {
-                                                    const newFormId = val === "none" ? null : val;
-                                                    updateNodeData(node.id, { formId: newFormId });
-                                                    if (newFormId) selectForm(newFormId);
-                                                }}
-                                            >
-                                                <SelectTrigger className="w-full h-10 bg-slate-50/50 border-slate-200 rounded-xl focus:ring-0">
-                                                    <div className="flex items-center gap-2 truncate">
-                                                        <Layers size={14} className="text-slate-400 flex-shrink-0" />
-                                                        <SelectValue placeholder="Select a form..." />
-                                                    </div>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none" className="text-slate-500 italic">(None) No Form</SelectItem>
-                                                    {(() => {
-                                                        const startNode = allNodes.find(n => n.data?.isStart || n.type === 'startNode');
-                                                        const startFormId = startNode?.data?.formId;
-                                                        return forms
-                                                            .filter(f => f.id !== startFormId)
-                                                            .map(f => (
-                                                                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                                                            ));
-                                                    })()}
-                                                </SelectContent>
-                                            </Select>
+                                <Card className="p-4 space-y-3">
+                                    <Label variant="section">Task Form</Label>
+                                    <div className="space-y-3">
+                                        <Select
+                                            value={node.data?.formId as string || "none"}
+                                            onValueChange={(val) => {
+                                                const newFormId = val === "none" ? null : val;
+                                                updateNodeData(node.id, { formId: newFormId });
+                                                if (newFormId) selectForm(newFormId);
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full h-10 bg-slate-50/50 border-slate-200 rounded-xl focus:ring-0">
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <Layers size={14} className="text-slate-400 flex-shrink-0" />
+                                                    <SelectValue placeholder="Select a form..." />
+                                                </div>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none" className="text-slate-500 italic">(None) No Form</SelectItem>
+                                                {forms.filter(f => f.id !== (allNodes.find(n => n.type === 'startNode' || n.data?.isStart)?.data?.formId)).map(f => (
+                                                    <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
 
-                                            {node.data?.formId ? (
-                                                <>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={handleEditFormLayout}
-                                                        className="w-full gap-2 font-semibold h-10 border-slate-200"
-                                                    >
-                                                        <FileEdit size={14} />
-                                                        Open Task Editor
-                                                    </Button>
-                                                    <p className="text-[10px] text-slate-400 text-center px-2 leading-relaxed">
-                                                        Configure the task form layout in the Task Editor
-                                                    </p>
-                                                </>
-                                            ) : (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const formId = ensureFormForNode();
-                                                        if (formId) selectForm(formId);
-                                                    }}
-                                                    className="w-full gap-2 font-semibold h-10 border-slate-200 border-dashed hover:border-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 text-slate-500 hover:text-[var(--brand-red)]"
-                                                >
-                                                    <Plus size={14} />
-                                                    Create New Form
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </Card>
-                                )}
+                                        {node.data?.formId ? (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleEditFormLayout}
+                                                className="w-full gap-2 font-semibold h-10 border-slate-200"
+                                            >
+                                                <FileEdit size={14} />
+                                                Open Task Editor
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    const formId = ensureFormForNode();
+                                                    if (formId) selectForm(formId);
+                                                }}
+                                                className="w-full gap-2 font-semibold h-10 border-slate-200 border-dashed hover:border-[var(--brand-red)] hover:bg-[var(--brand-red)]/5 text-slate-500 hover:text-[var(--brand-red)]"
+                                            >
+                                                <Plus size={14} />
+                                                Create New Form
+                                            </Button>
+                                        )}
+                                    </div>
+                                </Card>
 
                                 {isUserTask && (
                                     <Card className="p-4 space-y-4">
                                         <Label variant="section">Notifications</Label>
-                                        <p className="text-[11px] text-slate-400 -mt-1">
-                                            Choose how stakeholders are notified at this step.
-                                        </p>
+                                        <p className="text-[11px] text-slate-400 -mt-1">Choose how stakeholders are notified.</p>
                                         <div className="grid grid-cols-3 gap-3">
                                             {[
                                                 { id: 'email', icon: Mail, label: 'EMAIL' },
@@ -2943,36 +2734,25 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                                         key={channel.id}
                                                         onClick={() => {
                                                             const current = (node.data.notificationTypes as string[]) || [];
-                                                            const next = current.includes(channel.id)
-                                                                ? current.filter(c => c !== channel.id)
-                                                                : [...current, channel.id];
+                                                            const next = current.includes(channel.id) ? current.filter(c => c !== channel.id) : [...current, channel.id];
                                                             updateNodeData(node.id, { notificationTypes: next });
                                                         }}
-                                                        className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isActive
-                                                            ? 'border-[var(--brand-red)] bg-white shadow-sm'
-                                                            : 'border-slate-100 bg-slate-50/50 grayscale opacity-60'
-                                                            }`}
+                                                        className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isActive ? 'border-[var(--brand-red)] bg-white shadow-sm' : 'border-slate-100 bg-slate-50/50 grayscale opacity-60'}`}
                                                     >
                                                         <ChannelIcon size={18} className={isActive ? 'text-[var(--brand-red)]' : 'text-slate-400'} />
-                                                        <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>
-                                                            {channel.label}
-                                                        </span>
+                                                        <span className={`text-[9px] font-bold tracking-widest ${isActive ? 'text-slate-900' : 'text-slate-400'}`}>{channel.label}</span>
                                                     </button>
                                                 );
                                             })}
                                         </div>
-
-                                        {/* Edit Body Content button — only visible when EMAIL is enabled */}
                                         {((node.data.notificationTypes as string[]) || []).includes('email') && (
                                             <EmailTemplateEditor
                                                 subject={(node.data.emailSubject as string) || ''}
                                                 body={(node.data.emailBody as string) || ''}
-                                                onSave={(subject, body) => updateNodeData(node.id, { emailSubject: subject, emailBody: body })}
+                                                onSave={(s, b) => updateNodeData(node.id, { emailSubject: s, emailBody: b })}
                                                 availableSources={availableSources}
                                             />
                                         )}
-
-                                        {/* Edit Bell Content button — only visible when BELL is enabled */}
                                         {((node.data.notificationTypes as string[]) || []).includes('bell') && (
                                             <BellNotificationEditor
                                                 title={(node.data.bellTitle as string) || ''}
@@ -2980,76 +2760,41 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                                 type={(node.data.bellType as string) || ''}
                                                 priority={(node.data.bellPriority as string) || ''}
                                                 role={(node.data.bellRole as string) || ''}
-                                                onSave={(title, body, type, priority, role) => updateNodeData(node.id, {
-                                                    bellTitle: title,
-                                                    bellBody: body,
-                                                    bellType: type,
-                                                    bellPriority: priority,
-                                                    bellRole: role
-                                                })}
+                                                onSave={(t, b, ty, p, r) => updateNodeData(node.id, { bellTitle: t, bellBody: b, bellType: ty, bellPriority: p, bellRole: r })}
                                                 availableSources={availableSources}
                                             />
                                         )}
                                     </Card>
                                 )}
 
-                                {/* Moved SLA, Owner, Sync, Predecessors into General Tab */}
                                 <Card className="p-4 space-y-4">
-                                    <FormField label="SLA" hint="Time limit in days">
-                                        <SlaInput
-                                            value={(node.data.sla as number) || 0}
-                                            onChange={(val) => updateNodeData(node.id, { sla: val })}
-                                        />
+                                    <FormField label="SLA" hint="Time limit (days)">
+                                        <SlaInput value={(node.data.sla as number) || 0} onChange={(val) => updateNodeData(node.id, { sla: val })} />
                                     </FormField>
-
-                                    <FormField label="Default Owner" hint="Who is responsible for this step">
-                                        <PrincipalSelect
-                                            value={stepOwner}
-                                            onChange={handleOwnerChange}
-                                            placeholder="Inherit from coordinator"
-                                        />
-                                        <p className="text-[11px] text-slate-400 italic mt-1">
-                                            Leave empty to default to the request coordinator
-                                        </p>
+                                    <FormField label="Default Owner" hint="Responsible user/group">
+                                        <PrincipalSelect value={stepOwner} onChange={handleOwnerChange} placeholder="Inherit from coordinator" />
                                     </FormField>
                                 </Card>
 
                                 <Card className="p-4 space-y-2">
                                     <Label variant="section">Sync Trigger</Label>
-                                    <Select
-                                        value={(node.data.syncTrigger as string) || 'NONE'}
-                                        onValueChange={(val) => updateNodeData(node.id, { syncTrigger: val })}
-                                    >
-                                        <SelectTrigger className="w-full bg-white">
-                                            <SelectValue />
-                                        </SelectTrigger>
+                                    <Select value={(node.data.syncTrigger as string) || 'NONE'} onValueChange={(val) => updateNodeData(node.id, { syncTrigger: val })}>
+                                        <SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="NONE">None (No sync)</SelectItem>
-                                            <SelectItem value="IMMEDIATE">Immediate (Sync on save)</SelectItem>
+                                            <SelectItem value="NONE">None</SelectItem>
+                                            <SelectItem value="IMMEDIATE">Immediate</SelectItem>
                                             <SelectItem value="WITH_NEXT">With Next Step</SelectItem>
-                                            <SelectItem value="ON_COMPLETE">On Complete (Final step)</SelectItem>
+                                            <SelectItem value="ON_COMPLETE">On Complete</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-[11px] text-slate-400 italic">
-                                        When to sync data to external systems (e.g., S/4HANA)
-                                    </p>
                                 </Card>
 
                                 <div className="space-y-2">
                                     <Label variant="section">Predecessors</Label>
                                     <Card className="p-2 max-h-52 overflow-y-auto">
-                                        {potentialPredecessors.length === 0 ? (
-                                            <p className="text-xs text-slate-400 p-2 italic text-center">No other steps available</p>
-                                        ) : (
-                                            potentialPredecessors.map(pred => (
-                                                <PredecessorItem
-                                                    key={pred.id}
-                                                    label={pred.data.label as string}
-                                                    isSelected={edges.some(e => e.source === pred.id && e.target === node.id)}
-                                                    onToggle={(sel) => handlePredecessorToggle(pred.id, sel)}
-                                                />
-                                            ))
-                                        )}
+                                        {potentialPredecessors.length === 0 ? <p className="text-xs text-slate-400 p-2 italic text-center">No other steps</p> : potentialPredecessors.map(pred => (
+                                            <PredecessorItem key={pred.id} label={pred.data.label as string} isSelected={edges.some(e => e.source === pred.id && e.target === node.id)} onToggle={(sel) => handlePredecessorToggle(pred.id, sel)} />
+                                        ))}
                                     </Card>
                                 </div>
                             </TabsContent>
@@ -3058,35 +2803,13 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                                 <Card className="p-4 space-y-4">
                                     <div className="flex items-center justify-between">
                                         <Label variant="section">Field Mappings</Label>
-                                        <Button variant="ghost" size="sm" onClick={handleEditFormLayout} className="text-primary h-7 text-[10px] px-2 gap-1 font-semibold border-slate-200">
-                                            <FileEdit size={12} />
-                                            Edit {isUserTask ? 'Task' : 'Approval'} Form
+                                        <Button variant="ghost" size="sm" onClick={handleEditFormLayout} className="text-primary h-7 text-[10px] px-2 gap-1 font-semibold">
+                                            <FileEdit size={12} /> Edit Form
                                         </Button>
                                     </div>
-
-                                    {targetFields.length === 0 ? (
-                                        <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">
-                                            <p className="text-xs text-slate-400 italic">No fields defined for this step.<br />Add fields to set up mappings.</p>
-                                        </div>
-                                    ) : (
+                                    {targetFields.length === 0 ? <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl"><p className="text-xs text-slate-400 italic">No fields.</p></div> : (
                                         <div className="space-y-4">
-                                            {targetFields.map(field => (
-                                                <MappingSelector
-                                                    key={field.id}
-                                                    label={field.label}
-                                                    availableSources={availableSources}
-                                                    value={inputMapping[field.id]}
-                                                    onChange={(val) => handleMappingChange(field.id, val)}
-                                                />
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Info box removed for User Tasks as per request */}
-                                    {!isUserTask && (
-                                        <div className="text-[11px] text-slate-400 italic bg-blue-50/30 p-3 rounded-xl border border-blue-100/50 flex gap-2">
-                                            <Database size={12} className="text-blue-400 flex-shrink-0 mt-0.5" />
-                                            <span>Mapped fields will automatically pre-fill with values captured from previous steps when the {isUserTask ? 'user' : 'approver'} opens the task.</span>
+                                            {targetFields.map(field => <MappingSelector key={field.id} label={field.label} availableSources={availableSources} value={inputMapping[field.id]} onChange={(val) => handleMappingChange(field.id, val)} />)}
                                         </div>
                                     )}
                                 </Card>
@@ -3094,16 +2817,11 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
 
                             {isUserTask && (
                                 <TabsContent value="output" className="space-y-4 focus-visible:outline-none">
-                                    <Card className="p-4 space-y-4">
-                                        <Label variant="section">Output Fields</Label>
-                                        <p className="text-[11px] text-slate-400 -mt-1">
-                                            These fields from the Task Form will be available as outputs for subsequent steps.
-                                        </p>
+                                    <Card className="p-4 space-y-4"><Label variant="section">Output Fields</Label>
                                         <div className="space-y-2">
                                             {targetFields.filter(f => !f.id.startsWith('__')).map(f => (
                                                 <div key={f.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-100 bg-slate-50/50">
-                                                    <Database size={12} className="text-slate-400" />
-                                                    <span className="text-xs font-medium text-slate-600">{f.label}</span>
+                                                    <Database size={12} className="text-slate-400" /><span className="text-xs font-medium text-slate-600">{f.label}</span>
                                                 </div>
                                             ))}
                                             {targetFields.filter(f => !f.id.startsWith('__')).length === 0 && (
@@ -3119,7 +2837,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                     )}
 
                     {/* ─── Shared: SLA + Owner (Visible for all node types EXCEPT UserTask/Approval where it's moved to General Tab) ────────────────── */}
-                    {!(isApproval || isUserTask || isFormula) && (
+                    {!(isApproval || isUserTask || isFormula || isRequesterRequestForm) && (
                         <>
                             <Card className="p-4 space-y-4">
                                 <FormField label="SLA" hint="Time limit in days">
@@ -3181,15 +2899,13 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                             </div>
                         </>
                     )}
-
                 </>
             )}
 
-            {/* ── CONDITION NODE ──────────────────────────────── */}
+            {/* ─── CONDITION NODE ──────────────────────────────── */}
             {nodeType === 'conditionNode' && (
                 <Card className="p-4 space-y-4">
                     <Label variant="section">Condition Logic</Label>
-
                     <Button
                         variant="outline"
                         onClick={() => setIsConditionEditorOpen(true)}
@@ -3198,15 +2914,6 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                         <GitBranch size={16} />
                         Edit Condition Rules
                     </Button>
-
-                    {node.data.conditionLogic ? (
-                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-600">
-                            <strong>Configured:</strong> {`${((node.data.conditionLogic as any).rules?.length) || 0}`} rule(s)
-                            <br />
-                            <span className="text-[10px] text-slate-400">Match type: {`${(node.data.conditionLogic as any).matchType || 'AND'}`}</span>
-                        </div>
-                    ) : null}
-
                     <ConditionEditorDialog
                         open={isConditionEditorOpen}
                         onOpenChange={setIsConditionEditorOpen}
@@ -3217,8 +2924,7 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </Card>
             )}
 
-
-            {/* ── END NODE ────────────────────────────────────── */}
+            {/* ─── END NODE ────────────────────────────────────── */}
             {nodeType === 'endNode' && (
                 <Card className="p-4">
                     <div className="flex items-center gap-2 text-slate-400">
@@ -3228,25 +2934,24 @@ export function WorkflowNodeProperties({ node, allNodes, edges }: WorkflowNodePr
                 </Card>
             )}
 
-            {/* Delete Node Button (not for start) */}
-            {nodeType !== 'startNode' && (
+            {/* Delete Node (not for start) */}
+            {nodeType !== 'startNode' && !isRequesterRequestForm && (
                 <div className="pt-4 mt-4 border-t border-slate-100">
                     <Button
                         onClick={() => setShowDeleteConfirm(true)}
-                        variant="outline-destructive"
-                        className="w-full"
+                        variant="ghost"
+                        className="w-full text-red-500 hover:text-red-600 hover:bg-red-50"
                     >
-                        <Trash2 size={16} />
+                        <Trash2 size={16} className="mr-2" />
                         Delete Node
                     </Button>
                 </div>
             )}
 
-
             <ConfirmDialog
                 isOpen={showDeleteConfirm}
                 title="Delete Node"
-                message="Are you sure you want to delete this node? All connections will also be removed."
+                message="Are you sure you want to delete this node? All connections will be removed."
                 confirmLabel="Delete Node"
                 variant="danger"
                 onConfirm={() => {

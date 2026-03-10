@@ -124,6 +124,9 @@ export const StudioAdapter = {
             const nodeType = step.stepType
                 ? (STEP_TYPE_TO_NODE[step.stepType] || 'actionNode')
                 : inferNodeType(step);
+            const rawActionSubType = step.actionSubType || undefined;
+            const isBackgroundTask = rawActionSubType === 'api_call' || rawActionSubType === 'apiCall' || rawActionSubType === 'formula';
+            const normalizedBackgroundTaskType = rawActionSubType === 'apiCall' ? 'api_call' : rawActionSubType;
 
             nodes.push({
                 id: step.ID,
@@ -134,7 +137,8 @@ export const StudioAdapter = {
                     sla: step.slaDays,
                     isStart: step.isStartStep,
                     syncTrigger: step.syncTrigger as SyncTrigger || 'NONE',
-                    actionSubType: step.actionSubType || undefined,
+                    actionSubType: isBackgroundTask ? 'background_task' : rawActionSubType,
+                    backgroundTaskType: isBackgroundTask ? normalizedBackgroundTaskType : undefined,
                     formId: step.formId || undefined,
                     inputMapping: step.inputMapping || '{}',
                     // Default owner fields
@@ -192,20 +196,46 @@ export const StudioAdapter = {
                 step.predecessors.forEach(pred => {
                     if (pred.dependsOn_ID) {
                         const rawAction = (pred as any).action as string | undefined;
+                        const rawStatusConfigContent = (pred as any).statusConfigContent as string | undefined;
                         let handleId = rawAction;
                         let offsets = [0, 0, 0];
+                        let targetHandle: string | undefined;
+                        let sourceHandle: string | undefined;
+                        let statusConfig: Record<string, unknown> | undefined;
 
-                        // Metadata Encoding: handleId|{"o":[x,y,z]}
+                        if (rawStatusConfigContent) {
+                            try {
+                                const parsedStatus = JSON.parse(rawStatusConfigContent);
+                                if (parsedStatus?.editor?.o) offsets = parsedStatus.editor.o;
+                                if (parsedStatus?.editor?.t) targetHandle = parsedStatus.editor.t;
+                                if (parsedStatus?.editor?.s) sourceHandle = parsedStatus.editor.s;
+                                if (parsedStatus?.statusConfig) {
+                                    statusConfig = parsedStatus.statusConfig;
+                                } else if (parsedStatus?.statusName || parsedStatus?.statusColor || parsedStatus?.statusType) {
+                                    statusConfig = parsedStatus;
+                                }
+                            } catch (e) {
+                                console.warn("Failed to parse edge statusConfigContent:", rawStatusConfigContent);
+                            }
+                        }
+
+                        // Legacy metadata encoding in action: handleId|{"o":[x,y,z],"t":"left-target","s":"right"}
                         if (rawAction && rawAction.includes('|')) {
-                            const [id, metaStr] = rawAction.split('|');
+                            const separatorIndex = rawAction.indexOf('|');
+                            const id = rawAction.slice(0, separatorIndex);
+                            const metaStr = rawAction.slice(separatorIndex + 1);
                             handleId = id;
                             try {
                                 const meta = JSON.parse(metaStr);
                                 if (meta.o) offsets = meta.o;
+                                if (meta.t) targetHandle = meta.t;
+                                if (meta.s) sourceHandle = meta.s;
                             } catch (e) {
                                 console.warn("Failed to parse edge metadata:", metaStr);
                             }
                         }
+
+                        sourceHandle = sourceHandle || handleId || undefined;
 
                         const isLegacyDefaultOffsets =
                             Array.isArray(offsets) &&
@@ -218,20 +248,23 @@ export const StudioAdapter = {
                             offsets = [0, 0, 0];
                         }
 
-                        // Parse statusConfigContent from backend
-                        const statusConfig = parseJson<any>((pred as any).statusConfigContent, null);
+                        // Parse statusConfigContent from backend if not already handled
+                        if (!statusConfig && (pred as any).statusConfigContent) {
+                            statusConfig = parseJson<any>((pred as any).statusConfigContent, null);
+                        }
 
                         edges.push({
                             id: pred.ID,
                             source: pred.dependsOn_ID,
                             target: step.ID,
+                            ...(targetHandle ? { targetHandle } : {}),
                             type: 'editableEdge',
                             data: {
                                 offsets,
-                                action: handleId, // Preserve the actual handle mapping
                                 ...(statusConfig ? { statusConfig } : {}),
+                                action: handleId // Preserve the actual handle mapping
                             },
-                            ...(handleId ? { sourceHandle: handleId } : {}),
+                            ...(sourceHandle ? { sourceHandle } : {}),
                         });
                     }
                 });

@@ -2,11 +2,16 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Zap } from 'lucide-react';
 
 /**
- * StartNode — n8n-inspired rounded pill with a lightning bolt icon.
- * Clean, minimal, output-only handle.
+ * StartNode — standardized pill with output handle ONLY on the bottom.
  */
 export function StartNode({ data, selected }: NodeProps) {
     const accent = '#22c55e';
+    const sideHandleStyle = {
+        width: '10px',
+        height: '10px',
+        backgroundColor: accent,
+        border: '2px solid #fff',
+    } as const;
 
     return (
         <div
@@ -60,15 +65,12 @@ export function StartNode({ data, selected }: NodeProps) {
                 </span>
             </div>
 
-            {/* Output handle */}
+            {/* Output handle (Bottom ONLY per user standardization) */}
             <Handle
                 type="source"
                 position={Position.Bottom}
                 style={{
-                    width: '10px',
-                    height: '10px',
-                    backgroundColor: accent,
-                    border: '2px solid #fff',
+                    ...sideHandleStyle,
                     bottom: '-5px',
                     left: '50%',
                     transform: 'translateX(-50%)',
