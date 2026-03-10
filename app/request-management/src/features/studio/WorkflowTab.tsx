@@ -262,11 +262,11 @@ function WorkflowTabContent({ onNodeSelect }: WorkflowTabProps) {
         const startNode = autoLayoutedNodes.find(n => n.type === 'startNode' || n.data.isStart);
         if (startNode) {
             const triggerType = (startNode.data.triggerType as string) || 'FORM_SUB';
-            const requesterFormNode = getRequesterRequestFormNode(autoLayoutedNodes as any, startNode.id);
-            const requestFormId = (requesterFormNode?.data?.formId as string | undefined)
-                || (startNode.data.formId as string | undefined);
+            const requesterFormNode = getRequesterRequestFormNode(autoLayoutedNodes as any, startNode.id)
+                || (autoLayoutedNodes as any).find((n: any) => isRequesterRequestFormNode(n));
+            const requestFormId = requesterFormNode?.data?.formId as string | undefined;
             if (triggerType === 'FORM_SUB' && !requestFormId) {
-                alert('A Form must be assigned to the Start step (Form Submission) before running the simulation.');
+                alert('A Form must be assigned to the Requester Form step before running the simulation.');
                 return;
             }
         }
