@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import {
     LayoutGrid, Table, Trash2, Layers, GripVertical, Download, Upload, Plus, Copy, Calendar,
-    Code2, MousePointerClick, AlertTriangle, Eye, X, Pencil, AlertCircle, Info, Save, Send
+    Code2, MousePointerClick, AlertTriangle, Eye, X, AlertCircle, Info, Save, Send, Check
 } from 'lucide-react';
 import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/TextArea';
@@ -678,7 +678,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
         setSelectedSchemaFieldId,
         forms,
         activeFormId,
-        updateFormName,
+
         updateForms,
         updateFormActions,
         selectedFooterActionId,
@@ -762,9 +762,7 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
     const [copied, setCopied] = useState(false);
     const isJsonFocusedRef = useRef(false);
 
-    // Form creation/editing state
-    const [isEditingName, setIsEditingName] = useState(false);
-    const [editingName, setEditingName] = useState('');
+
 
     const activeForm = forms.find(f => f.id === activeFormId);
 
@@ -1030,34 +1028,11 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
             <div className="flex-1 flex flex-col h-full bg-slate-100 overflow-hidden">
                 {/* Canvas Area - Full Width (palette moved to sidebar) */}
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Top Toolbar: Form Name + View Toggle + Preview */}
+                    {/* Top Toolbar: View Toggle + Preview */}
                     <div className="flex items-center gap-2 px-6 pt-4 pb-2">
-                        {/* Left: Form name with inline rename */}
+                        {/* Left: Form name (read-only, rename via tab double-click) */}
                         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            {isEditingName ? (
-                                <Input
-                                    value={editingName}
-                                    onChange={(e) => setEditingName(e.target.value)}
-                                    className="w-56 h-8 text-sm shadow-sm"
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }
-                                        if (e.key === 'Escape') setIsEditingName(false);
-                                    }}
-                                    onBlur={() => { if (activeFormId && editingName.trim()) updateFormName(activeFormId, editingName.trim()); setIsEditingName(false); }}
-                                />
-                            ) : (
-                                <>
-                                    <span className="text-sm font-semibold text-slate-800 truncate">{activeForm.name}</span>
-                                    <button
-                                        onClick={() => { setEditingName(activeForm.name); setIsEditingName(true); }}
-                                        className="h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors"
-                                        title="Rename form"
-                                    >
-                                        <Pencil size={13} />
-                                    </button>
-                                </>
-                            )}
+                            <span className="text-sm font-semibold text-slate-800 truncate">{activeForm.name}</span>
                         </div>
 
                         {/* View Toggle + Preview */}
@@ -1100,76 +1075,9 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                         </div>
                     </div>
 
-                    {/* Content Area */}
-                    {viewMode === 'json' ? (
-                        /* JSON Editor */
-                        <div className="flex-1 px-6 pb-6 overflow-hidden flex flex-col">
-                            {/* Editor Header — red theme */}
-                            <div className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg border-2 border-b-0 border-primary/30 bg-primary/5">
-                                <Code2 size={14} className="text-primary" />
-                                <span className="text-xs font-medium text-slate-700">Form JSON</span>
-                                <div className="flex-1" />
-                                {/* Copy button */}
-                                <button
-                                    onClick={handleCopyJson}
-                                    className={cn(
-                                        'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all',
-                                        copied
-                                            ? 'bg-green-100 text-green-600'
-                                            : 'text-slate-500 hover:text-primary hover:bg-primary/10'
-                                    )}
-                                    title="Copy JSON"
-                                >
-                                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                                    {copied ? 'Copied' : 'Copy'}
-                                </button>
-                                {jsonError ? (
-                                    <Badge variant="destructive" className="text-[10px] h-5">Error</Badge>
-                                ) : (
-                                    <Badge className="text-[10px] h-5 bg-green-100 text-green-600 border-green-200">Valid</Badge>
-                                )}
-                            </div>
-                            <div className="flex-1 flex rounded-b-lg overflow-hidden border-2 border-primary/30 bg-[#1e1e2e]"
-                                style={{ minHeight: 0 }}>
-                                {/* Line Number Gutter */}
-                                <div
-                                    className="w-12 flex-shrink-0 bg-[#181825] text-slate-500 font-mono text-xs leading-6 pt-3 pr-2 text-right select-none overflow-hidden border-r border-slate-700"
-                                    ref={(el) => {
-                                        if (!el) return;
-                                        const ta = jsonTextareaRef.current;
-                                        if (ta) {
-                                            ta.onscroll = () => { el.scrollTop = ta.scrollTop; };
-                                        }
-                                    }}
-                                >
-                                    {jsonText.split('\n').map((_, i) => (
-                                        <div key={i} className="px-1">{i + 1}</div>
-                                    ))}
-                                </div>
-                                {/* Code Editor */}
-                                <textarea
-                                    ref={jsonTextareaRef}
-                                    value={jsonText}
-                                    onChange={(e) => handleJsonChange(e.target.value)}
-                                    onFocus={handleJsonFocus}
-                                    onBlur={handleJsonBlur}
-                                    className={cn(
-                                        'flex-1 px-4 py-3 font-mono text-xs leading-6 bg-transparent text-[#a6e3a1] resize-none focus:outline-none',
-                                        'placeholder:text-slate-600 caret-[#f5c2e7]'
-                                    )}
-                                    spellCheck={false}
-                                    placeholder="[]"
-                                />
-                            </div>
-                            {jsonError && (
-                                <div className="mt-2 flex items-center gap-2 text-red-500 text-xs bg-red-50 px-3 py-2 rounded-lg border border-red-200">
-                                    <AlertTriangle size={14} />
-                                    {jsonError}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        /* Drag-and-Drop Builder */
+                    {/* Content Area — flex row: builder always shows, JSON panel slides in */}
+                    <div className="flex-1 flex overflow-hidden" style={{ minHeight: 0 }}>
+                        {/* Drag-and-Drop Builder (always visible) */}
                         <div className="flex-1 p-6 overflow-y-auto flex justify-center">
                             <div className="w-full max-w-[900px]">
                                 {items.length === 0 ? (
@@ -1365,113 +1273,180 @@ export function SchemaTab({ onFieldSelect, onPreview }: SchemaTabProps) {
                                 )}
                             </div>
                         </div>
-                    )}
-                </div>
 
-                {/* Form Preview Dialog */}
-                {isPreviewOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-[800px] max-h-[85vh] flex flex-col">
-                            {/* Preview Header */}
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                        <Eye size={16} className="text-primary" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-slate-900">Form Preview</h3>
+                        {/* ─── RIGHT: Form JSON Editor (inline panel) ─── */}
+                        {viewMode === 'json' && (
+                            <div className="w-[380px] flex-shrink-0 flex flex-col overflow-hidden bg-[#1e1e2e] border-l border-slate-700">
+                                {/* Header */}
+                                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700 bg-[#181825]">
+                                    <Code2 size={14} className="text-slate-400" />
+                                    <span className="text-xs font-medium text-slate-300">Form JSON</span>
+                                    <div className="flex-1" />
+                                    <button
+                                        onClick={handleCopyJson}
+                                        className={cn(
+                                            'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all',
+                                            copied
+                                                ? 'bg-green-900/30 text-green-400'
+                                                : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                                        )}
+                                        title="Copy JSON"
+                                    >
+                                        {copied ? <Check size={12} /> : <Copy size={12} />}
+                                        {copied ? 'Copied' : 'Copy'}
+                                    </button>
+                                    {jsonError ? (
+                                        <Badge variant="destructive" className="text-[10px] h-5 px-2 bg-red-500/20 text-red-400 border-red-500/30">Error</Badge>
+                                    ) : (
+                                        <Badge className="text-[10px] h-5 px-2 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Valid</Badge>
+                                    )}
                                 </div>
-                                <button
-                                    onClick={() => setIsPreviewOpen(false)}
-                                    className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
-                                >
-                                    <X size={18} />
-                                </button>
-                            </div>
-                            {/* Preview Body */}
-                            <div className="flex-1 overflow-y-auto p-6">
-                                {items.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                                        <Layers size={40} className="text-slate-300 mb-3" />
-                                        <p className="text-slate-500">No form fields yet. Add elements from the palette.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        {items.map(item => {
-                                            if (item.type === 'section') {
-                                                const section = item as UiSection;
-                                                return (
-                                                    <div key={section.id} className="border border-slate-200 rounded-xl p-5 bg-slate-50/50">
-                                                        <h4 className="text-sm font-semibold text-slate-800 mb-4 pb-2 border-b border-slate-200">
-                                                            {section.label}
-                                                        </h4>
-                                                        <div className="grid grid-cols-12 gap-4">
-                                                            {section.fields.map(field => (
-                                                                <div key={field.id} className={`col-span-${field.colSpan || 6}`}>
-                                                                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                                        {field.label}
-                                                                        {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                                                                    </label>
-                                                                    <FieldPreview field={field} />
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            } else if (item.type === 'table') {
-                                                const table = item as UiTableField;
-                                                return (
-                                                    <div key={table.id} className="border border-slate-200 rounded-xl overflow-hidden">
-                                                        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                                                            <h4 className="text-sm font-semibold text-slate-800">{table.label}</h4>
-                                                        </div>
-                                                        <div className="overflow-x-auto">
-                                                            <table className="w-full text-sm">
-                                                                <thead className="bg-slate-50">
-                                                                    <tr>
-                                                                        {table.columns.map(col => (
-                                                                            <th key={col.id} className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
-                                                                                {col.label}
-                                                                            </th>
-                                                                        ))}
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    <tr className="border-t border-slate-100">
-                                                                        {table.columns.map(col => (
-                                                                            <td key={col.id} className="px-4 py-3">
-                                                                                <FieldPreview field={col} />
-                                                                            </td>
-                                                                        ))}
-                                                                    </tr>
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            } else {
-                                                const field = item as UiFormField;
-                                                return (
-                                                    <div key={field.id}>
-                                                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                                                            {field.label}
-                                                            {field.required && <span className="text-red-500 ml-0.5">*</span>}
-                                                        </label>
-                                                        <FieldPreview field={field} />
-                                                    </div>
-                                                );
+                                {/* Editor */}
+                                <div className="flex-1 flex overflow-hidden" style={{ minHeight: 0 }}>
+                                    <div
+                                        className="w-10 flex-shrink-0 bg-[#181825] text-slate-600 font-mono text-xs leading-6 pt-3 pr-2 text-right select-none overflow-hidden"
+                                        ref={(el) => {
+                                            if (!el) return;
+                                            const ta = jsonTextareaRef.current;
+                                            if (ta) {
+                                                ta.onscroll = () => { el.scrollTop = ta.scrollTop; };
                                             }
-                                        })}
+                                        }}
+                                    >
+                                        {jsonText.split('\n').map((_, i) => (
+                                            <div key={i} className="px-1">{i + 1}</div>
+                                        ))}
+                                    </div>
+                                    <textarea
+                                        ref={jsonTextareaRef}
+                                        value={jsonText}
+                                        onChange={(e) => handleJsonChange(e.target.value)}
+                                        onFocus={handleJsonFocus}
+                                        onBlur={handleJsonBlur}
+                                        className="flex-1 px-3 py-3 font-mono text-xs leading-6 bg-transparent text-[#a6e3a1] resize-none focus:outline-none placeholder:text-slate-600 caret-[#f5c2e7]"
+                                        spellCheck={false}
+                                        placeholder="[]"
+                                    />
+                                </div>
+                                {/* Status bar */}
+                                <div className="px-4 py-2 border-t border-slate-700 bg-[#181825] flex items-center justify-between">
+                                    <span className="text-[10px] text-slate-500 font-medium">
+                                        {items.length} Items
+                                    </span>
+                                </div>
+                                {jsonError && (
+                                    <div className="flex items-center gap-2 px-3 py-2 text-red-400 text-[11px] bg-red-500/10 border-t border-red-500/20">
+                                        <AlertTriangle size={12} />
+                                        <span className="truncate">{jsonError}</span>
                                     </div>
                                 )}
                             </div>
-                            {isStartNodeForm && (
-                                <div className="flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50/80">
-                                    {renderStartFormActions()}
-                                </div>
-                            )}
-                        </div>
+                        )}
                     </div>
-                )}
+
+                    {/* Form Preview Dialog */}
+                    {isPreviewOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-[800px] max-h-[85vh] flex flex-col">
+                                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                            <Eye size={16} className="text-primary" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-slate-900">Form Preview</h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsPreviewOpen(false)}
+                                        className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    {items.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                                            <Layers size={40} className="text-slate-300 mb-3" />
+                                            <p className="text-slate-500">No form fields yet. Add elements from the palette.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-6">
+                                            {items.map(item => {
+                                                if (item.type === 'section') {
+                                                    const section = item as UiSection;
+                                                    return (
+                                                        <div key={section.id} className="border border-slate-200 rounded-xl p-5 bg-slate-50/50">
+                                                            <h4 className="text-sm font-semibold text-slate-800 mb-4 pb-2 border-b border-slate-200">
+                                                                {section.label}
+                                                            </h4>
+                                                            <div className="grid grid-cols-12 gap-4">
+                                                                {section.fields.map(field => (
+                                                                    <div key={field.id} className={`col-span-${field.colSpan || 6}`}>
+                                                                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                                            {field.label}
+                                                                            {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                                                                        </label>
+                                                                        <FieldPreview field={field} />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                } else if (item.type === 'table') {
+                                                    const table = item as UiTableField;
+                                                    return (
+                                                        <div key={table.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
+                                                                <h4 className="text-sm font-semibold text-slate-800">{table.label}</h4>
+                                                            </div>
+                                                            <div className="overflow-x-auto">
+                                                                <table className="w-full text-sm">
+                                                                    <thead className="bg-slate-50">
+                                                                        <tr>
+                                                                            {table.columns.map(col => (
+                                                                                <th key={col.id} className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">
+                                                                                    {col.label}
+                                                                                </th>
+                                                                            ))}
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        <tr className="border-t border-slate-100">
+                                                                            {table.columns.map(col => (
+                                                                                <td key={col.id} className="px-4 py-3">
+                                                                                    <FieldPreview field={col} />
+                                                                                </td>
+                                                                            ))}
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                } else {
+                                                    const field = item as UiFormField;
+                                                    return (
+                                                        <div key={field.id}>
+                                                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                                                {field.label}
+                                                                {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                                                            </label>
+                                                            <FieldPreview field={field} />
+                                                        </div>
+                                                    );
+                                                }
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                                {isStartNodeForm && (
+                                    <div className="flex items-center justify-end px-6 py-4 border-t border-slate-200 bg-slate-50/80">
+                                        {renderStartFormActions()}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

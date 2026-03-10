@@ -58,16 +58,6 @@ function App() {
             {/* Handle direct navigation to /index.html (from BTP approuter) */}
             <Route path="/index.html" element={<Navigate to="/" replace />} />
 
-            {/* Studio Detail Route (standalone full-screen layout for editing) */}
-            <Route
-              path="/studio/:id"
-              element={
-                <SuspenseWrapper>
-                  <RequestTypeStudio />
-                </SuspenseWrapper>
-              }
-            />
-
             {/* Main App Routes with AppShell (unified sidebar navigation) */}
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/requests" replace />} />
@@ -117,6 +107,15 @@ function App() {
                 element={
                   <SuspenseWrapper>
                     <RequestTypeLanding />
+                  </SuspenseWrapper>
+                }
+              />
+              {/* Studio Detail Route (with collapsed sidebar) */}
+              <Route
+                path="/studio/:id"
+                element={
+                  <SuspenseWrapper>
+                    <RequestTypeStudio />
                   </SuspenseWrapper>
                 }
               />

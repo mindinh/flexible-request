@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { ArrowRight, Palette, Tag, Type, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
+
 import { Textarea } from '@/components/ui/TextArea';
 import { useStudioStore } from './useStudioStore';
 import type { UiWorkflowEdge, UiWorkflowNode, EdgeStatusConfig } from './types';
@@ -19,13 +19,6 @@ const STATUS_COLORS = [
     { value: '#64748b', label: 'Slate', swatch: 'bg-slate-500' },
     { value: '#ec4899', label: 'Pink', swatch: 'bg-pink-500' },
     { value: '#14b8a6', label: 'Teal', swatch: 'bg-teal-500' },
-];
-
-const STATUS_TYPES: { value: EdgeStatusConfig['statusType']; label: string }[] = [
-    { value: 'OVERALL_REQUEST', label: 'Overall Request Status' },
-    { value: 'STEP_STATUS', label: 'Step Status' },
-    { value: 'STEP_OWNER', label: 'Step Owner Status' },
-    { value: 'APPROVAL', label: 'Approval Status' },
 ];
 
 interface WorkflowEdgePropertiesProps {
@@ -47,7 +40,6 @@ export function WorkflowEdgeProperties({ edge, allNodes }: WorkflowEdgePropertie
             const currentConfig = e.data?.statusConfig || {
                 statusName: '',
                 statusColor: '#22c55e',
-                statusType: 'STEP_STATUS' as const,
                 description: '',
             };
             return {
@@ -146,28 +138,7 @@ export function WorkflowEdgeProperties({ edge, allNodes }: WorkflowEdgePropertie
                 </div>
             </div>
 
-            {/* Status Type */}
-            <div className="space-y-2">
-                <Label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                    <Tag size={12} />
-                    Status Type
-                </Label>
-                <Select
-                    value={statusConfig?.statusType || 'STEP_STATUS'}
-                    onValueChange={(val) => updateEdgeStatusConfig({ statusType: val as EdgeStatusConfig['statusType'] })}
-                >
-                    <SelectTrigger className="h-9 text-sm border-slate-200 focus:border-[var(--brand-red)] focus:ring-[var(--brand-red)]/20">
-                        <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {STATUS_TYPES.map(t => (
-                            <SelectItem key={t.value} value={t.value}>
-                                {t.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
+
 
             {/* Description */}
             <div className="space-y-2">
@@ -193,11 +164,6 @@ export function WorkflowEdgeProperties({ edge, allNodes }: WorkflowEdgePropertie
                             style={{ backgroundColor: statusConfig.statusColor || '#22c55e' }}
                         />
                         <span className="text-sm font-semibold text-slate-800">{statusConfig.statusName}</span>
-                        {statusConfig.statusType && (
-                            <span className="ml-auto text-[10px] font-bold text-slate-400 uppercase">
-                                {STATUS_TYPES.find(t => t.value === statusConfig.statusType)?.label || statusConfig.statusType}
-                            </span>
-                        )}
                     </div>
                 </div>
             )}

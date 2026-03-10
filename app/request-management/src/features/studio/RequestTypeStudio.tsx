@@ -450,6 +450,11 @@ function StudioContent() {
                                         setActiveTab('workflow');
                                     }
                                 }}
+                                onTabRename={(tabId, newLabel) => {
+                                    if (tabId === 'schema' && activeFormId) {
+                                        useStudioStore.getState().updateFormName(activeFormId, newLabel);
+                                    }
+                                }}
                             />
                         </div>
                     )}

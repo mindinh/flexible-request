@@ -117,7 +117,7 @@ function deleteFieldFromTree(fields: UiDataField[], id: string): UiDataField[] {
 
 // ─── Tree Row Component ───
 function FieldTreeRow({
-    field, depth, selectedId, onSelect, onAddChild, onDelete
+    field, depth, selectedId, onSelect, onAddChild, onDelete, onDuplicate
 }: {
     field: UiDataField;
     depth: number;
@@ -125,6 +125,7 @@ function FieldTreeRow({
     onSelect: (id: string) => void;
     onAddChild: (parentId: string) => void;
     onDelete: (id: string) => void;
+    onDuplicate: (id: string) => void;
 }) {
     const [expanded, setExpanded] = useState(true);
     const hasChildren = field.type === 'Object' && field.children && field.children.length > 0;
@@ -182,7 +183,7 @@ function FieldTreeRow({
                 </td>
                 {/* Actions */}
                 <td className="py-2.5 pl-3 pr-4 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-1">
                         <Button
                             variant="link"
                             size="sm"
@@ -191,6 +192,13 @@ function FieldTreeRow({
                         >
                             New Child
                         </Button>
+                        <button
+                            className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-colors"
+                            title="Duplicate field"
+                            onClick={(e) => { e.stopPropagation(); onDuplicate(field.id); }}
+                        >
+                            <Copy size={13} />
+                        </button>
                         <button
                             className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
                             title="Delete field"
@@ -211,6 +219,7 @@ function FieldTreeRow({
                     onSelect={onSelect}
                     onAddChild={onAddChild}
                     onDelete={onDelete}
+                    onDuplicate={onDuplicate}
                 />
             ))}
         </>
@@ -314,6 +323,34 @@ export function DataSchemaTab() {
         }
     };
 
+    // Duplicate a field by ID (deep clone with new IDs)
+    const handleDuplicateField = (id: string) => {
+        const cloneField = (f: UiDataField): UiDataField => ({
+            ...f,
+            id: genId(),
+            key: `${f.key}_copy`,
+            children: f.children ? f.children.map(cloneField) : undefined,
+        });
+
+        const insertClone = (fields: UiDataField[]): UiDataField[] => {
+            const result: UiDataField[] = [];
+            for (const field of fields) {
+                result.push(field);
+                if (field.id === id) {
+                    const clone = cloneField(field);
+                    result.push(clone);
+                    setSelectedDataFieldId(clone.id);
+                } else if (field.children) {
+                    // Check if clone target is in children
+                    result[result.length - 1] = { ...field, children: insertClone(field.children) };
+                }
+            }
+            return result;
+        };
+
+        updateDataSchema(insertClone(dataSchema));
+    };
+
     // Count all fields recursively
     const countFields = (fields: UiDataField[]): number =>
         fields.reduce((sum, f) => sum + 1 + (f.children ? countFields(f.children) : 0), 0);
@@ -346,6 +383,14 @@ export function DataSchemaTab() {
                             {countFields(dataSchema)} field{countFields(dataSchema) !== 1 ? 's' : ''}
                         </Badge>
                     </div>
+                    <Button
+                        size="sm"
+                        onClick={handleAddField}
+                        className="gap-1.5 h-8"
+                    >
+                        <Plus size={14} />
+                        Add New Field
+                    </Button>
                     <button
                         onClick={() => setShowJson(!showJson)}
                         className={cn(
@@ -359,14 +404,6 @@ export function DataSchemaTab() {
                         <Code2 size={14} />
                         JSON
                     </button>
-                    <Button
-                        size="sm"
-                        onClick={handleAddField}
-                        className="gap-1.5 h-8"
-                    >
-                        <Plus size={14} />
-                        New Field
-                    </Button>
                 </div>
 
                 {/* Table */}
@@ -415,6 +452,7 @@ export function DataSchemaTab() {
                                         )}
                                         onAddChild={handleAddChild}
                                         onDelete={handleDeleteField}
+                                        onDuplicate={handleDuplicateField}
                                     />
                                 ))}
                             </tbody>

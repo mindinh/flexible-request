@@ -210,7 +210,6 @@ export interface UiWorkflowNode {
 export interface EdgeStatusConfig {
     statusName: string;
     statusColor: string;       // Hex color (e.g. '#22c55e')
-    statusType: 'OVERALL_REQUEST' | 'STEP_STATUS' | 'STEP_OWNER' | 'APPROVAL';
     description?: string;
 }
 
@@ -223,7 +222,10 @@ export interface UiWorkflowEdge {
     targetHandle?: string;
     label?: string;         // Edge label (e.g. 'Approve')
     data?: {
+        offsets?: number[];
+        action?: string;
         statusConfig?: EdgeStatusConfig;
+        [key: string]: unknown;
     };
     [key: string]: unknown;
 }
