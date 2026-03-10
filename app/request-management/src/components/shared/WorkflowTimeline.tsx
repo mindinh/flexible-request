@@ -11,7 +11,9 @@ export interface ApprovalRule {
     approvers: {
         name: string;
         type?: 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION' | string;
-        status?: 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK';
+        status?: string;
+        /** Optional custom chip style (used for Status Flow outcome statuses like "Mono"/"Baka") */
+        statusStyle?: { color: string; bgColor: string; borderColor: string };
         comment?: string;
         timestamp?: string;
         decidedBy?: string;  // Who actually made the decision (for group approvals)
@@ -69,7 +71,7 @@ const STATUS_CONFIG: Record<WorkflowStepStatus, {
     badgeBg: string;
     badgeText: string;
 }> = {
-    COMPLETED: { label: 'Approved', badgeBg: 'bg-emerald-100', badgeText: 'text-emerald-700' },
+    COMPLETED: { label: 'Completed', badgeBg: 'bg-emerald-100', badgeText: 'text-emerald-700' },
     REJECTED: { label: 'Rejected', badgeBg: 'bg-rose-100', badgeText: 'text-rose-700' },
     IN_PROGRESS: { label: 'In Progress', badgeBg: 'bg-blue-100', badgeText: 'text-blue-700' },
     STARTED: { label: 'Data Entry', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
@@ -495,23 +497,43 @@ export function WorkflowTimeline({
                                                                         </span>
                                                                     )}
                                                                     {approver.status && (
-                                                                        <span className={`
-                                                                            px-1.5 py-0.5 rounded text-[8px] font-medium uppercase shrink-0
-                                                                            ${approver.status === 'PENDING' ? 'bg-blue-100 text-blue-700' : ''}
-                                                                            ${approver.status === 'WAITING' ? 'bg-slate-100 text-slate-500' : ''}
-                                                                            ${approver.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : ''}
-                                                                            ${approver.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : ''}
-                                                                            ${approver.status === 'SENDBACK' ? 'bg-amber-100 text-amber-700' : ''}
-                                                                        `}>
-                                                                            {approver.status}
-                                                                        </span>
+                                                                        approver.statusStyle ? (
+                                                                            <span
+                                                                                className="px-1.5 py-0.5 rounded text-[8px] font-medium shrink-0 border"
+                                                                                style={{
+                                                                                    color: approver.statusStyle.color,
+                                                                                    backgroundColor: approver.statusStyle.bgColor,
+                                                                                    borderColor: approver.statusStyle.borderColor,
+                                                                                }}
+                                                                            >
+                                                                                {approver.status}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={`
+                                                                                px-1.5 py-0.5 rounded text-[8px] font-medium uppercase shrink-0
+                                                                                ${approver.status === 'PENDING' ? 'bg-blue-100 text-blue-700' : ''}
+                                                                                ${approver.status === 'WAITING' ? 'bg-slate-100 text-slate-500' : ''}
+                                                                                ${approver.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : ''}
+                                                                                ${approver.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : ''}
+                                                                                ${approver.status === 'SENDBACK' ? 'bg-amber-100 text-amber-700' : ''}
+                                                                            `}>
+                                                                                {approver.status}
+                                                                            </span>
+                                                                        )
                                                                     )}
                                                                 </div>
                                                                 {/* Decided by */}
-                                                                {approver.decidedBy && ['ROLE', 'GROUP', 'TEAM'].includes(approver.type as string) && (approver.status === 'APPROVED' || approver.status === 'REJECTED') && (
-                                                                    <div className={`text-[9px] pl-4 flex items-center gap-1 ${approver.status === 'APPROVED' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                {approver.decidedBy && ['ROLE', 'GROUP', 'TEAM'].includes(approver.type as string) && (approver.statusStyle || approver.status === 'APPROVED' || approver.status === 'REJECTED') && (
+                                                                    <div
+                                                                        className="text-[9px] pl-4 flex items-center gap-1"
+                                                                        style={approver.statusStyle ? { color: approver.statusStyle.color } : undefined}
+                                                                    >
                                                                         <User className="w-2.5 h-2.5" />
-                                                                        <span>{approver.status === 'APPROVED' ? 'Approved' : 'Rejected'} by: {approver.decidedBy}</span>
+                                                                        <span>
+                                                                            {approver.statusStyle
+                                                                                ? `Decision by: ${approver.decidedBy}`
+                                                                                : `${approver.status === 'APPROVED' ? 'Approved' : 'Rejected'} by: ${approver.decidedBy}`}
+                                                                        </span>
                                                                     </div>
                                                                 )}
                                                                 {/* Comment */}

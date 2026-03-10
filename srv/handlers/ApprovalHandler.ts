@@ -393,8 +393,41 @@ export class ApprovalHandler {
             this.log.info(`Step ${stepId} completed${decisionAction ? ` with action: ${decisionAction}` : ''}.`);
 
             // Write decisionAction to the step for workflow branching
-            // If action contains 'reject', mark step as REJECTED for UI visibility
-            const isRejectAction = decisionAction && /reject/i.test(decisionAction);
+            // Resolve whether this action constitutes a "rejection" by looking up
+            // the action's label/variant from the form schema.
+            let isRejectAction = decisionAction && /reject/i.test(decisionAction);
+
+            // The decisionAction may be an auto-generated ID (e.g., "action-1772758341638").
+            // In that case, the regex above won't match. Look up the form schema to resolve intent.
+            if (decisionAction && !isRejectAction) {
+                try {
+                    const { Requests, StepDefinitions: StepDefs } = this.srv.entities;
+                    const step = await SELECT.one.from(Steps, stepId).columns('stepDefinition_ID', 'request_ID');
+                    if (step) {
+                        const request = await SELECT.one.from(Requests, step.request_ID).columns('requestType_ID');
+                        if (request?.requestType_ID) {
+                            const { RequestTypes } = this.srv.entities;
+                            const rt = await SELECT.one.from(RequestTypes).where({ ID: request.requestType_ID }).columns('formSchemasContent');
+                            const stepDef = await SELECT.one.from(StepDefs, step.stepDefinition_ID).columns('formId');
+                            if (rt?.formSchemasContent && stepDef?.formId) {
+                                const forms = JSON.parse(rt.formSchemasContent);
+                                const form = forms.find((f: any) => f.id === stepDef.formId);
+                                const allActions = [...(form?.actions || []), ...(form?.footerActions || [])];
+                                const matchedAction = allActions.find((a: any) => a.id === decisionAction);
+                                if (matchedAction) {
+                                    const label = matchedAction.label || '';
+                                    const variant = matchedAction.variant || '';
+                                    isRejectAction = /reject/i.test(label) || variant === 'destructive' || variant === 'danger';
+                                    this.log.info(`[checkStepCompletion] Resolved action: id=${decisionAction}, label="${label}", variant="${variant}", isReject=${isRejectAction}`);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    this.log.warn('[checkStepCompletion] Failed to resolve action label from form schema', e);
+                }
+            }
+
             const targetStatus = isRejectAction ? Step.status.REJECTED : Step.status.COMPLETED;
 
             const stepUpdate: Record<string, unknown> = {

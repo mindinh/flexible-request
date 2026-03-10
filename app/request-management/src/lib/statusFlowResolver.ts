@@ -18,51 +18,51 @@ interface StatusChipStyle {
 
 const CHIP_STYLES: Record<string, StatusChipStyle> = {
     // Overall Request Status
-    'overall-draft':      { label: 'Draft',      color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
-    'overall-submitted':  { label: 'Submitted',  color: '#2563eb', bgColor: '#eff6ff', borderColor: '#bfdbfe' },
-    'overall-completed':  { label: 'Completed',  color: '#16a34a', bgColor: '#f0fdf4', borderColor: '#bbf7d0' },
-    'overall-rejected':   { label: 'Rejected',   color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
-    'overall-withdrawn':  { label: 'Withdrawn',  color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a' },
+    'overall-draft': { label: 'Draft', color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
+    'overall-submitted': { label: 'Submitted', color: '#2563eb', bgColor: '#eff6ff', borderColor: '#bfdbfe' },
+    'overall-completed': { label: 'Completed', color: '#16a34a', bgColor: '#f0fdf4', borderColor: '#bbf7d0' },
+    'overall-rejected': { label: 'Rejected', color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
+    'overall-withdrawn': { label: 'Withdrawn', color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a' },
     // Step Status
-    'step-not-started':   { label: 'Not Started',  color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
-    'step-started':       { label: 'Started',      color: '#7c3aed', bgColor: '#f5f3ff', borderColor: '#ddd6fe' },
-    'step-in-progress':   { label: 'In Progress',  color: '#16a34a', bgColor: '#f0fdf4', borderColor: '#bbf7d0' },
-    'step-completed':     { label: 'Completed',    color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
-    'step-rejected':      { label: 'Rejected',     color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
+    'step-not-started': { label: 'Not Started', color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
+    'step-started': { label: 'Started', color: '#7c3aed', bgColor: '#f5f3ff', borderColor: '#ddd6fe' },
+    'step-in-progress': { label: 'In Progress', color: '#16a34a', bgColor: '#f0fdf4', borderColor: '#bbf7d0' },
+    'step-completed': { label: 'Completed', color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
+    'step-rejected': { label: 'Rejected', color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
     // Step Owner Status
-    'owner-pending':           { label: 'Pending',           color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
-    'owner-in-progress':       { label: 'In Progress',       color: '#7c3aed', bgColor: '#f5f3ff', borderColor: '#ddd6fe' },
-    'owner-in-clarification':  { label: 'In Clarification',  color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a' },
+    'owner-pending': { label: 'Pending', color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
+    'owner-in-progress': { label: 'In Progress', color: '#7c3aed', bgColor: '#f5f3ff', borderColor: '#ddd6fe' },
+    'owner-in-clarification': { label: 'In Clarification', color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a' },
     'owner-reapproval-needed': { label: 'Reapproval Needed', color: '#ea580c', bgColor: '#fff7ed', borderColor: '#fed7aa' },
-    'owner-completed':         { label: 'Completed',         color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
+    'owner-completed': { label: 'Completed', color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
     // Approval Status
-    'approval-pending':   { label: 'Pending',   color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
-    'approval-approved':  { label: 'Approved',  color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
-    'approval-rejected':  { label: 'Rejected',  color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
+    'approval-pending': { label: 'Pending', color: '#475569', bgColor: '#f8fafc', borderColor: '#e2e8f0' },
+    'approval-approved': { label: 'Approved', color: '#16a34a', bgColor: '#dcfce7', borderColor: '#86efac' },
+    'approval-rejected': { label: 'Rejected', color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecaca' },
     'approval-sent-back': { label: 'Sent Back', color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a' },
 };
 
 // ─── System status → chip ID mapping ─────────────────────────────────────
 
 const REQUEST_STATUS_TO_CHIP: Record<string, string> = {
-    'DRAFT':       'overall-draft',
-    'SUBMITTED':   'overall-submitted',
+    'DRAFT': 'overall-draft',
+    'SUBMITTED': 'overall-submitted',
     'IN_PROGRESS': 'overall-submitted',
-    'COMPLETED':   'overall-completed',
-    'REJECTED':    'overall-rejected',
-    'WITHDRAWN':   'overall-withdrawn',
+    'COMPLETED': 'overall-completed',
+    'REJECTED': 'overall-rejected',
+    'WITHDRAWN': 'overall-withdrawn',
 };
 
 const STEP_STATUS_TO_LABEL: Record<string, string> = {
-    'NOT_STARTED':      'Not Started',
-    'PENDING':          'Pending',
-    'UPCOMING':         'Not Started',
-    'STARTED':          'Started',
-    'IN_PROGRESS':      'In Progress',
+    'NOT_STARTED': 'Not Started',
+    'PENDING': 'Pending',
+    'UPCOMING': 'Not Started',
+    'STARTED': 'Started',
+    'IN_PROGRESS': 'In Progress',
     'IN_CLARIFICATION': 'In Clarification',
-    'COMPLETED':        'Completed',
-    'REJECTED':         'Rejected',
-    'SKIPPED':          'Not Started',
+    'COMPLETED': 'Completed',
+    'REJECTED': 'Rejected',
+    'SKIPPED': 'Not Started',
 };
 
 // ─── Parse helper ────────────────────────────────────────────────────────
@@ -172,4 +172,42 @@ export function resolveStepBusinessStatus(
     }
 
     return null;
+}
+
+/**
+ * Resolves the business outcome status (e.g. "Mono", "Baka") for a step based on:
+ * - the configured Status Flow transitions (action label)
+ * - the stepDefinition ID that generated those phases
+ *
+ * This is used when a step is finished (COMPLETED/REJECTED) and we want to show the
+ * configured business status node instead of the generic approval label.
+ */
+export function resolveStepOutcomeBusinessStatus(
+    statusFlowContent: string | null | undefined,
+    stepDefId: string,
+    decisionActionLabel: string | null | undefined,
+): ResolvedStatus | null {
+    const model = parseStatusFlowModel(statusFlowContent);
+    if (!model) return null;
+
+    const actionNorm = (decisionActionLabel || '').trim().toLowerCase();
+    if (!actionNorm) return null;
+
+    const stepPhases = model.phases.filter(p => p.sourceStepIds.includes(stepDefId));
+    if (stepPhases.length === 0) return null;
+
+    const stepPhaseIds = new Set(stepPhases.map(p => p.id));
+
+    const transition = model.transitions.find(t => {
+        const tAction = (t.action || '').trim().toLowerCase();
+        return stepPhaseIds.has(t.from) && stepPhaseIds.has(t.to) && tAction === actionNorm;
+    });
+
+    if (!transition) return null;
+
+    const toPhase = model.phases.find(p => p.id === transition.to);
+    const chip = toPhase?.statuses?.[0];
+    if (!chip) return null;
+
+    return { label: chip.label, color: chip.color, bgColor: chip.bgColor, borderColor: chip.borderColor };
 }

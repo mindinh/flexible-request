@@ -635,15 +635,14 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 return true;
             });
 
-            // Helper to create edge key for comparison - include offsets to detect wiggle changes
+            // Helper to create edge key for comparison - include offsets and statusConfig to detect all changes
             const edgeKey = (e: any) => {
                 const offsets = e.data?.offsets || [0, 0, 0];
-                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${e.targetHandle || ''}|${JSON.stringify(offsets)}`;
+                const sc = e.data?.statusConfig;
+                const statusPart = sc ? `|${sc.statusName || ''}|${sc.statusColor || ''}|${sc.description || ''}` : '';
+                return `${e.source}|${e.target}|${e.sourceHandle || ''}|${e.targetHandle || ''}|${JSON.stringify(offsets)}${statusPart}`;
             };
 
-            // Build sets for comparison
-            const currentEdgeKeys = new Set(denormalizedEdges.map(e => edgeKey(e)));
-            const originalEdgeKeys = new Set(originalEdges.map(e => edgeKey(e)));
 
 
             // Build identity maps for update detection
@@ -659,8 +658,52 @@ export const useStudioStore = create<StudioState>((set, get) => ({
                 }
             }
 
-            // Find edges to CREATE (in current but not in original)
-            const edgesToCreate = denormalizedEdges.filter(e => !originalEdgeKeys.has(edgeKey(e)));
+            // Find edges to UPDATE (same identity, but data changed - e.g. statusConfig, offsets)
+            const edgesToUpdate = denormalizedEdges.filter(e => {
+                const identity = edgeIdentity(e);
+                const origEdge = originalByIdentity.get(identity);
+                if (!origEdge) return false; // New edge, handled by CREATE below
+                return edgeKey(e) !== edgeKey(origEdge); // Data has changed
+            });
+            console.log("Updating dependencies...", edgesToUpdate.length);
+            for (const edge of edgesToUpdate) {
+                const origEdge = originalByIdentity.get(edgeIdentity(edge));
+                if (!origEdge?.id) continue;
+
+                const offsets = (edge.data as any)?.offsets as number[] | undefined;
+                const { action: baseAction, sourceHandleMeta } = resolveDependencyAction(edge);
+                const targetHandle = (edge.targetHandle as string) || undefined;
+                const statusConfig = (edge.data as any)?.statusConfig;
+                const editorMeta: Record<string, unknown> = {};
+
+                if (offsets && offsets.some(v => v !== 0)) {
+                    editorMeta.o = offsets;
+                }
+                if (sourceHandleMeta) {
+                    editorMeta.s = sourceHandleMeta;
+                }
+                if (targetHandle) {
+                    editorMeta.t = targetHandle;
+                }
+                const statusConfigPayload = Object.keys(editorMeta).length > 0 || statusConfig
+                    ? JSON.stringify({
+                        ...(Object.keys(editorMeta).length > 0 ? { editor: editorMeta } : {}),
+                        ...(statusConfig ? { statusConfig } : {}),
+                    })
+                    : undefined;
+
+                try {
+                    await AdminService.updateStepDependency(origEdge.id, {
+                        action: baseAction || undefined,
+                        statusConfigContent: statusConfigPayload,
+                    });
+                } catch (err) {
+                    console.error("Failed to update dependency:", edge.source, "->", edge.target, err);
+                }
+            }
+
+            // Find edges to CREATE (in current but not in original by identity — truly new edges)
+            const edgesToCreate = denormalizedEdges.filter(e => !originalByIdentity.has(edgeIdentity(e)));
             console.log("Creating dependencies...", edgesToCreate.length);
             for (const edge of edgesToCreate) {
                 // Metadata Encoding for persistence

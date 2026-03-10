@@ -8,6 +8,7 @@ import { parseSchemaContent } from '../../../../lib/schemaParser';
 import { useAuth, isGroupLikeType, checkIsGroupMember } from '../../../../lib/auth-context';
 import type { WorkflowTimelineStep } from '../../../../components/shared';
 import { sortStepsTopologically } from '../../../../lib/workflowUtils';
+import { resolveStepOutcomeBusinessStatus } from '../../../../lib/statusFlowResolver';
 import type { RequestDetailData, HistoryItem, Step } from '../types';
 import { mapStepStatus as mapStatus } from '../types';
 
@@ -335,6 +336,8 @@ export function useRequestDetailData(id: string | undefined) {
         const allStepDefinitions = sortStepsTopologically(request?.requestType?.steps || [])
             .filter(stepDef => stepDef.stepType !== 'end');
 
+        const statusFlowContent = (request?.requestType as any)?.statusFlowContent as string | null | undefined;
+
         return allStepDefinitions.map((stepDef) => {
             const runtimeStep = sortedSteps.find(s => s.stepDefinition_ID === stepDef.ID);
             const stepResolvedApprovers = resolvedApprovers[stepDef.ID] || [];
@@ -356,10 +359,61 @@ export function useRequestDetailData(id: string | undefined) {
 
             // Force REJECTED status if there's an explicit rejection record or action
             const isTechnicalReject = runtimeStep?.approvals?.some(a => a.status === 'REJECTED');
-            const isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
+
+            // Re-resolve branch intent from action label/variant if it's a form action ID
+            let isBranchReject = /reject/i.test(runtimeStep?.decisionAction || '');
+            if (!isBranchReject && runtimeStep?.decisionAction && stepDef.formId && request?.requestType?.formSchemasContent) {
+                try {
+                    const forms = JSON.parse(request.requestType.formSchemasContent);
+                    const form = forms.find((f: any) => f.id === stepDef.formId);
+                    const allActions = [...(form?.actions || []), ...(form?.footerActions || [])];
+                    const action = allActions.find((a: any) => a.id === runtimeStep.decisionAction);
+                    if (action) {
+                        isBranchReject = /reject/i.test(action.label || '') || action.variant === 'destructive' || action.variant === 'danger';
+                    }
+                } catch { /* ignore */ }
+            }
+
             if (isTechnicalReject || isBranchReject) {
                 status = 'REJECTED';
             }
+
+            const statusUpper = (status || '').toUpperCase();
+
+            const decisionActionRaw = (runtimeStep as any)?.decisionAction as string | undefined;
+
+            const isIdLike = (text: string | undefined) =>
+                !!text && (
+                    // UUID-ish
+                    (text.length > 30 && /^[0-9a-fA-F-]+$/.test(text)) ||
+                    // Studio-generated action IDs (SchemaTab.tsx)
+                    /^action-\d+$/.test(text)
+                );
+
+            // Resolve decision/action label for Status Flow mapping (e.g. "Approve"/"Reject", "True"/"False")
+            let decisionLabel: string | null = null;
+            if ((stepDef as any).stepType === 'condition') {
+                if (decisionActionRaw === 'true') decisionLabel = 'True';
+                else if (decisionActionRaw === 'false') decisionLabel = 'False';
+            } else if (decisionActionRaw && stepDef.formId && request?.requestType?.formSchemasContent) {
+                try {
+                    const forms = JSON.parse(request.requestType.formSchemasContent);
+                    const form = forms.find((f: any) => f.id === stepDef.formId);
+                    const allActions = [...(form?.actions || []), ...(form?.footerActions || [])];
+                    const matchedAction = allActions.find((a: any) => a.id === decisionActionRaw);
+                    if (matchedAction?.label) decisionLabel = matchedAction.label;
+                } catch { /* ignore */ }
+                if (!decisionLabel && !isIdLike(decisionActionRaw)) {
+                    decisionLabel = decisionActionRaw;
+                }
+            } else if (decisionActionRaw && !isIdLike(decisionActionRaw)) {
+                // If backend already provides a readable label, accept it (fallback).
+                decisionLabel = decisionActionRaw;
+            }
+
+            const outcomeStatus = (statusUpper === 'COMPLETED' || statusUpper === 'REJECTED')
+                ? resolveStepOutcomeBusinessStatus(statusFlowContent, stepDef.ID, decisionLabel)
+                : null;
 
             // Check for re-approval condition
             const hasPastActivity = auditLog?.some(l =>
@@ -368,8 +422,28 @@ export function useRequestDetailData(id: string | undefined) {
             );
             const isReapproval = hasPastActivity && (status === 'IN_PROGRESS' || status === 'PENDING' || status === 'STARTED');
 
+            // Determine Step Owner (Consolidated)
+            const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
+            let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
+            const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
+
+            if (!ownerDisplayName || isUuid(ownerDisplayName)) {
+                if (ownerId && enrichedKnownUsers.has(ownerId)) {
+                    ownerDisplayName = enrichedKnownUsers.get(ownerId);
+                }
+            }
+            if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId && request?.coordinatorId && ownerId === request.coordinatorId) {
+                ownerDisplayName = request.coordinatorDisplayName;
+            }
+            if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId) {
+                const resolved = enrichedKnownUsers.get(ownerId);
+                if (resolved) ownerDisplayName = resolved;
+            }
+            if ((!ownerDisplayName || isUuid(ownerDisplayName)) && !ownerDisplayName) {
+                ownerDisplayName = ownerId;
+            }
+
             const getSubtitle = () => {
-                const statusUpper = status?.toUpperCase();
                 let statusBadge;
 
                 if (isReapproval) {
@@ -380,23 +454,46 @@ export function useRequestDetailData(id: string | undefined) {
                         </span>
                     );
                 } else if (statusUpper === 'COMPLETED') {
+                    const label = outcomeStatus?.label || decisionLabel || 'Completed';
                     if (completedApprovals.length > 0) {
                         const approverName = completedApprovals[0].decidedByDisplayName ||
                             completedApprovals[0].approverDisplayName ||
                             completedApprovals[0].approver;
 
-                        statusBadge = <span className="text-emerald-600 font-medium">Approved by {approverName}</span>;
+                        statusBadge = (
+                            <span
+                                className={outcomeStatus ? 'font-medium' : 'text-emerald-600 font-medium'}
+                                style={outcomeStatus ? { color: outcomeStatus.color } : undefined}
+                            >
+                                {label} by {approverName}
+                            </span>
+                        );
                     } else if (hasData) {
-                        statusBadge = <span className="text-emerald-600 font-medium">Completed</span>;
+                        statusBadge = (
+                            <span
+                                className={outcomeStatus ? 'font-medium' : 'text-emerald-600 font-medium'}
+                                style={outcomeStatus ? { color: outcomeStatus.color } : undefined}
+                            >
+                                {label}
+                            </span>
+                        );
                     } else {
-                        statusBadge = <span className="text-slate-500">Completed</span>;
+                        statusBadge = <span className="text-slate-500">{label}</span>;
                     }
                 } else if (statusUpper === 'REJECTED') {
+                    const label = outcomeStatus?.label || decisionLabel || 'Rejected';
                     const approverName = completedApprovals[0]?.decidedByDisplayName ||
                         completedApprovals[0]?.approverDisplayName ||
                         completedApprovals[0]?.approver || 'Approver';
 
-                    statusBadge = <span className="text-rose-600 font-medium">Rejected by {approverName}</span>;
+                    statusBadge = (
+                        <span
+                            className={outcomeStatus ? 'font-medium' : 'text-rose-600 font-medium'}
+                            style={outcomeStatus ? { color: outcomeStatus.color } : undefined}
+                        >
+                            {label} by {approverName}
+                        </span>
+                    );
                 } else if (statusUpper === 'IN_PROGRESS') {
                     statusBadge = <span className="text-blue-600 font-medium">In Progress</span>;
                 } else if (statusUpper === 'STARTED') {
@@ -415,30 +512,6 @@ export function useRequestDetailData(id: string | undefined) {
                     statusBadge = <span className="text-slate-500">Upcoming</span>;
                 }
 
-                // Determine Step Owner
-                const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
-                let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
-
-                const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
-
-                if (!ownerDisplayName || isUuid(ownerDisplayName)) {
-                    if (ownerId && enrichedKnownUsers.has(ownerId)) {
-                        ownerDisplayName = enrichedKnownUsers.get(ownerId);
-                    }
-                }
-
-                if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId && request?.coordinatorId && ownerId === request.coordinatorId) {
-                    ownerDisplayName = request.coordinatorDisplayName;
-                }
-
-                if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId) {
-                    const resolved = enrichedKnownUsers.get(ownerId);
-                    if (resolved) ownerDisplayName = resolved;
-                }
-
-                if ((!ownerDisplayName || isUuid(ownerDisplayName)) && !ownerDisplayName) {
-                    ownerDisplayName = ownerId;
-                }
 
                 return (
                     <div className="space-y-1">
@@ -456,15 +529,6 @@ export function useRequestDetailData(id: string | undefined) {
                 );
             };
 
-            const ownerId = runtimeStep?.ownerId || stepDef.ownerId;
-            let ownerDisplayName = runtimeStep?.ownerDisplayName || stepDef.ownerDisplayName;
-            const isUuid = (text: string | undefined) => text && text.length > 30 && /^[0-9a-fA-F-]+$/.test(text);
-            if (!ownerDisplayName || isUuid(ownerDisplayName)) {
-                if (ownerId) ownerDisplayName = enrichedKnownUsers.get(ownerId) || ownerDisplayName;
-            }
-            if ((!ownerDisplayName || isUuid(ownerDisplayName)) && ownerId && request?.coordinatorId && ownerId === request.coordinatorId) {
-                ownerDisplayName = request.coordinatorDisplayName;
-            }
 
             const decisionApproval = completedApprovals.find(a => a.comment);
             const decisionNote = decisionApproval?.comment || null;
@@ -506,21 +570,21 @@ export function useRequestDetailData(id: string | undefined) {
                     branchLabel = 'Condition';
                 }
             }
-            // For steps with form actions: show decision taken (completed) or available decisions (pending)
+            // For steps with form actions: show decision taken (completed/rejected) or available decisions (pending)
             else if (stepDef.formId && request?.requestType?.formSchemasContent) {
                 try {
                     const forms = JSON.parse(request.requestType.formSchemasContent);
                     const form = forms.find((f: any) => f.id === stepDef.formId);
-                    const actions = form?.actions || [];
-                    if (actions.length > 0 && !stepDef.isStartStep) {
+                    const allActions = [...(form?.actions || []), ...(form?.footerActions || [])];
+                    if (allActions.length > 0 && !stepDef.isStartStep) {
                         const decisionAction = (runtimeStep as any)?.decisionAction;
-                        if (decisionAction && status === 'COMPLETED') {
+                        if (decisionAction && (status === 'COMPLETED' || status === 'REJECTED')) {
                             // Show the decision that was actually taken
-                            const matchedAction = actions.find((a: any) => a.id === decisionAction);
+                            const matchedAction = allActions.find((a: any) => a.id === decisionAction);
                             const label = matchedAction?.label || decisionAction;
                             branchLabel = label.charAt(0).toUpperCase() + label.slice(1);
-                        } else {
-                            branchLabel = `Decisions: ${actions.map((a: any) => a.label).join(' / ')}`;
+                        } else if (status === 'IN_PROGRESS' || status === 'PENDING') {
+                            branchLabel = `Decisions: ${allActions.map((a: any) => a.label).join(' / ')}`;
                         }
                     }
                 } catch { /* ignore */ }
@@ -531,6 +595,7 @@ export function useRequestDetailData(id: string | undefined) {
                 title: stepDef.stepName || 'Unknown Step',
                 status: mapStatus(status),
                 subtitle: getSubtitle(),
+                stepDefId: stepDef.ID,
                 slaDays: stepDef.slaDays,
                 ownerName: ownerDisplayName || null,
                 decisionDate,
@@ -543,9 +608,16 @@ export function useRequestDetailData(id: string | undefined) {
                         approvers: [{
                             name: resolvePrincipalName(approval.approver, approval.approverDisplayName) || 'Unknown Approver',
                             type: (approval.approverType || 'ROLE') as 'USER' | 'ROLE' | 'GROUP' | 'TEAM' | 'POSITION',
-                            status: (approval.status === 'APPROVED' && (/reject/i.test(runtimeStep?.decisionAction || ''))
-                                ? 'REJECTED'
-                                : approval.status) as 'PENDING' | 'WAITING' | 'APPROVED' | 'REJECTED' | 'SENDBACK',
+                            status: (() => {
+                                if (outcomeStatus && (statusUpper === 'COMPLETED' || statusUpper === 'REJECTED') && (approval.status === 'APPROVED' || approval.status === 'REJECTED')) {
+                                    return outcomeStatus.label;
+                                }
+                                if (statusUpper === 'REJECTED' && approval.status === 'APPROVED') return 'REJECTED';
+                                return approval.status;
+                            })(),
+                            statusStyle: (outcomeStatus && (statusUpper === 'COMPLETED' || statusUpper === 'REJECTED') && (approval.status === 'APPROVED' || approval.status === 'REJECTED'))
+                                ? { color: outcomeStatus.color, bgColor: outcomeStatus.bgColor, borderColor: outcomeStatus.borderColor }
+                                : undefined,
                             comment: approval.comment,
                             timestamp: approval.decisionAt,
                             decidedBy: approval.decidedByDisplayName
